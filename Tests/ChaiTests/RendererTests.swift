@@ -171,8 +171,8 @@ struct RendererTests {
         let renderer = Renderer(terminal: mock)
         await renderer.setSize(width: 80, height: 3)
         // 10-line view should be clamped to 3 lines.
-        let view = (1...10).map { "Line \($0)" }.joined(separator: "\n")
-        await renderer.write(view)
+        let content = (1...10).map { "Line \($0)" }.joined(separator: "\n")
+        await renderer.write(ViewOutput(content))
         await renderer.flush()
         // Only the last 3 lines should appear.
         #expect(mock.output.contains("Line 8"))
@@ -210,5 +210,197 @@ struct RendererTests {
         await renderer.println("Should not appear")
         await renderer.flush()
         #expect(!mock.output.contains("Should not appear"))
+    }
+
+    // MARK: - Declarative ViewOutput terminal state
+
+    @Test func viewOutputEntersAltScreen() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // Declare alt screen via ViewOutput.
+        await renderer.write(ViewOutput("Hello", altScreen: true))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.enterAltScreen))
+        #expect(await renderer.altScreenActive)
+        #expect(mock.output.contains("Hello"))
+    }
+
+    @Test func viewOutputExitsAltScreen() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // Enter alt screen via ViewOutput.
+        await renderer.write(ViewOutput("Frame 1", altScreen: true))
+        await renderer.flush()
+        mock.reset()
+        // Exit alt screen via ViewOutput.
+        await renderer.write(ViewOutput("Frame 2", altScreen: false))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.exitAltScreen))
+        #expect(await !renderer.altScreenActive)
+        #expect(mock.output.contains("Frame 2"))
+    }
+
+    @Test func viewOutputNilAltScreenDoesNotTransition() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.enterAltScreen()
+        mock.reset()
+        // ViewOutput with nil altScreen should NOT exit alt screen.
+        await renderer.write(ViewOutput("Content"))
+        await renderer.flush()
+        #expect(!mock.output.contains(ANSI.exitAltScreen))
+        #expect(await renderer.altScreenActive)
+    }
+
+    @Test func viewOutputSetsWindowTitle() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write(ViewOutput("Content", windowTitle: "My App"))
+        await renderer.flush()
+        #expect(mock.output.contains("My App"))
+        #expect(mock.output.contains("\u{1B}]0;"))
+    }
+
+    @Test func viewOutputWindowTitleNotRewrittenWhenUnchanged() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write(ViewOutput("Frame 1", windowTitle: "My App"))
+        await renderer.flush()
+        mock.reset()
+        // Same title, different content — title should not be rewritten.
+        await renderer.write(ViewOutput("Frame 2", windowTitle: "My App"))
+        await renderer.flush()
+        #expect(!mock.output.contains("\u{1B}]0;"))
+        #expect(mock.output.contains("Frame 2"))
+    }
+
+    @Test func viewOutputHidesCursor() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write(ViewOutput("Content", cursorHidden: true))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.hideCursor))
+    }
+
+    @Test func viewOutputShowsCursorAfterHiding() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // Hide cursor.
+        await renderer.write(ViewOutput("Frame 1", cursorHidden: true))
+        await renderer.flush()
+        mock.reset()
+        // Show cursor.
+        await renderer.write(ViewOutput("Frame 2", cursorHidden: false))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.showCursor))
+    }
+
+    @Test func viewOutputNilCursorDoesNotTransition() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.hideCursor()
+        mock.reset()
+        // ViewOutput with nil cursorHidden should NOT show cursor.
+        await renderer.write(ViewOutput("Content"))
+        await renderer.flush()
+        #expect(!mock.output.contains(ANSI.showCursor))
+    }
+
+    @Test func viewOutputCombinesMultipleTerminalStateChanges() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write(ViewOutput(
+            "Full featured",
+            altScreen: true,
+            windowTitle: "My App",
+            cursorHidden: true
+        ))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.enterAltScreen))
+        #expect(mock.output.contains("My App"))
+        #expect(mock.output.contains(ANSI.hideCursor))
+        #expect(mock.output.contains("Full featured"))
+    }
+
+    @Test func altScreenTransitionClearsRenderCache() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write(ViewOutput("Same content"))
+        await renderer.flush()
+        mock.reset()
+        // Enter alt screen with same content — should still render because
+        // the transition clears the render cache.
+        await renderer.write(ViewOutput("Same content", altScreen: true))
+        await renderer.flush()
+        #expect(mock.output.contains("Same content"))
+    }
+
+    @Test func stringLiteralViewOutputHasNilTerminalState() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // String literal creates ViewOutput with all-nil terminal state.
+        await renderer.write("Just a string")
+        await renderer.flush()
+        // Should NOT enter alt screen, set title, or change cursor.
+        #expect(!mock.output.contains(ANSI.enterAltScreen))
+        #expect(!mock.output.contains("\u{1B}]0;"))
+        #expect(!mock.output.contains(ANSI.hideCursor))
+        #expect(mock.output.contains("Just a string"))
+    }
+}
+
+// MARK: - ViewOutput Tests
+
+@Suite("ViewOutput")
+struct ViewOutputTests {
+
+    @Test func stringLiteralCreatesViewOutput() {
+        let view: ViewOutput = "Hello, world!"
+        #expect(view.content == "Hello, world!")
+        #expect(view.altScreen == nil)
+        #expect(view.windowTitle == nil)
+        #expect(view.cursorHidden == nil)
+    }
+
+    @Test func stringInterpolationCreatesViewOutput() {
+        let count = 42
+        let view: ViewOutput = "Count: \(count)"
+        #expect(view.content == "Count: 42")
+        #expect(view.altScreen == nil)
+    }
+
+    @Test func explicitInitSetsAllFields() {
+        let view = ViewOutput(
+            "Content",
+            altScreen: true,
+            windowTitle: "Title",
+            cursorHidden: false
+        )
+        #expect(view.content == "Content")
+        #expect(view.altScreen == true)
+        #expect(view.windowTitle == "Title")
+        #expect(view.cursorHidden == false)
+    }
+
+    @Test func defaultsAreNil() {
+        let view = ViewOutput("Just content")
+        #expect(view.content == "Just content")
+        #expect(view.altScreen == nil)
+        #expect(view.windowTitle == nil)
+        #expect(view.cursorHidden == nil)
+    }
+
+    @Test func equatable() {
+        let a = ViewOutput("Hello", altScreen: true)
+        let b = ViewOutput("Hello", altScreen: true)
+        let c = ViewOutput("Hello", altScreen: false)
+        #expect(a == b)
+        #expect(a != c)
+    }
+
+    @Test func equatableContent() {
+        let a = ViewOutput("Hello")
+        let b = ViewOutput("World")
+        #expect(a != b)
     }
 }

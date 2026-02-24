@@ -63,7 +63,7 @@ struct GroceryList: Model {
         return nil
     }
 
-    func view() -> String {
+    func view() -> ViewOutput {
         var lines: [String] = []
 
         lines.append("What should we buy at the market?\n")
@@ -77,7 +77,8 @@ struct GroceryList: Model {
         lines.append("")
         lines.append("↑/↓ or j/k to move  •  Enter/Space to select  •  q to quit")
 
-        return lines.joined(separator: "\n")
+        // Declaratively request the alternate screen buffer.
+        return ViewOutput(lines.joined(separator: "\n"), altScreen: true)
     }
 
     // MARK: - Private helpers
@@ -97,7 +98,7 @@ struct GroceryList: Model {
 struct App {
     static func main() async {
         do {
-            try await Program(GroceryList(), options: .withAltScreen).run()
+            try await Program(GroceryList()).run()
         } catch {
             print("Error: \(error)")
         }

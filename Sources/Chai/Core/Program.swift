@@ -198,7 +198,9 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
 
         await renderer.stop()
 
-        if options.contains(where: { if case .withAltScreen = $0 { return true } else { return false } }) {
+        // Exit alt screen if it was active (whether set via program option
+        // or declaratively via ViewOutput).
+        if await renderer.altScreenActive {
             await renderer.exitAltScreen()
         }
 

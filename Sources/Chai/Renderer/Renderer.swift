@@ -27,10 +27,10 @@ actor Renderer {
     private let terminal: any TerminalOutput
     private let fps: Int
 
-    /// The view string queued for the next flush.
-    private var pendingView: String = ""
-    /// The view string that was last written to the terminal.
-    private var lastView: String = ""
+    /// The view output queued for the next flush.
+    private var pendingViewOutput = ViewOutput("")
+    /// The content string that was last written to the terminal.
+    private var lastContent: String = ""
     /// The individual lines of the last rendered frame.
     private var lastLines: [String] = []
     /// Number of lines written in the last non-altscreen render.
@@ -51,6 +51,9 @@ actor Renderer {
 
     /// Whether the cursor is currently hidden.
     private var cursorHidden: Bool = false
+
+    /// The last applied window title (for diffing).
+    private var lastWindowTitle: String?
 
     /// The background flush task.
     private var flushTask: Task<Void, Never>?
@@ -93,25 +96,79 @@ actor Renderer {
 
     // MARK: - View buffer
 
-    /// Queue a new view string for rendering on the next tick.
-    func write(_ view: String) {
-        pendingView = view.isEmpty ? " " : view
+    /// Queue a new ``ViewOutput`` for rendering on the next tick.
+    ///
+    /// The renderer will diff the terminal state (alt screen, window title,
+    /// cursor visibility) and content against the previous frame on the next
+    /// ``flush()``.
+    func write(_ view: ViewOutput) {
+        var output = view
+        if output.content.isEmpty { output.content = " " }
+        pendingViewOutput = output
     }
 
     /// Force a full repaint on the next flush by clearing the last-render cache.
     func repaint() {
-        lastView = ""
+        lastContent = ""
         lastLines = []
     }
 
     // MARK: - Flush
 
     /// Write the pending view to the terminal, diffing against the last frame.
+    ///
+    /// Terminal state transitions (alt screen, window title, cursor visibility)
+    /// are handled first, then content is diffed and written.
     func flush() {
-        let view = pendingView
-        guard !view.isEmpty, view != lastView else { return }
+        let viewOutput = pendingViewOutput
 
-        var newLines = view.components(separatedBy: "\n")
+        // ── Handle terminal state transitions ───────────────────────────────
+
+        // Alt screen: enter or exit if the model changed its declaration.
+        if let wantAltScreen = viewOutput.altScreen {
+            if wantAltScreen && !altScreenActive {
+                altScreenActive = true
+                terminal.write(ANSI.enterAltScreen)
+                terminal.write(ANSI.eraseEntireScreen)
+                terminal.write(ANSI.cursorHome)
+                if cursorHidden { terminal.write(ANSI.hideCursor) }
+                altLinesRendered = 0
+                lastContent = ""
+                lastLines = []
+                queuedLines = []
+            } else if !wantAltScreen && altScreenActive {
+                altScreenActive = false
+                terminal.write(ANSI.exitAltScreen)
+                if cursorHidden { terminal.write(ANSI.hideCursor) }
+                lastContent = ""
+                lastLines = []
+                queuedLines = []
+            }
+        }
+
+        // Window title: update if changed.
+        if let title = viewOutput.windowTitle, title != lastWindowTitle {
+            terminal.write(ANSI.setWindowTitle(title))
+            lastWindowTitle = title
+        }
+
+        // Cursor visibility: show or hide if changed.
+        if let wantHidden = viewOutput.cursorHidden {
+            if wantHidden && !cursorHidden {
+                cursorHidden = true
+                terminal.write(ANSI.hideCursor)
+            } else if !wantHidden && cursorHidden {
+                cursorHidden = false
+                terminal.write(ANSI.showCursor)
+            }
+        }
+
+        // ── Content flush ───────────────────────────────────────────────────
+
+        let content = viewOutput.content
+        guard !content.isEmpty, content != lastContent else { return }
+
+        var newLines = content.components(separatedBy: "\n")
 
         // Clamp to terminal height if known.
         if termHeight > 0 && newLines.count > termHeight {
@@ -148,7 +205,7 @@ actor Renderer {
             }
 
             // On the very first render, reset to column 0.
-            if i == 0 && lastView.isEmpty { out += "\r" }
+            if i == 0 && lastContent.isEmpty { out += "\r" }
 
             // Truncate lines wider than the terminal to prevent wrapping.
             var rendered = line
@@ -177,7 +234,7 @@ actor Renderer {
         }
 
         terminal.write(out)
-        lastView = view
+        lastContent = content
         lastLines = newLines
     }
 
@@ -235,6 +292,7 @@ actor Renderer {
 
     func setWindowTitle(_ title: String) {
         terminal.write(ANSI.setWindowTitle(title))
+        lastWindowTitle = title
     }
 
     // MARK: - Print above view

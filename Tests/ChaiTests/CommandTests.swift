@@ -132,17 +132,17 @@ struct CommandTests {
                 return nil
             }
 
-            func view() -> String { ponged ? "Ponged!" : "Waiting..." }
+            func view() -> ViewOutput { ponged ? "Ponged!" : "Waiting..." }
         }
 
         var m = PingPong()
         let cmd = m.update(PingMsg())
         #expect(cmd != nil)
-        #expect(m.view() == "Waiting...") // ponged not yet set
+        #expect(m.view().content == "Waiting...") // ponged not yet set
 
         // Simulate the runtime delivering the PongMsg.
         _ = m.update(PongMsg())
-        #expect(m.view() == "Ponged!")
+        #expect(m.view().content == "Ponged!")
     }
 
     // MARK: - QuitMsg
