@@ -135,12 +135,14 @@ actor Renderer {
                 altLinesRendered = 0
                 lastContent = ""
                 lastLines = []
+                queuedLines = []
             } else if !wantAltScreen && altScreenActive {
                 altScreenActive = false
                 terminal.write(ANSI.exitAltScreen)
                 if cursorHidden { terminal.write(ANSI.hideCursor) }
                 lastContent = ""
                 lastLines = []
+                queuedLines = []
             }
         }
 
