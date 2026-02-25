@@ -99,6 +99,16 @@ enum ANSI {
         "\u{1B}]0;\(title)\u{07}"
     }
 
+    // MARK: - Synchronized output (mode 2026)
+
+    /// Begin synchronized output — the terminal defers display until the
+    /// matching ``endSyncUpdate`` is received, preventing partial-frame tearing.
+    /// Terminals that do not support mode 2026 silently ignore this sequence.
+    static let beginSyncUpdate = "\u{1B}[?2026h"
+
+    /// End synchronized output — the terminal renders the buffered frame.
+    static let endSyncUpdate = "\u{1B}[?2026l"
+
     // MARK: - Attributes / reset
 
     /// Reset all text attributes.

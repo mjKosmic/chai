@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.1.2
 import PackageDescription
 
 let package = Package(
@@ -16,9 +16,6 @@ let package = Package(
         .target(
             name: "Chai",
             path: "Sources/Chai",
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency"),
-            ]
         ),
         .testTarget(
             name: "ChaiTests",

@@ -208,9 +208,11 @@ actor Renderer {
             if i == 0 && lastContent.isEmpty { out += "\r" }
 
             // Truncate lines wider than the terminal to prevent wrapping.
+            // Uses ANSI-aware width measurement so that escape sequences are
+            // not counted and CJK wide characters count as 2 columns.
             var rendered = line
             if termWidth > 0 {
-                rendered = String(rendered.prefix(termWidth))
+                rendered = truncateToVisibleWidth(rendered, maxWidth: termWidth)
             }
 
             out += rendered + ANSI.eraseLineRight
@@ -233,7 +235,7 @@ actor Renderer {
             linesRendered = newLines.count
         }
 
-        terminal.write(out)
+        terminal.write(ANSI.beginSyncUpdate + out + ANSI.endSyncUpdate)
         lastContent = content
         lastLines = newLines
     }

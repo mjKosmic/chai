@@ -67,7 +67,7 @@ Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](http
 │  │  execution   │                │                      │  │
 │  │  (Tasks)     │ ─── msgs ─────►│                      │  │
 │  └──────────────┘                └──────────┬───────────┘  │
-│                                             │ view string  │
+│                                             │ ViewOutput   │
 │                                             ▼              │
 │                                  ┌──────────────────────┐  │
 │                                  │   Renderer (actor)   │  │
@@ -96,7 +96,7 @@ initialize() ──► Command?
              └──────┬──────┘
                     │
                     ▼
-                 view() ──► String ──► Renderer
+                 view() ──► ViewOutput ──► Renderer
 ```
 
 ### The three model methods
@@ -105,13 +105,13 @@ initialize() ──► Command?
 public protocol Model: Sendable {
     func initialize() -> Command?
     mutating func update(_ msg: any Message) -> Command?
-    func view() -> String
+    func view() -> ViewOutput
 }
 ```
 
 - **`initialize()`** — called once at startup. Returns an optional `Command` for initial I/O (e.g. loading data, starting a timer).
 - **`update(_ msg:)`** — called for every incoming `Message`. Mutates state and optionally returns a `Command` for further async work.
-- **`view()`** — called after every `update`. Returns the full UI as a plain string. ANSI escape codes are supported for colour and styling.
+- **`view()`** — called after every `update`. Returns a `ViewOutput` containing the full UI as a string plus optional declarative terminal state (alt screen, window title, cursor visibility). ANSI escape codes are supported for colour and styling within the content string. Thanks to `ExpressibleByStringInterpolation` conformance, simple models can return a string literal directly.
 
 The model is a **value type**. `ProgramRunner` holds the single authoritative copy and mutates it in-place on the event loop. There is no diffing of the model itself — `view()` is always called after every message.
 
@@ -128,6 +128,8 @@ The `Model` protocol is the only type users must implement. It carries three con
 - `Sendable` — the model must be safe to pass across concurrency boundaries (required because `Program` is generic over `M: Model` and `Program` itself is `Sendable`).
 - `mutating func update` — enforces value semantics; the compiler prevents accidental shared-state bugs.
 - No associated types — keeps the protocol simple and avoids type-erasure complexity at the call site.
+
+`view()` returns a `ViewOutput`, which carries the rendered content string plus optional per-frame terminal state declarations (alt screen, window title, cursor visibility). `ViewOutput` conforms to `ExpressibleByStringInterpolation`, so simple models can return string literals directly. When terminal state fields are `nil`, the renderer preserves the current state — this maintains backward compatibility with program options like `.withAltScreen`.
 
 ---
 
@@ -354,8 +356,8 @@ select(stdin, cancelPipe)
 
 | Property | Purpose |
 |----------|---------|
-| `pendingView` | The view string queued for the next flush |
-| `lastView` | The view string written in the previous flush |
+| `pendingViewOutput` | The `ViewOutput` queued for the next flush |
+| `lastContent` | The content string written in the previous flush |
 | `lastLines` | Lines of the previous frame (for line-level diffing) |
 | `linesRendered` | Line count of the last normal-screen render |
 | `altLinesRendered` | Line count of the last alt-screen render |
@@ -363,6 +365,7 @@ select(stdin, cancelPipe)
 | `termWidth` / `termHeight` | Current terminal dimensions |
 | `queuedLines` | Lines waiting to be printed above the live view |
 | `cursorHidden` | Whether the cursor is currently hidden |
+| `lastWindowTitle` | The last applied window title (for diffing) |
 | `flushTask` | The background `Task` driving the render loop |
 
 **Render loop:**
@@ -455,7 +458,7 @@ ProgramRunner.messageStream (AsyncStream)
     │
     ├─► model.update(msg) → Command?
     │
-    ├─► renderer.write(model.view())
+    ├─► renderer.write(model.view())   [ViewOutput: content + terminal state]
     │
     └─► execute(cmd)
             │
@@ -534,18 +537,23 @@ Raw bytes from stdin
 ## Rendering Pipeline
 
 ```
-model.view() → String
+model.view() → ViewOutput
         │
         ▼
-renderer.write(view)          stores in pendingView
+renderer.write(viewOutput)    stores in pendingViewOutput
         │
         │  (every 1/fps seconds, on actor executor)
         ▼
 renderer.flush()
         │
-        ├─ pendingView == lastView?  →  skip
+        ├─ diff terminal state (altScreen, windowTitle, cursorHidden)
+        │     altScreen changed?     →  enter/exit + clear render cache
+        │     windowTitle changed?   →  OSC 0 sequence
+        │     cursorHidden changed?  →  show/hide cursor
         │
-        ├─ split into lines
+        ├─ content == lastContent?   →  skip content flush
+        │
+        ├─ split content into lines
         ├─ clamp to termHeight
         │
         ├─ move cursor to top of previous render
@@ -560,12 +568,17 @@ renderer.flush()
         └─ park cursor
                 │
                 ▼
+        wrap with synchronized output markers (mode 2026)
         terminal.write(assembled ANSI string)
 ```
 
-The key optimisation is **line-level diffing**: only lines that changed since the last frame are rewritten. This minimises the number of bytes sent to the terminal, which matters for slow connections (SSH) and large UIs.
+The content output is wrapped with synchronized update markers (`ANSI.beginSyncUpdate` / `ANSI.endSyncUpdate`, mode 2026) to prevent partial-frame tearing on supporting terminals. Terminals that do not support mode 2026 silently ignore these sequences. Terminal state transitions (alt screen, window title, cursor visibility) are written outside the sync markers since they are brief, non-visual operations that do not cause tearing.
 
-The entire frame is assembled into a single `String` before calling `terminal.write()`. This reduces the number of `write(2)` syscalls to one per frame.
+The renderer diffs **both terminal state and content** between frames. Terminal state fields in `ViewOutput` that are `nil` are ignored (current state is preserved). Non-nil fields are compared against the last applied state and transitions are emitted only when values change.
+
+The key content optimisation is **line-level diffing**: only lines that changed since the last frame are rewritten. This minimises the number of bytes sent to the terminal, which matters for slow connections (SSH) and large UIs.
+
+The entire content frame is assembled into a single `String` before calling `terminal.write()`. This reduces the number of `write(2)` syscalls to one per frame.
 
 ---
 
@@ -650,7 +663,7 @@ Program.run()
     │       for await msg in messageStream                     │
     │           handleRendererMessage(msg)                     │
     │           model.update(msg) → cmd                        │
-    │           renderer.write(model.view())                   │
+    │           renderer.write(model.view())  → ViewOutput     │
     │           execute(cmd)  or  break on .quit / QuitMsg     │
     └──────────────────────────────────────────────────────────┘
     │
@@ -658,7 +671,7 @@ Program.run()
     ├─ inputReader.stop()
     ├─ signalHandler.stop()
     ├─ renderer.stop()               (final flush + erase last line)
-    ├─ renderer.exitAltScreen()      (if .withAltScreen)
+    ├─ renderer.exitAltScreen()      (if altScreenActive)
     ├─ terminal.write(showCursor)
     └─ terminal.disableRawMode()     (via defer)
 ```
@@ -687,21 +700,48 @@ Tests live in `Tests/ChaiTests/` and use Swift Testing (`@Test`, `#expect`).
 - Incomplete sequence handling (`canHaveMoreData`)
 - Unknown/unrecognised sequences
 
-### RendererTests (18 tests)
+### RendererTests (31 tests)
 
 `Renderer` is tested via `MockTerminalOutput`, a `TerminalOutput` conformance that appends written strings to an array. Tests cover:
 
 - Initial render (cursor reset, line writing)
 - Line-level diffing (unchanged lines are skipped)
-- Alt screen enter/exit
-- Cursor hide/show
-- Window title
+- Alt screen enter/exit (direct and via `ViewOutput`)
+- Cursor hide/show (direct and via `ViewOutput`)
+- Window title (direct and via `ViewOutput`)
 - `println` (queued lines appear above live view)
 - `repaint` (forces full redraw)
 - Terminal size clamping (lines beyond `termHeight` are dropped)
-- Line truncation (lines wider than `termWidth` are clipped)
+- Declarative `ViewOutput` terminal state transitions
+- Nil terminal state preserves current state (no transition)
+- Combined terminal state changes in a single `ViewOutput`
+- String literal `ViewOutput` passthrough (no terminal state changes)
+- Alt screen transition clears render cache
+- Synchronized output markers (present on content flush, absent when unchanged)
+- ANSI-aware width truncation (escape codes not counted, plain text clipped)
 
-### CommandTests (14 tests)
+### DisplayWidthTests (24 tests)
+
+Tests cover:
+
+- Single character width calculation (ASCII → 1, CJK → 2, Hangul → 2, fullwidth → 2, control → 0)
+- Visible width measurement with ANSI sequences (CSI, OSC with BEL and ST terminators)
+- Visible width ignores SS3 (ESC O), SS2 (ESC N), and simple two-byte escape sequences
+- ANSI-aware truncation preserving escape sequences and handling wide character boundaries
+- Truncation of SS3/SS2 sequences (zero visual width, passed through)
+- OSC with ST terminator (ESC \\) correctly skipped in both measurement and truncation
+
+### ViewOutputTests (6 tests)
+
+Tests cover:
+
+- String literal creation (content set, terminal state nil)
+- String interpolation creation
+- Explicit init with all fields
+- Default `nil` values
+- `Equatable` conformance
+
+### CommandTests (10 tests)
 
 Tests cover:
 
@@ -741,8 +781,8 @@ chai/
 │
 ├── Tests/ChaiTests/
 │   ├── InputParserTests.swift           # 35 tests
-│   ├── RendererTests.swift              # 18 tests
-│   └── CommandTests.swift               # 14 tests
+│   ├── RendererTests.swift              # 61 tests (31 Renderer + 24 DisplayWidth + 6 ViewOutput)
+│   └── CommandTests.swift               # 10 tests
 │
 └── Examples/
     └── GroceryList/
