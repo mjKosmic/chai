@@ -1,6 +1,19 @@
 /// Utilities for measuring and truncating strings by their *visible* terminal
 /// width, correctly handling ANSI escape sequences and wide (CJK) characters.
 
+// MARK: - Terminal control scalar constants
+
+/// Named constants for terminal control scalars used in ANSI sequence parsing,
+/// replacing raw hex values with self-documenting identifiers.
+private enum TerminalScalar {
+    /// ESC (U+001B) — introduces all ANSI escape sequences.
+    static let escape: Unicode.Scalar = "\u{1B}"
+    /// BEL (U+0007) — terminates OSC sequences.
+    static let bel: Unicode.Scalar = "\u{07}"
+    /// CSI final byte range per ECMA-48: `@` (U+0040) through `~` (U+007E).
+    static let csiFinalRange = Unicode.Scalar("@")...Unicode.Scalar("~")
+}
+
 // MARK: - Display width of a single character
 
 /// Returns the number of terminal columns a character occupies.
@@ -9,8 +22,8 @@
 /// - Zero-width characters (combining marks, zero-width space, etc.) return **0**.
 /// - All other printable characters return **1**.
 ///
-/// This approximates POSIX `wcwidth(3)` using the Unicode East Asian Width
-/// property and a compact set of range checks.
+/// This approximates POSIX `wcwidth(3)` using Swift's built-in Unicode scalar
+/// properties and a compact set of East Asian Width range checks.
 func displayWidth(of character: Character) -> Int {
     // Use the first scalar to decide width — combining scalars that follow
     // do not add columns.
@@ -20,19 +33,16 @@ func displayWidth(of character: Character) -> Int {
 
 /// Returns the number of terminal columns a Unicode scalar occupies.
 func displayWidth(of scalar: Unicode.Scalar) -> Int {
-    let v = scalar.value
+    let category = scalar.properties.generalCategory
 
-    // C0/C1 control characters (except DEL) are non-printing.
-    if v < 0x20 || (v >= 0x7F && v < 0xA0) { return 0 }
+    // Control characters (C0, DEL, C1) are non-printing.
+    if category == .control { return 0 }
 
-    // Soft hyphen is non-printing in most terminals.
-    if v == 0x00AD { return 0 }
-
-    // Zero-width characters.
-    if isZeroWidth(v) { return 0 }
+    // Zero-width characters (combining marks, format characters).
+    if isZeroWidth(scalar, category: category) { return 0 }
 
     // East Asian Wide / Fullwidth characters occupy 2 columns.
-    if isWide(v) { return 2 }
+    if isWide(scalar.value) { return 2 }
 
     return 1
 }
@@ -40,20 +50,21 @@ func displayWidth(of scalar: Unicode.Scalar) -> Int {
 // MARK: - Zero-width detection
 
 /// Returns `true` for Unicode scalars that occupy zero terminal columns.
-private func isZeroWidth(_ v: UInt32) -> Bool {
-    // Combining Diacritical Marks (U+0300–U+036F)
-    if v >= 0x0300 && v <= 0x036F { return true }
-    // Zero-width space, non-joiner, joiner, word joiner
-    if v == 0x200B || v == 0x200C || v == 0x200D || v == 0x2060 { return true }
-    // Variation selectors (VS1–VS16)
-    if v >= 0xFE00 && v <= 0xFE0F { return true }
-    // Combining Half Marks
-    if v >= 0xFE20 && v <= 0xFE2F { return true }
-    // Zero-width no-break space / BOM
-    if v == 0xFEFF { return true }
-    // Variation Selectors Supplement (VS17–VS256)
-    if v >= 0xE0100 && v <= 0xE01EF { return true }
-    return false
+///
+/// Uses Swift's `Unicode.Scalar.Properties` instead of manual hex ranges:
+/// - **Combining marks** (`.nonspacingMark`, `.enclosingMark`): diacriticals,
+///   variation selectors, combining half marks.
+/// - **Default-ignorable format characters**: zero-width space, joiners,
+///   word joiner, soft hyphen, BOM.
+private func isZeroWidth(_ scalar: Unicode.Scalar, category: Unicode.GeneralCategory) -> Bool {
+    switch category {
+    case .nonspacingMark, .enclosingMark:
+        return true
+    case .format:
+        return scalar.properties.isDefaultIgnorableCodePoint
+    default:
+        return false
+    }
 }
 
 // MARK: - Wide character detection
@@ -62,7 +73,9 @@ private func isZeroWidth(_ v: UInt32) -> Bool {
 /// occupy two terminal columns.
 ///
 /// The ranges below are derived from Unicode 15.1 East Asian Width data and
-/// match the behaviour of `wcwidth(3)` on modern systems.
+/// match the behaviour of `wcwidth(3)` on modern systems. Swift's standard
+/// library does not expose the East Asian Width property, so explicit range
+/// checks are required here.
 private func isWide(_ v: UInt32) -> Bool {
     // Hangul Jamo (initial consonants)
     if v >= 0x1100 && v <= 0x115F { return true }
@@ -106,13 +119,13 @@ func visibleWidth(of string: String) -> Int {
 
     while let scalar = iter.next() {
         // Detect the start of an ANSI escape sequence.
-        if scalar == "\u{1B}" {
+        if scalar == TerminalScalar.escape {
             guard let next = iter.next() else { break }
             if next == "[" {
-                // CSI sequence: skip until final byte (0x40–0x7E).
+                // CSI sequence: skip until final byte.
                 skipCSI(&iter)
             } else if next == "]" {
-                // OSC sequence: skip until ST (\u{1B}\) or BEL (\u{07}).
+                // OSC sequence: skip until ST or BEL.
                 skipOSC(&iter)
             }
             // Other ESC sequences (e.g. SS3 "ESC O"): skip one byte.
@@ -140,8 +153,8 @@ func truncateToVisibleWidth(_ string: String, maxWidth: Int) -> String {
     while index < string.endIndex {
         let char = string[index]
 
-        // Check for ANSI escape sequences (start with ESC = \u{1B}).
-        if char == "\u{1B}" {
+        // Check for ANSI escape sequences (start with ESC).
+        if char.unicodeScalars.first == TerminalScalar.escape {
             let escEnd = skipANSISequence(in: string, from: index)
             // Append the entire escape sequence — it has zero visual width.
             result += string[index..<escEnd]
@@ -162,19 +175,19 @@ func truncateToVisibleWidth(_ string: String, maxWidth: Int) -> String {
 // MARK: - ANSI sequence skipping helpers
 
 /// Advance the iterator past a CSI sequence (everything after `ESC[` up to
-/// and including the final byte in `0x40...0x7E`).
+/// and including the final byte in `@`...`~`).
 private func skipCSI(_ iter: inout String.UnicodeScalarView.Iterator) {
     while let s = iter.next() {
-        if s.value >= 0x40 && s.value <= 0x7E { return }
+        if TerminalScalar.csiFinalRange.contains(s) { return }
     }
 }
 
 /// Advance the iterator past an OSC sequence (everything after `ESC]` up to
-/// BEL `\u{07}` or ST `ESC\`).
+/// BEL or ST `ESC\`).
 private func skipOSC(_ iter: inout String.UnicodeScalarView.Iterator) {
     while let s = iter.next() {
-        if s == "\u{07}" { return }  // BEL terminator
-        if s == "\u{1B}" {
+        if s == TerminalScalar.bel { return }
+        if s == TerminalScalar.escape {
             // Possible ST (ESC + backslash)
             let _ = iter.next()
             return
@@ -193,24 +206,25 @@ private func skipANSISequence(in string: String, from start: String.Index) -> St
     let next = string[i]
 
     if next == "[" {
-        // CSI: skip parameter/intermediate bytes until final byte (0x40–0x7E).
+        // CSI: skip parameter/intermediate bytes until final byte (@...~).
         i = string.index(after: i)
         while i < string.endIndex {
-            let v = string[i].unicodeScalars.first?.value ?? 0
+            let scalar = string[i].unicodeScalars.first ?? "\0"
             i = string.index(after: i)
-            if v >= 0x40 && v <= 0x7E { return i }
+            if TerminalScalar.csiFinalRange.contains(scalar) { return i }
         }
         return i
     }
 
     if next == "]" {
-        // OSC: skip until BEL (\u{07}) or ST (ESC\).
+        // OSC: skip until BEL or ST (ESC\).
         i = string.index(after: i)
         while i < string.endIndex {
-            if string[i] == "\u{07}" {
+            let scalar = string[i].unicodeScalars.first
+            if scalar == TerminalScalar.bel {
                 return string.index(after: i)
             }
-            if string[i] == "\u{1B}" {
+            if scalar == TerminalScalar.escape {
                 i = string.index(after: i) // skip ESC
                 if i < string.endIndex {
                     i = string.index(after: i) // skip backslash
