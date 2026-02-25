@@ -1,0 +1,99 @@
+// MARK: - ViewOutput
+
+/// The output of a model's ``Model/view()`` method.
+///
+/// `ViewOutput` carries both the rendered content string and optional
+/// declarative terminal state. The renderer diffs the terminal state
+/// between frames and automatically handles transitions (e.g. entering/exiting
+/// the alternate screen buffer, changing the window title).
+///
+/// ## Simple usage (string-only)
+///
+/// When you only need to render text, return a string literal directly —
+/// `ViewOutput` conforms to `ExpressibleByStringInterpolation`:
+///
+/// ```swift
+/// func view() -> ViewOutput {
+///     "Count: \(count)\n"
+/// }
+/// ```
+///
+/// ## Declarative terminal state
+///
+/// To control terminal features per-frame, construct a `ViewOutput` explicitly:
+///
+/// ```swift
+/// func view() -> ViewOutput {
+///     ViewOutput(
+///         "Detail view content here...",
+///         altScreen: isShowingDetail,
+///         windowTitle: "My App - \(currentPage)",
+///         cursor: Cursor(position: .init(col: cursorCol, row: 0))
+///     )
+/// }
+/// ```
+///
+/// Terminal state fields default to `nil`, meaning "don't change from the
+/// current state." This preserves backward compatibility with string-only views
+/// and with program options like ``ProgramOption/withAltScreen``.
+public struct ViewOutput: Sendable, Equatable {
+
+    /// The rendered content string. Supports `\n` for line breaks and
+    /// ANSI escape codes for colour and styling.
+    public var content: String
+
+    /// Whether the alternate screen buffer should be active.
+    ///
+    /// - `nil`: Don't change the current alt screen state.
+    /// - `true`: Enter the alternate screen buffer.
+    /// - `false`: Exit the alternate screen buffer.
+    public var altScreen: Bool?
+
+    /// The terminal window title.
+    ///
+    /// - `nil`: Don't change the current window title.
+    /// - A string value: Set the window title to this value.
+    public var windowTitle: String?
+
+    /// The cursor to display.
+    ///
+    /// When non-`nil`, the terminal cursor is shown at the specified position
+    /// with the given shape. When `nil`, the cursor is hidden automatically
+    /// in alternate-screen mode; in normal (inline) mode the cursor state is
+    /// left unchanged.
+    public var cursor: Cursor?
+
+    /// Create a view output with content and optional terminal state.
+    ///
+    /// - Parameters:
+    ///   - content: The rendered UI as a string.
+    ///   - altScreen: Whether to use the alternate screen buffer (`nil` = don't change).
+    ///   - windowTitle: The window title to set (`nil` = don't change).
+    ///   - cursor: The cursor to display (`nil` = hidden in alt screen, unchanged in normal mode).
+    public init(
+        _ content: String,
+        altScreen: Bool? = nil,
+        windowTitle: String? = nil,
+        cursor: Cursor? = nil
+    ) {
+        self.content = content
+        self.altScreen = altScreen
+        self.windowTitle = windowTitle
+        self.cursor = cursor
+    }
+}
+
+// MARK: - String literal support
+
+extension ViewOutput: ExpressibleByStringLiteral {
+    public init(stringLiteral value: String) {
+        self.init(value)
+    }
+}
+
+extension ViewOutput: ExpressibleByStringInterpolation {
+    public init(stringInterpolation: DefaultStringInterpolation) {
+        self.init(String(stringInterpolation: stringInterpolation))
+    }
+}
+

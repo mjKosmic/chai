@@ -204,8 +204,9 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             await renderer.exitAltScreen()
         }
 
-        // Restore cursor visibility.
+        // Restore cursor visibility and shape.
         terminal.write(ANSI.showCursor)
+        terminal.write(ANSI.resetCursorShape)
 
         return model
     }

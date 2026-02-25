@@ -274,35 +274,49 @@ struct RendererTests {
         #expect(mock.output.contains("Frame 2"))
     }
 
-    @Test func viewOutputHidesCursor() async {
+    @Test func altScreenAutoHidesCursor() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write(ViewOutput("Content", cursorHidden: true))
+        // Entering alt screen should automatically hide the cursor.
+        await renderer.write(ViewOutput("Content", altScreen: true))
         await renderer.flush()
         #expect(mock.output.contains(ANSI.hideCursor))
     }
 
-    @Test func viewOutputShowsCursorAfterHiding() async {
+    @Test func altScreenCursorShownWhenSpecified() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        // Hide cursor.
-        await renderer.write(ViewOutput("Frame 1", cursorHidden: true))
-        await renderer.flush()
+        await renderer.enterAltScreen()
         mock.reset()
-        // Show cursor.
-        await renderer.write(ViewOutput("Frame 2", cursorHidden: false))
+        // Alt screen auto-hides cursor, but specifying a cursor should show it.
+        let cursor = Cursor(position: .init(col: 0, row: 0))
+        await renderer.write(ViewOutput("Content", cursor: cursor))
         await renderer.flush()
         #expect(mock.output.contains(ANSI.showCursor))
     }
 
-    @Test func viewOutputNilCursorDoesNotTransition() async {
+    @Test func altScreenReHidesCursorWhenCursorRemoved() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.hideCursor()
+        await renderer.enterAltScreen()
+        // First frame: cursor specified — cursor becomes visible.
+        let cursor = Cursor(position: .init(col: 0, row: 0))
+        await renderer.write(ViewOutput("Frame 1", cursor: cursor))
+        await renderer.flush()
         mock.reset()
-        // ViewOutput with nil cursorHidden should NOT show cursor.
+        // Second frame: no cursor — alt screen should auto-hide again.
+        await renderer.write(ViewOutput("Frame 2"))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.hideCursor))
+    }
+
+    @Test func normalModeNoCursorDoesNotHide() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // In normal mode with no cursor, cursor state is unchanged.
         await renderer.write(ViewOutput("Content"))
         await renderer.flush()
+        #expect(!mock.output.contains(ANSI.hideCursor))
         #expect(!mock.output.contains(ANSI.showCursor))
     }
 
@@ -312,12 +326,12 @@ struct RendererTests {
         await renderer.write(ViewOutput(
             "Full featured",
             altScreen: true,
-            windowTitle: "My App",
-            cursorHidden: true
+            windowTitle: "My App"
         ))
         await renderer.flush()
         #expect(mock.output.contains(ANSI.enterAltScreen))
         #expect(mock.output.contains("My App"))
+        // Alt screen automatically hides cursor.
         #expect(mock.output.contains(ANSI.hideCursor))
         #expect(mock.output.contains("Full featured"))
     }
@@ -560,7 +574,7 @@ struct ViewOutputTests {
         #expect(view.content == "Hello, world!")
         #expect(view.altScreen == nil)
         #expect(view.windowTitle == nil)
-        #expect(view.cursorHidden == nil)
+        #expect(view.cursor == nil)
     }
 
     @Test func stringInterpolationCreatesViewOutput() {
@@ -571,16 +585,17 @@ struct ViewOutputTests {
     }
 
     @Test func explicitInitSetsAllFields() {
+        let cursor = Cursor(position: .init(col: 0, row: 0))
         let view = ViewOutput(
             "Content",
             altScreen: true,
             windowTitle: "Title",
-            cursorHidden: false
+            cursor: cursor
         )
         #expect(view.content == "Content")
         #expect(view.altScreen == true)
         #expect(view.windowTitle == "Title")
-        #expect(view.cursorHidden == false)
+        #expect(view.cursor == cursor)
     }
 
     @Test func defaultsAreNil() {
@@ -588,7 +603,7 @@ struct ViewOutputTests {
         #expect(view.content == "Just content")
         #expect(view.altScreen == nil)
         #expect(view.windowTitle == nil)
-        #expect(view.cursorHidden == nil)
+        #expect(view.cursor == nil)
     }
 
     @Test func equatable() {
@@ -603,5 +618,289 @@ struct ViewOutputTests {
         let a = ViewOutput("Hello")
         let b = ViewOutput("World")
         #expect(a != b)
+    }
+
+    @Test func initWithCursor() {
+        let cursor = Cursor(position: .init(col: 5, row: 2))
+        let view = ViewOutput("Content", cursor: cursor)
+        #expect(view.cursor == cursor)
+    }
+
+    @Test func cursorFieldDefaultsToNil() {
+        let view = ViewOutput("Content")
+        #expect(view.cursor == nil)
+    }
+
+    @Test func equatableWithCursor() {
+        let c = Cursor(position: .init(col: 1, row: 0))
+        let a = ViewOutput("Hello", cursor: c)
+        let b = ViewOutput("Hello", cursor: c)
+        let d = ViewOutput("Hello")
+        #expect(a == b)
+        #expect(a != d)
+    }
+}
+
+// MARK: - Cursor Tests
+
+@Suite("Cursor")
+struct CursorTests {
+
+    @Test func defaultShapeAndBlink() {
+        let cursor = Cursor(position: .init(col: 0, row: 0))
+        #expect(cursor.shape == .block)
+        #expect(cursor.blink == true)
+    }
+
+    @Test func customShapeAndBlink() {
+        let cursor = Cursor(position: .init(col: 3, row: 1), shape: .bar, blink: false)
+        #expect(cursor.position.col == 3)
+        #expect(cursor.position.row == 1)
+        #expect(cursor.shape == .bar)
+        #expect(cursor.blink == false)
+    }
+
+    @Test func positionEquatable() {
+        let a = Cursor.Position(col: 5, row: 3)
+        let b = Cursor.Position(col: 5, row: 3)
+        let c = Cursor.Position(col: 5, row: 4)
+        #expect(a == b)
+        #expect(a != c)
+    }
+
+    @Test func shapeEquatable() {
+        #expect(Cursor.Shape.block == Cursor.Shape.block)
+        #expect(Cursor.Shape.block != Cursor.Shape.underline)
+        #expect(Cursor.Shape.underline != Cursor.Shape.bar)
+    }
+
+    @Test func cursorEquatable() {
+        let a = Cursor(position: .init(col: 1, row: 2), shape: .underline, blink: true)
+        let b = Cursor(position: .init(col: 1, row: 2), shape: .underline, blink: true)
+        let c = Cursor(position: .init(col: 1, row: 2), shape: .bar, blink: true)
+        let d = Cursor(position: .init(col: 1, row: 2), shape: .underline, blink: false)
+        #expect(a == b)
+        #expect(a != c)
+        #expect(a != d)
+    }
+}
+
+// MARK: - ANSI Cursor Shape Tests
+
+@Suite("ANSI Cursor Shape")
+struct ANSICursorShapeTests {
+
+    @Test func setCursorShapeBlockBlinking() {
+        #expect(ANSI.setCursorShape(.block, blink: true) == "\u{1B}[1 q")
+    }
+
+    @Test func setCursorShapeBlockSteady() {
+        #expect(ANSI.setCursorShape(.block, blink: false) == "\u{1B}[2 q")
+    }
+
+    @Test func setCursorShapeUnderlineBlinking() {
+        #expect(ANSI.setCursorShape(.underline, blink: true) == "\u{1B}[3 q")
+    }
+
+    @Test func setCursorShapeUnderlineSteady() {
+        #expect(ANSI.setCursorShape(.underline, blink: false) == "\u{1B}[4 q")
+    }
+
+    @Test func setCursorShapeBarBlinking() {
+        #expect(ANSI.setCursorShape(.bar, blink: true) == "\u{1B}[5 q")
+    }
+
+    @Test func setCursorShapeBarSteady() {
+        #expect(ANSI.setCursorShape(.bar, blink: false) == "\u{1B}[6 q")
+    }
+
+    @Test func resetCursorShape() {
+        #expect(ANSI.resetCursorShape == "\u{1B}[0 q")
+    }
+
+    @Test func cursorColumn() {
+        #expect(ANSI.cursorColumn(1) == "\u{1B}[1G")
+        #expect(ANSI.cursorColumn(10) == "\u{1B}[10G")
+    }
+}
+
+// MARK: - Renderer Cursor Positioning Tests
+
+@Suite("Renderer Cursor Positioning")
+struct RendererCursorPositionTests {
+
+    // MARK: - Cursor visibility
+
+    @Test func cursorShownWhenSpecified() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.hideCursor()
+        mock.reset()
+
+        let cursor = Cursor(position: .init(col: 0, row: 0))
+        await renderer.write(ViewOutput("Hello", cursor: cursor))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.showCursor))
+    }
+
+    @Test func cursorRemainsVisibleWhenSpecified() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // Cursor was never hidden — should not emit showCursor.
+        let cursor = Cursor(position: .init(col: 0, row: 0))
+        await renderer.write(ViewOutput("Hello", cursor: cursor))
+        await renderer.flush()
+        #expect(!mock.output.contains(ANSI.showCursor))
+        #expect(!mock.output.contains(ANSI.hideCursor))
+    }
+
+    // MARK: - Cursor positioning in alt screen
+
+    @Test func cursorPositionInAltScreen() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.enterAltScreen()
+        mock.reset()
+
+        let cursor = Cursor(position: .init(col: 5, row: 2))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2\nLine 3", cursor: cursor))
+        await renderer.flush()
+        // Row 2 (0-based) → terminal row 3 (1-based), col 5 → terminal col 6.
+        #expect(mock.output.contains(ANSI.cursorPosition(row: 3, col: 6)))
+    }
+
+    // MARK: - Cursor positioning in normal mode
+
+    @Test func cursorPositionInNormalMode() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        let cursor = Cursor(position: .init(col: 3, row: 1))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2", cursor: cursor))
+        await renderer.flush()
+        // After painting 3 lines, cursor is at row 2 (last line).
+        // Target is row 1 → move up by 1.
+        // Col 3 → cursorColumn(4) [1-based].
+        #expect(mock.output.contains(ANSI.cursorUp(1)))
+        #expect(mock.output.contains(ANSI.cursorColumn(4)))
+    }
+
+    @Test func cursorAtLastLineNoUpMovement() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        let cursor = Cursor(position: .init(col: 0, row: 2))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2", cursor: cursor))
+        await renderer.flush()
+        // Cursor is already at row 2 (last line) — no cursorUp needed.
+        #expect(!mock.output.contains(ANSI.cursorUp(1)))
+        // Column 0 → cursorColumn(1).
+        #expect(mock.output.contains(ANSI.cursorColumn(1)))
+    }
+
+    // MARK: - Cursor shape
+
+    @Test func cursorShapeEmitted() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        let cursor = Cursor(position: .init(col: 0, row: 0), shape: .bar, blink: false)
+        await renderer.write(ViewOutput("Hello", cursor: cursor))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.setCursorShape(.bar, blink: false)))
+    }
+
+    @Test func cursorShapeNotReemittedWhenUnchanged() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        let cursor = Cursor(position: .init(col: 0, row: 0), shape: .underline)
+        await renderer.write(ViewOutput("Frame 1", cursor: cursor))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.setCursorShape(.underline, blink: true)))
+        mock.reset()
+
+        // Same shape, different content — shape should not be re-emitted.
+        await renderer.write(ViewOutput("Frame 2", cursor: cursor))
+        await renderer.flush()
+        #expect(!mock.output.contains(ANSI.setCursorShape(.underline, blink: true)))
+    }
+
+    @Test func cursorShapeChangeEmitted() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        let cursor1 = Cursor(position: .init(col: 0, row: 0), shape: .block)
+        await renderer.write(ViewOutput("Frame 1", cursor: cursor1))
+        await renderer.flush()
+        mock.reset()
+
+        // Change shape to bar.
+        let cursor2 = Cursor(position: .init(col: 0, row: 0), shape: .bar)
+        await renderer.write(ViewOutput("Frame 2", cursor: cursor2))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.setCursorShape(.bar, blink: true)))
+    }
+
+    // MARK: - Cursor-only updates (content unchanged)
+
+    @Test func cursorOnlyUpdateEmitsPosition() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.enterAltScreen()
+
+        let cursor1 = Cursor(position: .init(col: 0, row: 0))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2", cursor: cursor1))
+        await renderer.flush()
+        mock.reset()
+
+        // Same content, different cursor position.
+        let cursor2 = Cursor(position: .init(col: 5, row: 1))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2", cursor: cursor2))
+        await renderer.flush()
+        // Content unchanged, but cursor position should be emitted.
+        #expect(mock.output.contains(ANSI.cursorPosition(row: 2, col: 6)))
+        // Content lines should NOT be re-rendered.
+        #expect(!mock.output.contains("Line 0"))
+    }
+
+    @Test func cursorOnlyUpdateNormalMode() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        // First render: cursor at row 0.
+        let cursor1 = Cursor(position: .init(col: 0, row: 0))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2", cursor: cursor1))
+        await renderer.flush()
+        mock.reset()
+
+        // Same content, cursor moves to row 2 (down from row 0).
+        let cursor2 = Cursor(position: .init(col: 3, row: 2))
+        await renderer.write(ViewOutput("Line 0\nLine 1\nLine 2", cursor: cursor2))
+        await renderer.flush()
+        // Should move down 2 rows and to column 4.
+        #expect(mock.output.contains(ANSI.cursorDown(2)))
+        #expect(mock.output.contains(ANSI.cursorColumn(4)))
+    }
+
+    // MARK: - Combined state
+
+    @Test func cursorWithAltScreenAndTitle() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+
+        let cursor = Cursor(position: .init(col: 2, row: 1), shape: .underline, blink: false)
+        await renderer.write(ViewOutput(
+            "Line 0\nLine 1\nLine 2",
+            altScreen: true,
+            windowTitle: "Cursor Test",
+            cursor: cursor
+        ))
+        await renderer.flush()
+        #expect(mock.output.contains(ANSI.enterAltScreen))
+        #expect(mock.output.contains("Cursor Test"))
+        #expect(mock.output.contains(ANSI.setCursorShape(.underline, blink: false)))
+        #expect(mock.output.contains(ANSI.cursorPosition(row: 2, col: 3)))
+        #expect(mock.output.contains("Line 1"))
     }
 }
