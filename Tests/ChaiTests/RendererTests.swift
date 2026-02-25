@@ -347,6 +347,155 @@ struct RendererTests {
         #expect(!mock.output.contains(ANSI.hideCursor))
         #expect(mock.output.contains("Just a string"))
     }
+
+    // MARK: - Synchronized output
+
+    @Test func flushWrapsSyncUpdateMarkers() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write("Content")
+        await renderer.flush()
+        #expect(mock.output.hasPrefix(ANSI.beginSyncUpdate))
+        #expect(mock.output.hasSuffix(ANSI.endSyncUpdate))
+    }
+
+    @Test func unchangedViewDoesNotEmitSyncMarkers() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write("Same")
+        await renderer.flush()
+        mock.reset()
+        // Second flush with identical content — nothing written.
+        await renderer.flush()
+        #expect(!mock.output.contains(ANSI.beginSyncUpdate))
+        #expect(mock.output.isEmpty)
+    }
+
+    // MARK: - ANSI-aware width truncation
+
+    @Test func ansiCodesDoNotCountTowardWidth() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 10, height: 24)
+        // "Red text" is 8 visible characters — fits in 10 columns.
+        // But with ANSI codes, the string is 22 characters long.
+        let styled = "\u{1B}[31mRed text\u{1B}[0m"
+        await renderer.write(ViewOutput(styled))
+        await renderer.flush()
+        // The full styled string should appear because it's only 8 visible cols.
+        #expect(mock.output.contains("Red text"))
+        #expect(mock.output.contains("\u{1B}[31m"))
+        #expect(mock.output.contains("\u{1B}[0m"))
+    }
+
+    @Test func longPlainTextIsTruncated() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 5, height: 24)
+        await renderer.write("ABCDEFGH")
+        await renderer.flush()
+        #expect(mock.output.contains("ABCDE"))
+        #expect(!mock.output.contains("ABCDEFGH"))
+    }
+}
+
+// MARK: - DisplayWidth Tests
+
+@Suite("DisplayWidth")
+struct DisplayWidthTests {
+
+    // MARK: - displayWidth(of: Character)
+
+    @Test func asciiCharacterIsWidth1() {
+        #expect(displayWidth(of: Character("A")) == 1)
+        #expect(displayWidth(of: Character("z")) == 1)
+        #expect(displayWidth(of: Character("0")) == 1)
+    }
+
+    @Test func cjkCharacterIsWidth2() {
+        #expect(displayWidth(of: Character("你")) == 2)   // U+4F60
+        #expect(displayWidth(of: Character("好")) == 2)   // U+597D
+        #expect(displayWidth(of: Character("漢")) == 2)   // U+6F22
+    }
+
+    @Test func hangulSyllableIsWidth2() {
+        #expect(displayWidth(of: Character("한")) == 2)   // U+D55C
+        #expect(displayWidth(of: Character("글")) == 2)   // U+AE00
+    }
+
+    @Test func fullwidthLatinIsWidth2() {
+        #expect(displayWidth(of: Character("Ａ")) == 2)   // U+FF21 fullwidth A
+    }
+
+    @Test func controlCharacterIsWidth0() {
+        #expect(displayWidth(of: Character("\u{00}")) == 0)
+        #expect(displayWidth(of: Character("\u{1B}")) == 0)  // ESC
+    }
+
+    // MARK: - visibleWidth
+
+    @Test func visibleWidthOfPlainASCII() {
+        #expect(visibleWidth(of: "Hello") == 5)
+    }
+
+    @Test func visibleWidthIgnoresANSICodes() {
+        let styled = "\u{1B}[31mHello\u{1B}[0m"
+        #expect(visibleWidth(of: styled) == 5)
+    }
+
+    @Test func visibleWidthCountsCJKAsDouble() {
+        #expect(visibleWidth(of: "你好") == 4)
+    }
+
+    @Test func visibleWidthMixedASCIIAndCJK() {
+        #expect(visibleWidth(of: "Hi你好") == 6)  // 2 + 4
+    }
+
+    @Test func visibleWidthIgnoresOSCSequence() {
+        let osc = "\u{1B}]0;Title\u{07}Hello"
+        #expect(visibleWidth(of: osc) == 5)
+    }
+
+    // MARK: - truncateToVisibleWidth
+
+    @Test func truncatePlainASCII() {
+        #expect(truncateToVisibleWidth("ABCDEFGH", maxWidth: 5) == "ABCDE")
+    }
+
+    @Test func truncatePreservesANSICodes() {
+        let styled = "\u{1B}[31mRed text\u{1B}[0m"
+        let result = truncateToVisibleWidth(styled, maxWidth: 3)
+        // Should keep "Red" (3 visible cols) plus the ANSI prefix.
+        #expect(result.contains("\u{1B}[31m"))
+        #expect(result.contains("Red"))
+        #expect(!result.contains("text"))
+    }
+
+    @Test func truncateHandlesWideCharacterBoundary() {
+        // "AB你" is 4 columns (1+1+2). Truncating to 3 should drop 你.
+        #expect(truncateToVisibleWidth("AB你", maxWidth: 3) == "AB")
+    }
+
+    @Test func truncateFitsExactly() {
+        #expect(truncateToVisibleWidth("AB你", maxWidth: 4) == "AB你")
+    }
+
+    @Test func truncateZeroWidthReturnsEmpty() {
+        #expect(truncateToVisibleWidth("Hello", maxWidth: 0) == "")
+    }
+
+    @Test func truncateCJKString() {
+        // "你好世界" = 8 columns. Truncate to 5 → "你好" (4 cols).
+        // "世" would push to 6, so it's excluded.
+        #expect(truncateToVisibleWidth("你好世界", maxWidth: 5) == "你好")
+    }
+
+    @Test func truncatePreservesTrailingANSIReset() {
+        // When the visible content fits, ANSI codes should pass through.
+        let styled = "\u{1B}[1mBold\u{1B}[0m"
+        let result = truncateToVisibleWidth(styled, maxWidth: 10)
+        #expect(result == styled)
+    }
 }
 
 // MARK: - ViewOutput Tests
