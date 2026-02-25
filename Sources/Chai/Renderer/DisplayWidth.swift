@@ -127,8 +127,13 @@ func visibleWidth(of string: String) -> Int {
             } else if next == "]" {
                 // OSC sequence: skip until ST or BEL.
                 skipOSC(&iter)
+            } else if next == "O" || next == "N" {
+                // SS3 (ESC O) or SS2 (ESC N): three-byte sequence —
+                // consume the final byte so it is not counted as width.
+                let _ = iter.next()
             }
-            // Other ESC sequences (e.g. SS3 "ESC O"): skip one byte.
+            // All other ESC sequences are two bytes (ESC + one byte),
+            // already consumed above.
             continue
         }
         width += displayWidth(of: scalar)
@@ -188,9 +193,13 @@ private func skipOSC(_ iter: inout String.UnicodeScalarView.Iterator) {
     while let s = iter.next() {
         if s == TerminalScalar.bel { return }
         if s == TerminalScalar.escape {
-            // Possible ST (ESC + backslash)
-            let _ = iter.next()
-            return
+            // Check for ST (ESC followed by backslash).
+            guard let next = iter.next() else { return }
+            if next == Unicode.Scalar("\\") {
+                return // Valid ST terminator.
+            }
+            // Not a valid ST — continue scanning for BEL or a real ST.
+            continue
         }
     }
 }
@@ -226,7 +235,8 @@ private func skipANSISequence(in string: String, from start: String.Index) -> St
             }
             if scalar == TerminalScalar.escape {
                 i = string.index(after: i) // skip ESC
-                if i < string.endIndex {
+                // Verify the next character is actually a backslash (valid ST).
+                if i < string.endIndex && string[i].unicodeScalars.first == Unicode.Scalar("\\") {
                     i = string.index(after: i) // skip backslash
                 }
                 return i
@@ -236,6 +246,16 @@ private func skipANSISequence(in string: String, from start: String.Index) -> St
         return i
     }
 
-    // Simple two-byte escape (e.g. SS3 "ESC O x"): skip the next byte.
+    // SS3 (ESC O) or SS2 (ESC N): three-byte sequences —
+    // skip the introducer and the final byte.
+    if next == "O" || next == "N" {
+        i = string.index(after: i) // skip introducer (O/N)
+        if i < string.endIndex {
+            i = string.index(after: i) // skip final byte
+        }
+        return i
+    }
+
+    // Simple two-byte escape (e.g. ESC =, ESC >): skip the second byte.
     return string.index(after: i)
 }

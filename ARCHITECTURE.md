@@ -568,8 +568,11 @@ renderer.flush()
         └─ park cursor
                 │
                 ▼
+        wrap with synchronized output markers (mode 2026)
         terminal.write(assembled ANSI string)
 ```
+
+The content output is wrapped with synchronized update markers (`ANSI.beginSyncUpdate` / `ANSI.endSyncUpdate`, mode 2026) to prevent partial-frame tearing on supporting terminals. Terminals that do not support mode 2026 silently ignore these sequences. Terminal state transitions (alt screen, window title, cursor visibility) are written outside the sync markers since they are brief, non-visual operations that do not cause tearing.
 
 The renderer diffs **both terminal state and content** between frames. Terminal state fields in `ViewOutput` that are `nil` are ignored (current state is preserved). Non-nil fields are compared against the last applied state and transitions are emitted only when values change.
 
@@ -697,7 +700,7 @@ Tests live in `Tests/ChaiTests/` and use Swift Testing (`@Test`, `#expect`).
 - Incomplete sequence handling (`canHaveMoreData`)
 - Unknown/unrecognised sequences
 
-### RendererTests (29 tests)
+### RendererTests (31 tests)
 
 `Renderer` is tested via `MockTerminalOutput`, a `TerminalOutput` conformance that appends written strings to an array. Tests cover:
 
@@ -714,6 +717,19 @@ Tests live in `Tests/ChaiTests/` and use Swift Testing (`@Test`, `#expect`).
 - Combined terminal state changes in a single `ViewOutput`
 - String literal `ViewOutput` passthrough (no terminal state changes)
 - Alt screen transition clears render cache
+- Synchronized output markers (present on content flush, absent when unchanged)
+- ANSI-aware width truncation (escape codes not counted, plain text clipped)
+
+### DisplayWidthTests (24 tests)
+
+Tests cover:
+
+- Single character width calculation (ASCII → 1, CJK → 2, Hangul → 2, fullwidth → 2, control → 0)
+- Visible width measurement with ANSI sequences (CSI, OSC with BEL and ST terminators)
+- Visible width ignores SS3 (ESC O), SS2 (ESC N), and simple two-byte escape sequences
+- ANSI-aware truncation preserving escape sequences and handling wide character boundaries
+- Truncation of SS3/SS2 sequences (zero visual width, passed through)
+- OSC with ST terminator (ESC \\) correctly skipped in both measurement and truncation
 
 ### ViewOutputTests (6 tests)
 
@@ -765,7 +781,7 @@ chai/
 │
 ├── Tests/ChaiTests/
 │   ├── InputParserTests.swift           # 35 tests
-│   ├── RendererTests.swift              # 29 tests (18 base + 11 ViewOutput)
+│   ├── RendererTests.swift              # 61 tests (31 Renderer + 24 DisplayWidth + 6 ViewOutput)
 │   └── CommandTests.swift               # 10 tests
 │
 └── Examples/

@@ -496,6 +496,58 @@ struct DisplayWidthTests {
         let result = truncateToVisibleWidth(styled, maxWidth: 10)
         #expect(result == styled)
     }
+
+    // MARK: - SS3 / SS2 / two-byte escape sequences
+
+    @Test func visibleWidthIgnoresSS3Sequence() {
+        // SS3 Up arrow: ESC O A — all three bytes should be skipped.
+        let ss3 = "\u{1B}OAHello"
+        #expect(visibleWidth(of: ss3) == 5)
+    }
+
+    @Test func visibleWidthIgnoresSS2Sequence() {
+        // SS2 sequence: ESC N x — all three bytes should be skipped.
+        let ss2 = "\u{1B}NxHello"
+        #expect(visibleWidth(of: ss2) == 5)
+    }
+
+    @Test func visibleWidthIgnoresSimpleTwoByteEscape() {
+        // Application keypad mode: ESC = — two bytes total.
+        let esc = "\u{1B}=Hello"
+        #expect(visibleWidth(of: esc) == 5)
+    }
+
+    @Test func truncateSkipsSS3Sequence() {
+        // SS3 Up arrow followed by visible text — SS3 has zero visual width.
+        let ss3 = "\u{1B}OAHello"
+        let result = truncateToVisibleWidth(ss3, maxWidth: 3)
+        #expect(result.contains("\u{1B}OA"))
+        #expect(result.contains("Hel"))
+        #expect(!result.contains("Hello"))
+    }
+
+    @Test func truncateSkipsSS2Sequence() {
+        let ss2 = "\u{1B}NxHello"
+        let result = truncateToVisibleWidth(ss2, maxWidth: 5)
+        #expect(result == ss2)
+    }
+
+    // MARK: - OSC with ST terminator (ESC \)
+
+    @Test func visibleWidthIgnoresOSCWithSTTerminator() {
+        // OSC terminated by ST (ESC \) instead of BEL.
+        let osc = "\u{1B}]0;Title\u{1B}\\Hello"
+        #expect(visibleWidth(of: osc) == 5)
+    }
+
+    @Test func truncateSkipsOSCWithSTTerminator() {
+        let osc = "\u{1B}]0;Title\u{1B}\\Hello"
+        let result = truncateToVisibleWidth(osc, maxWidth: 3)
+        #expect(result.contains("Hel"))
+        #expect(!result.contains("Hello"))
+        // OSC sequence is preserved (zero visual width).
+        #expect(result.contains("\u{1B}]0;"))
+    }
 }
 
 // MARK: - ViewOutput Tests
