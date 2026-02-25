@@ -19,7 +19,7 @@ struct GroceryList: Model {
         "Buy sourdough",
     ]
 
-    var cursor: Int = 0
+    var indicator: Int = 0
     var selected: Set<Int> = []
 
     // MARK: - Model
@@ -43,18 +43,18 @@ struct GroceryList: Model {
 
         // ── Navigation ────────────────────────────────────────────────────
         case .up:
-            moveCursorUp()
+            moveIndicatorUp()
         case .runes where key.runes == ["k"]:
-            moveCursorUp()
+            moveIndicatorUp()
 
         case .down:
-            moveCursorDown()
+            moveIndicatorDown()
         case .runes where key.runes == ["j"]:
-            moveCursorDown()
+            moveIndicatorDown()
 
         // ── Selection ─────────────────────────────────────────────────────
         case .enter, .space:
-            selected.formSymmetricDifference([cursor])
+            selected.formSymmetricDifference([indicator])
 
         default:
             break
@@ -69,7 +69,7 @@ struct GroceryList: Model {
         lines.append("What should we buy at the market?\n")
 
         for (i, choice) in choices.enumerated() {
-            let cursorMark = cursor == i ? ">" : " "
+            let cursorMark = indicator == i ? ">" : " "
             let checkMark  = selected.contains(i) ? "x" : " "
             lines.append("\(cursorMark) [\(checkMark)] \(choice)")
         }
@@ -78,17 +78,20 @@ struct GroceryList: Model {
         lines.append("↑/↓ or j/k to move  •  Enter/Space to select  •  q to quit")
 
         // Declaratively request the alternate screen buffer.
-        return ViewOutput(lines.joined(separator: "\n"), altScreen: true)
+        return ViewOutput(
+            lines.joined(separator: "\n"),
+            altScreen: true
+        )
     }
 
     // MARK: - Private helpers
 
-    private mutating func moveCursorUp() {
-        if cursor > 0 { cursor -= 1 }
+    private mutating func moveIndicatorUp() {
+        if indicator > 0 { indicator -= 1 }
     }
 
-    private mutating func moveCursorDown() {
-        if cursor < choices.count - 1 { cursor += 1 }
+    private mutating func moveIndicatorDown() {
+        if indicator < choices.count - 1 { indicator += 1 }
     }
 }
 

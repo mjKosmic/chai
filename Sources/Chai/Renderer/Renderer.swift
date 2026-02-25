@@ -52,6 +52,14 @@ actor Renderer {
     /// Whether the cursor is currently hidden.
     private var cursorHidden: Bool = false
 
+    /// The cursor from the last rendered frame (for diffing).
+    private var lastCursor: Cursor?
+
+    /// The row where the terminal cursor is currently parked (0-based,
+    /// relative to the top of the rendered content). Used to calculate
+    /// movement deltas for cursor-only updates in normal (non-alt-screen) mode.
+    private var cursorParkedRow: Int = 0
+
     /// The last applied window title (for diffing).
     private var lastWindowTitle: String?
 
@@ -118,7 +126,8 @@ actor Renderer {
     /// Write the pending view to the terminal, diffing against the last frame.
     ///
     /// Terminal state transitions (alt screen, window title, cursor visibility)
-    /// are handled first, then content is diffed and written.
+    /// are handled first, then content is diffed and written, and finally the
+    /// cursor is positioned.
     func flush() {
         let viewOutput = pendingViewOutput
 
@@ -131,18 +140,21 @@ actor Renderer {
                 terminal.write(ANSI.enterAltScreen)
                 terminal.write(ANSI.eraseEntireScreen)
                 terminal.write(ANSI.cursorHome)
-                if cursorHidden { terminal.write(ANSI.hideCursor) }
+                // Cursor is hidden by default in alt screen mode.
+                cursorHidden = true
+                terminal.write(ANSI.hideCursor)
                 altLinesRendered = 0
                 lastContent = ""
                 lastLines = []
                 queuedLines = []
+                cursorParkedRow = 0
             } else if !wantAltScreen && altScreenActive {
                 altScreenActive = false
                 terminal.write(ANSI.exitAltScreen)
-                if cursorHidden { terminal.write(ANSI.hideCursor) }
                 lastContent = ""
                 lastLines = []
                 queuedLines = []
+                cursorParkedRow = 0
             }
         }
 
@@ -152,92 +164,163 @@ actor Renderer {
             lastWindowTitle = title
         }
 
-        // Cursor visibility: show or hide if changed.
-        if let wantHidden = viewOutput.cursorHidden {
-            if wantHidden && !cursorHidden {
-                cursorHidden = true
-                terminal.write(ANSI.hideCursor)
-            } else if !wantHidden && cursorHidden {
+        // Cursor visibility: when a cursor is specified the cursor must be
+        // visible. In alt-screen mode with no cursor, the cursor is hidden
+        // automatically. In normal mode with no cursor the state is unchanged.
+        if viewOutput.cursor != nil {
+            if cursorHidden {
                 cursorHidden = false
                 terminal.write(ANSI.showCursor)
             }
+        } else if altScreenActive && !cursorHidden {
+            cursorHidden = true
+            terminal.write(ANSI.hideCursor)
         }
 
-        // ── Content flush ───────────────────────────────────────────────────
+        // ── Determine what needs updating ───────────────────────────────────
 
         let content = viewOutput.content
-        guard !content.isEmpty, content != lastContent else { return }
+        let contentChanged = !content.isEmpty && content != lastContent
+        let cursorChanged = viewOutput.cursor != lastCursor
 
-        var newLines = content.components(separatedBy: "\n")
-
-        // Clamp to terminal height if known.
-        if termHeight > 0 && newLines.count > termHeight {
-            newLines = Array(newLines.suffix(termHeight))
-        }
+        guard contentChanged || cursorChanged else { return }
 
         var out = ""
 
-        // ── Move cursor back to the start of the previously rendered content.
-        if altScreenActive {
-            out += ANSI.cursorHome
-        } else if linesRendered > 1 {
-            out += ANSI.cursorUp(linesRendered - 1)
-        }
+        // ── Content diff and render ─────────────────────────────────────────
 
-        // ── Flush any queued print-above lines.
-        let flushQueued = !queuedLines.isEmpty && !altScreenActive
-        if flushQueued {
-            for line in queuedLines {
-                out += line + ANSI.eraseLineRight + "\r\n"
-            }
-            queuedLines = []
-        }
+        var newLineCount: Int
 
-        // ── Paint each line, skipping unchanged ones.
-        for (i, line) in newLines.enumerated() {
-            let canSkip = !flushQueued
-                && i < lastLines.count
-                && lastLines[i] == line
+        if contentChanged {
+            var newLines = content.components(separatedBy: "\n")
 
-            if canSkip {
-                if i < newLines.count - 1 { out += "\n" }
-                continue
+            // Clamp to terminal height if known.
+            if termHeight > 0 && newLines.count > termHeight {
+                newLines = Array(newLines.suffix(termHeight))
             }
 
-            // On the very first render, reset to column 0.
-            if i == 0 && lastContent.isEmpty { out += "\r" }
+            newLineCount = newLines.count
 
-            // Truncate lines wider than the terminal to prevent wrapping.
-            // Uses ANSI-aware width measurement so that escape sequences are
-            // not counted and CJK wide characters count as 2 columns.
-            var rendered = line
-            if termWidth > 0 {
-                rendered = truncateToVisibleWidth(rendered, maxWidth: termWidth)
+            // Move cursor back to the start of the previously rendered content.
+            // Uses `cursorParkedRow` rather than `linesRendered - 1` because
+            // the cursor may have been positioned mid-content by a prior frame.
+            if altScreenActive {
+                out += ANSI.cursorHome
+            } else {
+                if cursorParkedRow > 0 {
+                    out += ANSI.cursorUp(cursorParkedRow)
+                }
+                out += "\r"
             }
 
-            out += rendered + ANSI.eraseLineRight
+            // Flush any queued print-above lines.
+            let flushQueued = !queuedLines.isEmpty && !altScreenActive
+            if flushQueued {
+                for line in queuedLines {
+                    out += line + ANSI.eraseLineRight + "\r\n"
+                }
+                queuedLines = []
+            }
 
-            if i < newLines.count - 1 { out += "\r\n" }
-        }
+            // Paint each line, skipping unchanged ones.
+            for (i, line) in newLines.enumerated() {
+                let canSkip = !flushQueued
+                    && i < lastLines.count
+                    && lastLines[i] == line
 
-        // ── Erase leftover lines from the previous frame.
-        let prevCount = altScreenActive ? altLinesRendered : linesRendered
-        if prevCount > newLines.count {
-            out += ANSI.eraseScreenBelow
-        }
+                if canSkip {
+                    if i < newLines.count - 1 { out += "\n" }
+                    continue
+                }
 
-        // ── Park the cursor at the start of the last line.
-        if altScreenActive {
-            out += ANSI.cursorPosition(row: newLines.count, col: 1)
-            altLinesRendered = newLines.count
+                // On the very first render, reset to column 0.
+                if i == 0 && lastContent.isEmpty { out += "\r" }
+
+                // Truncate lines wider than the terminal to prevent wrapping.
+                // Uses ANSI-aware width measurement so that escape sequences are
+                // not counted and CJK wide characters count as 2 columns.
+                var rendered = line
+                if termWidth > 0 {
+                    rendered = truncateToVisibleWidth(rendered, maxWidth: termWidth)
+                }
+
+                out += rendered + ANSI.eraseLineRight
+
+                if i < newLines.count - 1 { out += "\r\n" }
+            }
+
+            // Erase leftover lines from the previous frame.
+            let prevCount = altScreenActive ? altLinesRendered : linesRendered
+            if prevCount > newLines.count {
+                out += ANSI.eraseScreenBelow
+            }
+
+            // Update line counts.
+            if altScreenActive {
+                altLinesRendered = newLines.count
+            } else {
+                linesRendered = newLines.count
+            }
+
+            lastContent = content
+            lastLines = newLines
         } else {
-            out += "\r"
-            linesRendered = newLines.count
+            newLineCount = altScreenActive ? altLinesRendered : linesRendered
         }
+
+        // ── Cursor shape ────────────────────────────────────────────────────
+
+        if let cursor = viewOutput.cursor {
+            if cursor.shape != lastCursor?.shape || cursor.blink != lastCursor?.blink {
+                out += ANSI.setCursorShape(cursor.shape, blink: cursor.blink)
+            }
+        }
+
+        // ── Cursor positioning ──────────────────────────────────────────────
+
+        // After content painting the terminal cursor sits at the last printed
+        // line. For cursor-only updates it sits at `cursorParkedRow`. Compute
+        // a common `currentRow` so the positioning logic below works for both.
+
+        let currentRow: Int
+        if contentChanged {
+            currentRow = max(newLineCount - 1, 0)
+        } else {
+            currentRow = cursorParkedRow
+        }
+
+        if let cursor = viewOutput.cursor {
+            let targetRow = cursor.position.row
+            if altScreenActive {
+                out += ANSI.cursorPosition(row: targetRow + 1, col: cursor.position.col + 1)
+            } else {
+                let rowDiff = targetRow - currentRow
+                if rowDiff < 0 { out += ANSI.cursorUp(-rowDiff) }
+                else if rowDiff > 0 { out += ANSI.cursorDown(rowDiff) }
+                out += ANSI.cursorColumn(cursor.position.col + 1)
+            }
+            cursorParkedRow = targetRow
+        } else {
+            // No cursor — park at the default position (start of last line).
+            let targetRow = max(newLineCount - 1, 0)
+            if altScreenActive {
+                out += ANSI.cursorPosition(row: newLineCount, col: 1)
+            } else if contentChanged {
+                // After content painting we are already on the last line.
+                out += "\r"
+            } else {
+                // Cursor-only update (cursor removed): move to last line.
+                let rowDiff = targetRow - currentRow
+                if rowDiff < 0 { out += ANSI.cursorUp(-rowDiff) }
+                else if rowDiff > 0 { out += ANSI.cursorDown(rowDiff) }
+                out += "\r"
+            }
+            cursorParkedRow = targetRow
+        }
+
+        lastCursor = viewOutput.cursor
 
         terminal.write(ANSI.beginSyncUpdate + out + ANSI.endSyncUpdate)
-        lastContent = content
-        lastLines = newLines
     }
 
     // MARK: - Terminal size
@@ -257,7 +340,8 @@ actor Renderer {
         terminal.write(ANSI.enterAltScreen)
         terminal.write(ANSI.eraseEntireScreen)
         terminal.write(ANSI.cursorHome)
-        if cursorHidden { terminal.write(ANSI.hideCursor) }
+        cursorHidden = true
+        terminal.write(ANSI.hideCursor)
         altLinesRendered = 0
         repaint()
     }
@@ -266,7 +350,6 @@ actor Renderer {
         guard altScreenActive else { return }
         altScreenActive = false
         terminal.write(ANSI.exitAltScreen)
-        if cursorHidden { terminal.write(ANSI.hideCursor) }
         repaint()
     }
 

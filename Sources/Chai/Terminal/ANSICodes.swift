@@ -30,6 +30,8 @@ enum ANSI {
     static func cursorDown(_ n: Int) -> String { "\u{1B}[\(n)B" }
     /// Move cursor to column `col` (1-based) on row `row` (1-based).
     static func cursorPosition(row: Int, col: Int) -> String { "\u{1B}[\(row);\(col)H" }
+    /// Move cursor to column `col` (1-based) on the current line (CHA).
+    static func cursorColumn(_ col: Int) -> String { "\u{1B}[\(col)G" }
 
     // MARK: - Erase
 
@@ -108,6 +110,27 @@ enum ANSI {
 
     /// End synchronized output — the terminal renders the buffered frame.
     static let endSyncUpdate = "\u{1B}[?2026l"
+
+    // MARK: - Cursor shape (DECSCUSR)
+
+    /// Set the cursor shape using DECSCUSR (`ESC[ Ps SP q`).
+    ///
+    /// Terminals that do not support DECSCUSR silently ignore this sequence.
+    static func setCursorShape(_ shape: Cursor.Shape, blink: Bool) -> String {
+        let code: Int
+        switch (shape, blink) {
+        case (.block, true):      code = 1
+        case (.block, false):     code = 2
+        case (.underline, true):  code = 3
+        case (.underline, false): code = 4
+        case (.bar, true):        code = 5
+        case (.bar, false):       code = 6
+        }
+        return "\u{1B}[\(code) q"
+    }
+
+    /// Reset the cursor shape to the terminal's default.
+    static let resetCursorShape = "\u{1B}[0 q"
 
     // MARK: - Attributes / reset
 
