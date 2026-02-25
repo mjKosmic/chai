@@ -238,8 +238,10 @@ private func skipANSISequence(in string: String, from start: String.Index) -> St
                 // Verify the next character is actually a backslash (valid ST).
                 if i < string.endIndex && string[i].unicodeScalars.first == Unicode.Scalar("\\") {
                     i = string.index(after: i) // skip backslash
+                    return i
                 }
-                return i
+                // Not a valid ST — continue scanning for BEL or a real ST.
+                continue
             }
             i = string.index(after: i)
         }
