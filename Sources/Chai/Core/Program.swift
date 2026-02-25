@@ -20,6 +20,17 @@ public enum ProgramOption: Sendable {
     ///
     /// Use this if you want to handle OS signals yourself.
     case withoutSignalHandler
+    /// Attach a logger for internal diagnostics.
+    ///
+    /// Since Chai owns stdout (the terminal), debug output must be directed
+    /// elsewhere. Use ``FileLogger`` to write to a file, or implement
+    /// ``ChaiLogger`` for a custom destination.
+    ///
+    /// ```swift
+    /// let logger = try FileLogger(path: "/tmp/chai.log")
+    /// let program = Program(model, options: .withLogger(logger))
+    /// ```
+    case withLogger(any ChaiLogger)
 }
 
 // MARK: - Program
@@ -42,12 +53,40 @@ public enum ProgramOption: Sendable {
 ///     }
 /// }
 /// ```
+///
+/// ## External Message Injection
+///
+/// Use ``send(_:)`` to inject messages from outside the event loop:
+///
+/// ```swift
+/// let program = Program(MyModel())
+/// // Start the program on another task.
+/// Task { try await program.run() }
+/// // Inject a message from the outside.
+/// program.send(MyExternalEvent())
+/// ```
+///
+/// ## Event Filtering
+///
+/// Use ``init(_:options:filter:)`` to intercept messages before they
+/// reach the model:
+///
+/// ```swift
+/// let program = Program(MyModel(), filter: { model, msg in
+///     if msg is QuitMsg && model.hasUnsavedChanges {
+///         return ConfirmQuitMsg()  // Replace with a confirmation
+///     }
+///     return msg
+/// })
+/// ```
 public struct Program<M: Model>: Sendable {
 
     // MARK: - Properties
 
     private let initialModel: M
     private let options: [ProgramOption]
+    private let channel: MessageChannel
+    private let messageFilter: (@Sendable (M, any Message) -> (any Message)?)?
 
     // MARK: - Init
 
@@ -59,6 +98,43 @@ public struct Program<M: Model>: Sendable {
     public init(_ model: M, options: ProgramOption...) {
         self.initialModel = model
         self.options = options
+        self.channel = MessageChannel()
+        self.messageFilter = nil
+    }
+
+    /// Create a new program with an event filter.
+    ///
+    /// The filter is called for every non-internal message before it reaches
+    /// ``Model/update(_:)``. Return the message (possibly transformed) to
+    /// deliver it, or `nil` to suppress it entirely.
+    ///
+    /// - Parameters:
+    ///   - model: The initial model state.
+    ///   - options: ``ProgramOption`` values.
+    ///   - filter: A closure that can intercept, transform, or suppress messages.
+    public init(
+        _ model: M,
+        options: [ProgramOption] = [],
+        filter: @Sendable @escaping (M, any Message) -> (any Message)?
+    ) {
+        self.initialModel = model
+        self.options = options
+        self.channel = MessageChannel()
+        self.messageFilter = filter
+    }
+
+    // MARK: - External message injection
+
+    /// Inject a message into the program's event loop from outside.
+    ///
+    /// This method is thread-safe and can be called from any context.
+    /// Messages sent before ``run()`` starts are buffered and delivered
+    /// once the event loop begins. Messages sent after the program exits
+    /// are silently dropped.
+    ///
+    /// - Parameter msg: The message to inject.
+    public func send(_ msg: any Message) {
+        channel.yield(msg)
     }
 
     // MARK: - Run
@@ -69,8 +145,41 @@ public struct Program<M: Model>: Sendable {
     /// - Throws: Any error that caused the program to terminate abnormally.
     @discardableResult
     public func run() async throws -> M {
-        let runner = ProgramRunner(model: initialModel, options: options)
+        let runner = ProgramRunner(
+            model: initialModel,
+            options: options,
+            channel: channel,
+            filter: messageFilter
+        )
         return try await runner.run()
+    }
+}
+
+// MARK: - MessageChannel
+
+/// Thread-safe message channel shared between ``Program`` and ``ProgramRunner``.
+///
+/// Wraps an ``AsyncStream`` and its continuation so that messages can be
+/// injected from outside the event loop (via ``Program/send(_:)``) while
+/// the runner consumes them.
+private final class MessageChannel: @unchecked Sendable {
+    let stream: AsyncStream<any Message>
+    let continuation: AsyncStream<any Message>.Continuation
+
+    init() {
+        // AsyncStream calls the build closure synchronously, so `cont` is
+        // guaranteed to be set before the initializer body continues.
+        var cont: AsyncStream<any Message>.Continuation!
+        self.stream = AsyncStream { cont = $0 }
+        self.continuation = cont
+    }
+
+    func yield(_ msg: any Message) {
+        continuation.yield(msg)
+    }
+
+    func finish() {
+        continuation.finish()
     }
 }
 
@@ -91,15 +200,28 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
     private let renderer: Renderer
     private let inputReader: InputReader
 
-    /// Channel through which all messages flow into the event loop.
-    private let messageContinuation: AsyncStream<any Message>.Continuation
-    private let messageStream: AsyncStream<any Message>
+    /// Shared message channel (owned by ``Program``, shared here).
+    private let channel: MessageChannel
+
+    /// Optional event filter applied before messages reach the model.
+    private let filter: (@Sendable (M, any Message) -> (any Message)?)?
+
+    /// Optional logger for internal diagnostics.
+    private let logger: (any ChaiLogger)?
 
     // MARK: - Init
 
-    init(model: M, options: [ProgramOption]) {
+    init(
+        model: M,
+        options: [ProgramOption],
+        channel: MessageChannel,
+        filter: (@Sendable (M, any Message) -> (any Message)?)?
+    ) {
         self.model = model
         self.options = options
+        self.channel = channel
+        self.filter = filter
+
         self.terminal = Terminal()
         self.inputReader = InputReader(fileDescriptor: STDIN_FILENO)
 
@@ -107,20 +229,23 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             ?? Renderer.defaultFPS
         self.renderer = Renderer(terminal: terminal, fps: fps)
 
-        var cont: AsyncStream<any Message>.Continuation!
-        self.messageStream = AsyncStream { cont = $0 }
-        self.messageContinuation = cont
+        self.logger = options.compactMap { option -> (any ChaiLogger)? in
+            if case .withLogger(let l) = option { return l } else { return nil }
+        }.first
     }
 
     // MARK: - Run
 
     func run() async throws -> M {
+        logger?.log(.debug, "Program starting")
+
         // ── Terminal setup ──────────────────────────────────────────────────
         try terminal.enableRawMode()
 
         // Ensure terminal is always restored, even on thrown errors.
         defer {
             terminal.disableRawMode()
+            logger?.log(.debug, "Terminal restored")
         }
 
         // ── Renderer startup ────────────────────────────────────────────────
@@ -136,6 +261,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
         let (w, h) = terminal.size()
         await renderer.setSize(width: w, height: h)
         send(WindowSizeMsg(width: w, height: h))
+        logger?.log(.debug, "Initial terminal size: \(w)x\(h)")
 
         // ── Signal handling ─────────────────────────────────────────────────
         let signalHandler: SignalHandler?
@@ -168,13 +294,30 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
         await renderer.write(model.view())
         await renderer.flush()
 
+        logger?.log(.debug, "Event loop started")
+
         // ── Event loop ──────────────────────────────────────────────────────
-        eventLoop: for await msg in messageStream {
+        eventLoop: for await msg in channel.stream {
             // Handle renderer-level messages first.
             await handleRendererMessage(msg)
 
+            // Internal messages (RepaintMsg, PrintLineMsg, WindowResizeSignalMsg,
+            // etc.) are handled above and should not reach the model or trigger
+            // unnecessary view() calls.
+            if msg is InternalMessage { continue }
+
+            // Apply event filter if one was provided.
+            var deliveredMsg = msg
+            if let filter = self.filter {
+                guard let transformed = filter(model, msg) else {
+                    logger?.log(.debug, "Message filtered out: \(type(of: msg))")
+                    continue
+                }
+                deliveredMsg = transformed
+            }
+
             // Deliver to model.
-            let cmd = model.update(msg)
+            let cmd = model.update(deliveredMsg)
 
             // Render updated view.
             await renderer.write(model.view())
@@ -182,19 +325,26 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             // Execute any returned command.
             if let cmd = cmd {
                 if case .quit = cmd {
+                    logger?.log(.debug, "Quit command received")
                     break eventLoop
                 }
                 execute(cmd)
             }
 
             // Check for quit message.
-            if msg is QuitMsg { break eventLoop }
+            if deliveredMsg is QuitMsg {
+                logger?.log(.debug, "QuitMsg received")
+                break eventLoop
+            }
         }
 
         // ── Shutdown ────────────────────────────────────────────────────────
+        logger?.log(.debug, "Shutting down")
+
         inputTask.cancel()
         inputReader.stop()
         signalHandler?.stop()
+        channel.finish()
 
         await renderer.stop()
 
@@ -215,7 +365,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
 
     /// Send a message into the event loop.
     func send(_ msg: any Message) {
-        messageContinuation.yield(msg)
+        channel.yield(msg)
     }
 
     // MARK: - Command execution
@@ -262,6 +412,17 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             Task { [weak self] in
                 await self?.renderer.setWindowTitle(title)
             }
+
+        case .clearScreen:
+            logger?.log(.debug, "Clearing screen")
+            Task { [weak self] in
+                await self?.renderer.clearScreen()
+            }
+
+        case .requestWindowSize:
+            let (w, h) = terminal.size()
+            logger?.log(.debug, "Window size requested: \(w)x\(h)")
+            send(WindowSizeMsg(width: w, height: h))
         }
     }
 
@@ -273,6 +434,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             let (w, h) = terminal.size()
             await renderer.setSize(width: w, height: h)
             send(WindowSizeMsg(width: w, height: h))
+            logger?.log(.debug, "Window resized: \(w)x\(h)")
 
         case let sz as WindowSizeMsg:
             await renderer.setSize(width: sz.width, height: sz.height)
@@ -344,6 +506,6 @@ private final class SignalHandler: @unchecked Sendable {
 
 /// Internal sentinel message sent when SIGWINCH fires.
 /// The runner resolves the actual size and converts it to a `WindowSizeMsg`.
-private struct WindowResizeSignalMsg: Message {}
+private struct WindowResizeSignalMsg: InternalMessage {}
 
 
