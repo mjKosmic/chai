@@ -6,35 +6,6 @@ import Glibc
 
 import Foundation
 
-// MARK: - ProgramOption
-
-/// Configuration options for a ``Program``.
-public enum ProgramOption: Sendable {
-    /// Start the program in the alternate screen buffer (full-window mode).
-    case withAltScreen
-    /// Set a custom frame rate for the renderer (1–120 FPS).
-    case withFPS(Int)
-    /// Set the terminal window title on startup.
-    case withWindowTitle(String)
-    /// Disable the SIGINT / SIGTERM signal handler.
-    ///
-    /// Use this if you want to handle OS signals yourself.
-    case withoutSignalHandler
-    /// Attach a logger for internal diagnostics.
-    ///
-    /// Since Chai owns stdout (the terminal), debug output must be directed
-    /// elsewhere. Use ``FileLogger`` to write to a file, or implement
-    /// ``ChaiLogger`` for a custom destination.
-    ///
-    /// ```swift
-    /// let logger = try FileLogger(path: "/tmp/chai.log")
-    /// let program = Program(model, options: .withLogger(logger))
-    /// ```
-    case withLogger(any ChaiLogger)
-}
-
-// MARK: - Program
-
 /// The Chai runtime. Creates a terminal UI from a ``Model``.
 ///
 /// `Program` manages the full lifecycle of a TUI application:
@@ -84,7 +55,7 @@ public struct Program<M: Model>: Sendable {
     // MARK: - Properties
 
     private let initialModel: M
-    private let options: [ProgramOption]
+    private let options: [Option]
     private let channel: MessageChannel
     private let messageFilter: (@Sendable (M, any Message) -> (any Message)?)?
 
@@ -95,7 +66,7 @@ public struct Program<M: Model>: Sendable {
     /// - Parameters:
     ///   - model: The initial model state.
     ///   - options: Zero or more ``ProgramOption`` values.
-    public init(_ model: M, options: ProgramOption...) {
+    public init(_ model: M, options: Option...) {
         self.initialModel = model
         self.options = options
         self.channel = MessageChannel()
@@ -114,7 +85,7 @@ public struct Program<M: Model>: Sendable {
     ///   - filter: A closure that can intercept, transform, or suppress messages.
     public init(
         _ model: M,
-        options: [ProgramOption] = [],
+        options: [Option] = [],
         filter: @Sendable @escaping (M, any Message) -> (any Message)?
     ) {
         self.initialModel = model
@@ -155,34 +126,6 @@ public struct Program<M: Model>: Sendable {
     }
 }
 
-// MARK: - MessageChannel
-
-/// Thread-safe message channel shared between ``Program`` and ``ProgramRunner``.
-///
-/// Wraps an ``AsyncStream`` and its continuation so that messages can be
-/// injected from outside the event loop (via ``Program/send(_:)``) while
-/// the runner consumes them.
-private final class MessageChannel: @unchecked Sendable {
-    let stream: AsyncStream<any Message>
-    let continuation: AsyncStream<any Message>.Continuation
-
-    init() {
-        // AsyncStream calls the build closure synchronously, so `cont` is
-        // guaranteed to be set before the initializer body continues.
-        var cont: AsyncStream<any Message>.Continuation!
-        self.stream = AsyncStream { cont = $0 }
-        self.continuation = cont
-    }
-
-    func yield(_ msg: any Message) {
-        continuation.yield(msg)
-    }
-
-    func finish() {
-        continuation.finish()
-    }
-}
-
 // MARK: - ProgramRunner (internal)
 
 /// The internal implementation of the program event loop.
@@ -194,7 +137,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
     // MARK: - State
 
     private var model: M
-    private let options: [ProgramOption]
+    private let options: [Program<M>.Option]
 
     private let terminal: Terminal
     private let renderer: Renderer
@@ -213,7 +156,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
 
     init(
         model: M,
-        options: [ProgramOption],
+        options: [Program<M>.Option],
         channel: MessageChannel,
         filter: (@Sendable (M, any Message) -> (any Message)?)?
     ) {
