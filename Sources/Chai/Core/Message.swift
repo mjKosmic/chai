@@ -72,7 +72,7 @@ public struct KeyMsg: Message {
 }
 
 /// The category of key that was pressed.
-public enum KeyType: Sendable {
+public enum KeyType: Sendable, Equatable {
     // MARK: Printable characters
     /// One or more printable Unicode characters. Inspect `KeyMsg.runes` for the value.
     case runes
@@ -201,22 +201,31 @@ public struct QuitMsg: Message {
     public init() {}
 }
 
+// MARK: - Internal message marker
+
+/// A marker protocol for messages that are handled by the runtime and
+/// should never be delivered to the user's ``Model/update(_:)``.
+///
+/// The event loop intercepts these messages after ``ProgramRunner/handleRendererMessage``
+/// and skips the `model.update` → `view()` → render cycle for them.
+protocol InternalMessage: Message {}
+
 // MARK: - Internal batch/sequence messages
 
 /// Internal message wrapping a set of commands to run concurrently.
-struct BatchMsg: Message {
+struct BatchMsg: InternalMessage {
     let commands: [Command]
 }
 
 /// Internal message wrapping a set of commands to run sequentially.
-struct SequenceMsg: Message {
+struct SequenceMsg: InternalMessage {
     let commands: [Command]
 }
 
 /// Internal message requesting a full repaint.
-struct RepaintMsg: Message {}
+struct RepaintMsg: InternalMessage {}
 
 /// Internal message carrying a line to print above the live view.
-struct PrintLineMsg: Message {
+struct PrintLineMsg: InternalMessage {
     let body: String
 }

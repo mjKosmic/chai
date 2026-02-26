@@ -51,6 +51,17 @@ public enum Command: Sendable {
     /// Set the terminal window title.
     case setWindowTitle(String)
 
+    /// Clear the terminal screen and reposition the cursor at the top.
+    ///
+    /// This resets the renderer's line cache, forcing a full repaint on the
+    /// next frame.
+    case clearScreen
+
+    /// Request the current terminal window size.
+    ///
+    /// A ``WindowSizeMsg`` will be delivered to your model's `update(_:)`.
+    case requestWindowSize
+
     // MARK: - Convenience factories
 
     /// Deliver a message after the given duration has elapsed.

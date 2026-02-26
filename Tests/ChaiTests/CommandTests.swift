@@ -145,6 +145,28 @@ struct CommandTests {
         #expect(m.view().content == "Ponged!")
     }
 
+    // MARK: - .clearScreen
+
+    @Test func clearScreenCase() {
+        let cmd = Command.clearScreen
+        if case .clearScreen = cmd {
+            // pass
+        } else {
+            Issue.record("Expected .clearScreen")
+        }
+    }
+
+    // MARK: - .requestWindowSize
+
+    @Test func requestWindowSizeCase() {
+        let cmd = Command.requestWindowSize
+        if case .requestWindowSize = cmd {
+            // pass
+        } else {
+            Issue.record("Expected .requestWindowSize")
+        }
+    }
+
     // MARK: - QuitMsg
 
     @Test func quitMsgIsMessage() {
@@ -161,6 +183,79 @@ struct CommandTests {
     }
 }
 
+// MARK: - ClearScreen Command Tests
+
+@Suite("ClearScreen Command")
+struct ClearScreenCommandTests {
+
+    @Test func clearScreenRendererIntegration() async {
+        // ClearScreen should clear the terminal and reset the render cache.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write("Existing content")
+        await renderer.flush()
+        mock.reset()
+
+        await renderer.clearScreen()
+        #expect(mock.output.contains(ANSI.eraseEntireScreen))
+        #expect(mock.output.contains(ANSI.cursorHome))
+
+        // After clearScreen, the same content should be re-rendered
+        // because the cache was cleared.
+        await renderer.flush()
+        #expect(mock.output.contains("Existing content"))
+    }
+}
+
+// MARK: - Command Helpers
+
+@Suite("New Command Cases")
+struct NewCommandCaseTests {
+
+    @Test func clearScreenPatternMatch() {
+        let cmd = Command.clearScreen
+        #expect(cmd.isClearScreen)
+        #expect(!cmd.isQuit)
+        #expect(!cmd.isPerform)
+    }
+
+    @Test func requestWindowSizePatternMatch() {
+        let cmd = Command.requestWindowSize
+        #expect(cmd.isRequestWindowSize)
+        #expect(!cmd.isQuit)
+        #expect(!cmd.isPerform)
+    }
+
+    @Test func modelCanReturnClearScreen() {
+        struct ClearModel: Model {
+            func initialize() -> Command? { nil }
+            mutating func update(_ msg: any Message) -> Command? {
+                if let key = msg as? KeyMsg, key.type == .ctrl("l") {
+                    return .clearScreen
+                }
+                return nil
+            }
+            func view() -> ViewOutput { "Press Ctrl+L to clear" }
+        }
+
+        var model = ClearModel()
+        let cmd = model.update(KeyMsg(type: .ctrl("l")))
+        #expect(cmd?.isClearScreen == true)
+    }
+
+    @Test func modelCanReturnRequestWindowSize() {
+        struct SizeModel: Model {
+            func initialize() -> Command? { .requestWindowSize }
+            mutating func update(_ msg: any Message) -> Command? { nil }
+            func view() -> ViewOutput { "Waiting for size..." }
+        }
+
+        let model = SizeModel()
+        let cmd = model.initialize()
+        #expect(cmd?.isRequestWindowSize == true)
+    }
+}
+
 // MARK: - Command Equatable helper (for test assertions only)
 
 extension Command {
@@ -170,6 +265,14 @@ extension Command {
     }
     var isPerform: Bool {
         if case .perform = self { return true }
+        return false
+    }
+    var isClearScreen: Bool {
+        if case .clearScreen = self { return true }
+        return false
+    }
+    var isRequestWindowSize: Bool {
+        if case .requestWindowSize = self { return true }
         return false
     }
 }
