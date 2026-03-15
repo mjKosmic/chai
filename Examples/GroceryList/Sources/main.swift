@@ -25,7 +25,7 @@ struct GroceryList: Model {
     // MARK: - Model
 
     func initialize() -> Command? {
-        // No initial I/O needed.
+        // Perform initial terminal I/O by setting the window title.
         .setWindowTitle("Grocery List")
     }
 
