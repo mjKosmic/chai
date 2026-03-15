@@ -70,6 +70,78 @@ extension Color {
     }
 }
 
+// MARK: - Color Profile Downsampling
+
+extension Color {
+
+    /// Returns the best representation of this color within the given profile.
+    ///
+    /// - ``ColorProfile/trueColor``: Returns `self` unchanged.
+    /// - ``ColorProfile/ansi256``: Converts to the nearest 256-palette entry.
+    /// - ``ColorProfile/ansi``: Converts to the nearest of the 16 ANSI colors.
+    /// - ``ColorProfile/noColor``: Returns `nil` (color should be omitted).
+    ///
+    /// Nearest-color selection uses squared Euclidean distance in RGB space.
+    ///
+    /// ```swift
+    /// let color = Color.trueColor(r: 200, g: 50, b: 50)
+    /// color.downsampled(to: .ansi256) // nearest 256-palette entry
+    /// color.downsampled(to: .ansi)    // nearest ANSI 16 color
+    /// color.downsampled(to: .noColor) // nil
+    /// ```
+    public func downsampled(to profile: ColorProfile) -> Color? {
+        switch profile {
+        case .noColor:
+            return nil
+        case .trueColor:
+            return self
+        case .ansi256:
+            return nearestPaletteColor(searchRange: 0..<256)
+        case .ansi:
+            return nearestPaletteColor(searchRange: 0..<16)
+        }
+    }
+
+    /// Converts this color to its RGB components.
+    func toRGB() -> (r: UInt8, g: UInt8, b: UInt8) {
+        switch self {
+        case .trueColor(let r, let g, let b):
+            return (r, g, b)
+        case .ansi(let color):
+            return ColorPalette.rgb[Int(color.rawValue)]
+        case .extended(let index):
+            return ColorPalette.rgb[Int(index)]
+        }
+    }
+
+    /// Finds the nearest color in the palette within the given index range.
+    private func nearestPaletteColor(searchRange: Range<Int>) -> Color {
+        let (r, g, b) = toRGB()
+        let ri = Int(r), gi = Int(g), bi = Int(b)
+
+        var bestIndex = searchRange.lowerBound
+        var bestDistance = Int.max
+
+        for i in searchRange {
+            let entry = ColorPalette.rgb[i]
+            let dr = ri - Int(entry.r)
+            let dg = gi - Int(entry.g)
+            let db = bi - Int(entry.b)
+            let distance = dr * dr + dg * dg + db * db
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = i
+                if distance == 0 { break }
+            }
+        }
+
+        if searchRange == 0..<16 {
+            return .ansi(ANSIColor(rawValue: UInt8(bestIndex))!)
+        }
+        return .extended(UInt8(bestIndex))
+    }
+}
+
 // MARK: - ANSIColor
 
 /// The 16 standard ANSI terminal colors.

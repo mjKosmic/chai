@@ -36,6 +36,25 @@
 /// let layout = joinHorizontal(.top, left, right)
 /// ```
 ///
+/// ## Styled borders
+///
+/// Border characters can be styled with closures, keeping Latte free of
+/// any dependency on Spices or any other styling library:
+///
+/// ```swift
+/// // Latte-only: raw ANSI escape codes
+/// border("text", .rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
+///
+/// // With Spices: pass Style.render directly
+/// let cyan = Style().foreground(.ansi(.cyan))
+/// border("text", .rounded, borderStyle: cyan.render)
+///
+/// // Per-side styling (top = red, bottom = blue)
+/// "text".bordered(.rounded,
+///     topStyle:    { "\u{1B}[31m\($0)\u{1B}[0m" },
+///     bottomStyle: { "\u{1B}[34m\($0)\u{1B}[0m" })
+/// ```
+///
 /// ## Module organisation
 ///
 /// | Group | Functions |
@@ -45,7 +64,7 @@
 /// | **Padding** | ``pad(_:top:right:bottom:left:)`` (and variants with ``fill:``), ``pad(_:_:)``, ``pad(_:_:_:)``, ``pad(_:_:_:_:)`` |
 /// | **Margin** | ``margin(_:top:right:bottom:left:)`` (and variants with ``fill:``), ``margin(_:_:)``, ``margin(_:_:_:)``, ``margin(_:_:_:_:)`` |
 /// | **Size** | ``enforceWidth(_:_:alignment:)``, ``enforceHeight(_:_:alignment:)``, ``clampWidth(_:_:)``, ``clampHeight(_:_:)``, ``clamp(_:maxWidth:maxHeight:)`` |
-/// | **Borders** | ``border(_:_:top:right:bottom:left:)``, ``Border`` |
+/// | **Borders** | ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``, ``Border`` |
 /// | **Utilities** | ``expandTabs(_:tabWidth:)``, ``inline(_:)``, ``wrap(_:width:breakCharacter:)`` |
 /// | **Composition** | ``joinHorizontal(_:_:)-5h7fk``, ``joinVertical(_:_:)-3zco8``, ``place(width:height:horizontal:vertical:_:)``, ``placeHorizontal(width:_:_:)``, ``placeVertical(height:_:_:)`` |
 /// | **String Extensions** | Chainable versions of all the above, including `fill:` variants of `.padded()` / `.margined()` and `.wrapped()`: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.placed()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |

@@ -15,7 +15,10 @@
 /// )
 /// ```
 ///
-/// Apply a border to a string with ``border(_:_:top:right:bottom:left:)``.
+/// Apply a border to a string with
+/// ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``.
+/// The border characters are purely structural; styling is handled by optional
+/// closures on the rendering function rather than stored on this type.
 public struct Border: Sendable, Equatable {
 
     // MARK: - Edge characters
