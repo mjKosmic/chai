@@ -7,14 +7,14 @@ import Foundation
 @Suite("Logging")
 struct LoggingTests {
 
-    @Test func fileLoggerWritesToFile() throws {
+    @Test func fileLoggerWritesToFile() async throws {
         let tmpDir = FileManager.default.temporaryDirectory
         let logPath = tmpDir.appendingPathComponent("chai_test_\(UUID().uuidString).log").path
 
         let logger = try FileLogger(path: logPath)
-        logger.log(.debug, "Hello from test")
-        logger.log(.info, "Info message")
-        logger.log(.error, "Error message")
+        await logger.log(.debug, "Hello from test")
+        await logger.log(.info, "Info message")
+        await logger.log(.error, "Error message")
 
         let content = try String(contentsOfFile: logPath, encoding: .utf8)
         #expect(content.contains("Hello from test"))
@@ -29,12 +29,12 @@ struct LoggingTests {
         try? FileManager.default.removeItem(atPath: logPath)
     }
 
-    @Test func fileLoggerCustomPrefix() throws {
+    @Test func fileLoggerCustomPrefix() async throws {
         let tmpDir = FileManager.default.temporaryDirectory
         let logPath = tmpDir.appendingPathComponent("chai_test_\(UUID().uuidString).log").path
 
         let logger = try FileLogger(path: logPath, prefix: "myapp")
-        logger.log(.debug, "Custom prefix")
+        await logger.log(.debug, "Custom prefix")
 
         let content = try String(contentsOfFile: logPath, encoding: .utf8)
         #expect(content.contains("[myapp]"))
@@ -43,7 +43,7 @@ struct LoggingTests {
         try? FileManager.default.removeItem(atPath: logPath)
     }
 
-    @Test func fileLoggerAppendsToExistingFile() throws {
+    @Test func fileLoggerAppendsToExistingFile() async throws {
         let tmpDir = FileManager.default.temporaryDirectory
         let logPath = tmpDir.appendingPathComponent("chai_test_\(UUID().uuidString).log").path
 
@@ -51,7 +51,7 @@ struct LoggingTests {
         try "existing content\n".write(toFile: logPath, atomically: true, encoding: .utf8)
 
         let logger = try FileLogger(path: logPath)
-        logger.log(.info, "New message")
+        await logger.log(.info, "New message")
 
         let content = try String(contentsOfFile: logPath, encoding: .utf8)
         #expect(content.contains("existing content"))
@@ -60,12 +60,12 @@ struct LoggingTests {
         try? FileManager.default.removeItem(atPath: logPath)
     }
 
-    @Test func fileLoggerIncludesTimestamp() throws {
+    @Test func fileLoggerIncludesTimestamp() async throws {
         let tmpDir = FileManager.default.temporaryDirectory
         let logPath = tmpDir.appendingPathComponent("chai_test_\(UUID().uuidString).log").path
 
         let logger = try FileLogger(path: logPath)
-        logger.log(.debug, "Timestamp check")
+        await logger.log(.debug, "Timestamp check")
 
         let content = try String(contentsOfFile: logPath, encoding: .utf8)
         // ISO 8601 timestamps contain "T" and "Z" (or timezone offset).
@@ -89,11 +89,17 @@ struct LoggingTests {
 
     @Test func withLoggerProgramOption() {
         // Verify the .withLogger option compiles and can be pattern-matched.
+        struct DummyModel: Model {
+            func initialize() -> Command? { nil }
+            mutating func update(_ msg: any Message) -> Command? { nil }
+            func view() -> ViewOutput { "" }
+        }
+
         struct DummyLogger: ChaiLogger {
             func log(_ level: ChaiLogLevel, _ message: String) {}
         }
 
-        let option = ProgramOption.withLogger(DummyLogger())
+        let option: Program<DummyModel>.Option = .withLogger(DummyLogger())
         if case .withLogger = option {
             // pass
         } else {

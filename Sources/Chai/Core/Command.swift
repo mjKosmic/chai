@@ -8,8 +8,6 @@ import Foundation
 ///
 /// ## Creating Commands
 ///
-/// Use the static factory methods for the most common cases:
-///
 /// ```swift
 /// // Quit the program
 /// return .quit

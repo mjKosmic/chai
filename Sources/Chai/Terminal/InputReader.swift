@@ -20,7 +20,7 @@ import Foundation
 ///     // handle message
 /// }
 /// ```
-final class InputReader: @unchecked Sendable {
+final class InputReader: Sendable {
 
     // MARK: - Types
 
@@ -31,7 +31,6 @@ final class InputReader: @unchecked Sendable {
 
     private let continuation: AsyncStream<any Message>.Continuation
     private let fileDescriptor: Int32
-    private var readThread: Thread?
 
     /// A pipe used to unblock the blocking `read()` call on shutdown.
     private let cancelReadFD: Int32
@@ -65,7 +64,6 @@ final class InputReader: @unchecked Sendable {
         thread.name = "chai.input-reader"
         thread.qualityOfService = .userInteractive
         thread.start()
-        readThread = thread
     }
 
     /// Stop reading and close the stream.

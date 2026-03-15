@@ -25,8 +25,8 @@ struct GroceryList: Model {
     // MARK: - Model
 
     func initialize() -> Command? {
-        // No initial I/O needed.
-        nil
+        // Perform initial terminal I/O by setting the window title.
+        .setWindowTitle("Grocery List")
     }
 
     mutating func update(_ msg: any Message) -> Command? {
@@ -66,7 +66,7 @@ struct GroceryList: Model {
     func view() -> ViewOutput {
         var lines: [String] = []
 
-        lines.append("What should we buy at the market?\n")
+        lines.append("What should we buy at the market? \(self.selected.count)\n")
 
         for (i, choice) in choices.enumerated() {
             let cursorMark = indicator == i ? ">" : " "
@@ -77,10 +77,10 @@ struct GroceryList: Model {
         lines.append("")
         lines.append("↑/↓ or j/k to move  •  Enter/Space to select  •  q to quit")
 
-        // Declaratively request the alternate screen buffer.
+        // Render without using the alternate screen buffer so output remains in scrollback.
         return ViewOutput(
             lines.joined(separator: "\n"),
-            altScreen: true
+            altScreen: false
         )
     }
 

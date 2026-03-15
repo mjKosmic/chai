@@ -6,35 +6,6 @@ import Glibc
 
 import Foundation
 
-// MARK: - ProgramOption
-
-/// Configuration options for a ``Program``.
-public enum ProgramOption: Sendable {
-    /// Start the program in the alternate screen buffer (full-window mode).
-    case withAltScreen
-    /// Set a custom frame rate for the renderer (1–120 FPS).
-    case withFPS(Int)
-    /// Set the terminal window title on startup.
-    case withWindowTitle(String)
-    /// Disable the SIGINT / SIGTERM signal handler.
-    ///
-    /// Use this if you want to handle OS signals yourself.
-    case withoutSignalHandler
-    /// Attach a logger for internal diagnostics.
-    ///
-    /// Since Chai owns stdout (the terminal), debug output must be directed
-    /// elsewhere. Use ``FileLogger`` to write to a file, or implement
-    /// ``ChaiLogger`` for a custom destination.
-    ///
-    /// ```swift
-    /// let logger = try FileLogger(path: "/tmp/chai.log")
-    /// let program = Program(model, options: .withLogger(logger))
-    /// ```
-    case withLogger(any ChaiLogger)
-}
-
-// MARK: - Program
-
 /// The Chai runtime. Creates a terminal UI from a ``Model``.
 ///
 /// `Program` manages the full lifecycle of a TUI application:
@@ -84,7 +55,7 @@ public struct Program<M: Model>: Sendable {
     // MARK: - Properties
 
     private let initialModel: M
-    private let options: [ProgramOption]
+    private let options: [Option]
     private let channel: MessageChannel
     private let messageFilter: (@Sendable (M, any Message) -> (any Message)?)?
 
@@ -94,8 +65,8 @@ public struct Program<M: Model>: Sendable {
     ///
     /// - Parameters:
     ///   - model: The initial model state.
-    ///   - options: Zero or more ``ProgramOption`` values.
-    public init(_ model: M, options: ProgramOption...) {
+    ///   - options: Zero or more ``Program.Option`` values.
+    public init(_ model: M, options: Option...) {
         self.initialModel = model
         self.options = options
         self.channel = MessageChannel()
@@ -110,11 +81,11 @@ public struct Program<M: Model>: Sendable {
     ///
     /// - Parameters:
     ///   - model: The initial model state.
-    ///   - options: ``ProgramOption`` values.
+    ///   - options: An array of ``Program.Option`` values.
     ///   - filter: A closure that can intercept, transform, or suppress messages.
     public init(
         _ model: M,
-        options: [ProgramOption] = [],
+        options: [Option] = [],
         filter: @Sendable @escaping (M, any Message) -> (any Message)?
     ) {
         self.initialModel = model
@@ -155,46 +126,18 @@ public struct Program<M: Model>: Sendable {
     }
 }
 
-// MARK: - MessageChannel
-
-/// Thread-safe message channel shared between ``Program`` and ``ProgramRunner``.
-///
-/// Wraps an ``AsyncStream`` and its continuation so that messages can be
-/// injected from outside the event loop (via ``Program/send(_:)``) while
-/// the runner consumes them.
-private final class MessageChannel: @unchecked Sendable {
-    let stream: AsyncStream<any Message>
-    let continuation: AsyncStream<any Message>.Continuation
-
-    init() {
-        // AsyncStream calls the build closure synchronously, so `cont` is
-        // guaranteed to be set before the initializer body continues.
-        var cont: AsyncStream<any Message>.Continuation!
-        self.stream = AsyncStream { cont = $0 }
-        self.continuation = cont
-    }
-
-    func yield(_ msg: any Message) {
-        continuation.yield(msg)
-    }
-
-    func finish() {
-        continuation.finish()
-    }
-}
-
 // MARK: - ProgramRunner (internal)
 
 /// The internal implementation of the program event loop.
 ///
 /// Separated from `Program` so the public API stays clean and the runner
 /// can hold mutable state without `Program` needing to be a class.
-private final class ProgramRunner<M: Model>: @unchecked Sendable {
+private final class ProgramRunner<M: Model>: Sendable {
 
     // MARK: - State
 
-    private var model: M
-    private let options: [ProgramOption]
+    private let initialModel: M
+    private let options: [Program<M>.Option]
 
     private let terminal: Terminal
     private let renderer: Renderer
@@ -213,11 +156,11 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
 
     init(
         model: M,
-        options: [ProgramOption],
+        options: [Program<M>.Option],
         channel: MessageChannel,
         filter: (@Sendable (M, any Message) -> (any Message)?)?
     ) {
-        self.model = model
+        self.initialModel = model
         self.options = options
         self.channel = channel
         self.filter = filter
@@ -237,7 +180,9 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
     // MARK: - Run
 
     func run() async throws -> M {
-        logger?.log(.debug, "Program starting")
+        var model = initialModel
+
+        await logger?.log(.debug, "Program starting")
 
         // ── Terminal setup ──────────────────────────────────────────────────
         try terminal.enableRawMode()
@@ -245,7 +190,6 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
         // Ensure terminal is always restored, even on thrown errors.
         defer {
             terminal.disableRawMode()
-            logger?.log(.debug, "Terminal restored")
         }
 
         // ── Renderer startup ────────────────────────────────────────────────
@@ -261,7 +205,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
         let (w, h) = terminal.size()
         await renderer.setSize(width: w, height: h)
         send(WindowSizeMsg(width: w, height: h))
-        logger?.log(.debug, "Initial terminal size: \(w)x\(h)")
+        await logger?.log(.debug, "Initial terminal size: \(w)x\(h)")
 
         // ── Signal handling ─────────────────────────────────────────────────
         let signalHandler: SignalHandler?
@@ -294,7 +238,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
         await renderer.write(model.view())
         await renderer.flush()
 
-        logger?.log(.debug, "Event loop started")
+        await logger?.log(.debug, "Event loop started")
 
         // ── Event loop ──────────────────────────────────────────────────────
         eventLoop: for await msg in channel.stream {
@@ -310,7 +254,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             var deliveredMsg = msg
             if let filter = self.filter {
                 guard let transformed = filter(model, msg) else {
-                    logger?.log(.debug, "Message filtered out: \(type(of: msg))")
+                    await logger?.log(.debug, "Message filtered out: \(type(of: msg))")
                     continue
                 }
                 deliveredMsg = transformed
@@ -325,7 +269,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             // Execute any returned command.
             if let cmd = cmd {
                 if case .quit = cmd {
-                    logger?.log(.debug, "Quit command received")
+                    await logger?.log(.debug, "Quit command received")
                     break eventLoop
                 }
                 execute(cmd)
@@ -333,13 +277,13 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
 
             // Check for quit message.
             if deliveredMsg is QuitMsg {
-                logger?.log(.debug, "QuitMsg received")
+                await logger?.log(.debug, "QuitMsg received")
                 break eventLoop
             }
         }
 
         // ── Shutdown ────────────────────────────────────────────────────────
-        logger?.log(.debug, "Shutting down")
+        await logger?.log(.debug, "Shutting down")
 
         inputTask.cancel()
         inputReader.stop()
@@ -409,19 +353,19 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             send(QuitMsg())
 
         case .setWindowTitle(let title):
-            Task { [weak self] in
-                await self?.renderer.setWindowTitle(title)
+            Task { [renderer] in
+                await renderer.setWindowTitle(title)
             }
 
         case .clearScreen:
-            logger?.log(.debug, "Clearing screen")
-            Task { [weak self] in
-                await self?.renderer.clearScreen()
+            Task { [logger] in await logger?.log(.debug, "Clearing screen") }
+            Task { [renderer] in
+                await renderer.clearScreen()
             }
 
         case .requestWindowSize:
             let (w, h) = terminal.size()
-            logger?.log(.debug, "Window size requested: \(w)x\(h)")
+            Task { [logger] in await logger?.log(.debug, "Window size requested: \(w)x\(h)") }
             send(WindowSizeMsg(width: w, height: h))
         }
     }
@@ -434,7 +378,7 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
             let (w, h) = terminal.size()
             await renderer.setSize(width: w, height: h)
             send(WindowSizeMsg(width: w, height: h))
-            logger?.log(.debug, "Window resized: \(w)x\(h)")
+            await logger?.log(.debug, "Window resized: \(w)x\(h)")
 
         case let sz as WindowSizeMsg:
             await renderer.setSize(width: sz.width, height: sz.height)
@@ -455,13 +399,34 @@ private final class ProgramRunner<M: Model>: @unchecked Sendable {
 
 /// Listens for SIGWINCH (terminal resize) and SIGINT/SIGTERM (quit signals)
 /// and forwards them as Chai messages.
+///
+/// Remains `@unchecked Sendable` solely because `DispatchSourceSignal` is not
+/// annotated as `Sendable` in the Swift Dispatch overlay, even though GCD
+/// dispatch sources are inherently thread-safe. All stored properties are `let`.
 private final class SignalHandler: @unchecked Sendable {
 
     private let handler: @Sendable (any Message) -> Void
-    private var sources: [DispatchSourceSignal] = []
+    private let sources: [DispatchSourceSignal]
 
     init(handler: @Sendable @escaping (any Message) -> Void) {
         self.handler = handler
+
+        let winchSource = DispatchSource.makeSignalSource(signal: SIGWINCH, queue: .global())
+        winchSource.setEventHandler {
+            handler(WindowResizeSignalMsg())
+        }
+
+        let intSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
+        intSource.setEventHandler {
+            handler(QuitMsg())
+        }
+
+        let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
+        termSource.setEventHandler {
+            handler(QuitMsg())
+        }
+
+        self.sources = [winchSource, intSource, termSource]
     }
 
     func start() {
@@ -469,35 +434,11 @@ private final class SignalHandler: @unchecked Sendable {
         signal(SIGWINCH, SIG_IGN)
         signal(SIGINT,   SIG_IGN)
         signal(SIGTERM,  SIG_IGN)
-
-        let winchSource = DispatchSource.makeSignalSource(signal: SIGWINCH, queue: .global())
-        winchSource.setEventHandler { [weak self] in
-            // Re-query terminal size and send a WindowSizeMsg.
-            // We can't access `terminal` here directly, so we send a sentinel
-            // that the runner will resolve.
-            self?.handler(WindowResizeSignalMsg())
-        }
-        winchSource.resume()
-        sources.append(winchSource)
-
-        let intSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
-        intSource.setEventHandler { [weak self] in
-            self?.handler(QuitMsg())
-        }
-        intSource.resume()
-        sources.append(intSource)
-
-        let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
-        termSource.setEventHandler { [weak self] in
-            self?.handler(QuitMsg())
-        }
-        termSource.resume()
-        sources.append(termSource)
+        sources.forEach { $0.resume() }
     }
 
     func stop() {
         sources.forEach { $0.cancel() }
-        sources = []
         signal(SIGWINCH, SIG_DFL)
         signal(SIGINT,   SIG_DFL)
         signal(SIGTERM,  SIG_DFL)

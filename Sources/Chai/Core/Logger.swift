@@ -23,7 +23,7 @@ public protocol ChaiLogger: Sendable {
     /// - Parameters:
     ///   - level: The severity of the log message.
     ///   - message: The message to log.
-    func log(_ level: ChaiLogLevel, _ message: String)
+    func log(_ level: ChaiLogLevel, _ message: String) async
 }
 
 /// Severity levels for Chai diagnostic logging.
@@ -61,11 +61,10 @@ public enum ChaiLogLevel: String, Sendable, Comparable {
 /// ```
 /// [2026-02-25T12:34:56Z] [chai] [DEBUG] Message text here
 /// ```
-public final class FileLogger: ChaiLogger, @unchecked Sendable {
+public actor FileLogger: ChaiLogger {
 
     private let fileHandle: FileHandle
     private let prefix: String
-    private let lock = NSLock()
     private let formatter = ISO8601DateFormatter()
 
     /// Create a file logger that writes to the given path.
@@ -92,8 +91,6 @@ public final class FileLogger: ChaiLogger, @unchecked Sendable {
     public func log(_ level: ChaiLogLevel, _ message: String) {
         let timestamp = formatter.string(from: Date())
         let line = "[\(timestamp)] [\(prefix)] [\(level.rawValue)] \(message)\n"
-        lock.lock()
-        defer { lock.unlock() }
         if let data = line.data(using: .utf8) {
             fileHandle.write(data)
         }

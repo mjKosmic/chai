@@ -4,6 +4,12 @@ import Testing
 // MARK: - Test helpers
 
 /// A mock `TerminalOutput` that captures written strings for inspection.
+///
+/// Remains `@unchecked Sendable` because `TerminalOutput` requires `AnyObject`
+/// (the real `Terminal` and `Renderer` must share the same instance), and
+/// `var output` is needed to accumulate writes. In practice, all access is
+/// serialised: writes flow through the `Renderer` actor and tests always
+/// `await` each renderer call before reading `output`.
 final class MockTerminal: TerminalOutput, @unchecked Sendable {
     private(set) var output: String = ""
 
