@@ -34,33 +34,48 @@ public func expandTabs(_ text: String, tabWidth: Int = 4) -> String {
 }
 
 /// Expands tabs in a single line, tracking visible column position.
+///
+/// Iterates over grapheme clusters (via `String.Index`) to preserve
+/// multi-scalar sequences such as emoji flags and ZWJ sequences.
+/// ANSI escape sequences are detected by peeking at the first Unicode
+/// scalar of each cluster and consumed verbatim via the scalar view.
 private func expandTabsInLine(_ line: String, tabWidth: Int) -> String {
     var result = ""
     var column = 0
-    var scalars = line.unicodeScalars[...]
+    var idx = line.startIndex
 
-    while let scalar = scalars.first {
+    while idx < line.endIndex {
+        // Peek at the first Unicode scalar of the current grapheme cluster
+        // to detect ANSI escape sequences and tab characters without
+        // splitting the cluster.
+        let firstScalar = line.unicodeScalars[idx]
+
         // Handle ANSI escape sequences — copy verbatim, don't advance column.
-        if scalar == "\u{1B}" {
-            let seq = consumeANSISequence(from: &scalars)
+        if firstScalar == "\u{1B}" {
+            var scalarSlice = line.unicodeScalars[idx...]
+            let seq = consumeANSISequence(from: &scalarSlice)
             result += seq
+            // scalarSlice.startIndex is a valid String.Index shared across views.
+            idx = scalarSlice.startIndex
             continue
         }
 
         // Handle tab — replace with spaces to next tab stop.
-        if scalar == "\t" {
+        if firstScalar == "\t" {
             let spacesNeeded = tabWidth - (column % tabWidth)
             result += String(repeating: " ", count: spacesNeeded)
             column += spacesNeeded
-            scalars = scalars.dropFirst()
+            idx = line.index(after: idx)
             continue
         }
 
-        // Regular character — append and advance column by display width.
-        let char = Character(scalar)
+        // Regular character — use the full grapheme cluster so that
+        // multi-scalar sequences (flags, combining marks, ZWJ emoji, …)
+        // are preserved intact in the output and measured correctly.
+        let char = line[idx]
         result.append(char)
         column += displayWidth(of: char)
-        scalars = scalars.dropFirst()
+        idx = line.index(after: idx)
     }
 
     return result

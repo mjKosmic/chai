@@ -67,7 +67,7 @@ public struct TableKeyMap: Sendable, HelpKeyMap {
                                   help: KeyHelp("d", "½ page down"))
         gotoTop = KeyBinding(.type(.home), .rune("g"),
                              help: KeyHelp("g/home", "go to top"))
-        gotoBottom = KeyBinding(.type(.end),
+        gotoBottom = KeyBinding(.type(.end), .rune("G"),
                                 help: KeyHelp("G/end", "go to bottom"))
     }
 
@@ -292,6 +292,7 @@ public struct Table: Sendable {
 
     /// Moves the cursor down by the given number of rows.
     public mutating func moveDown(_ n: Int) {
+        guard !_rows.isEmpty else { return }
         _cursor = min(_rows.count - 1, _cursor + n)
         updateViewportStart()
     }
@@ -359,14 +360,18 @@ public struct Table: Sendable {
     }
 
     /// Pads or truncates a string to the given width.
+    ///
+    /// `width` is clamped to at least 1 to guard against non-positive
+    /// column widths that could cause a trap or nonsensical output.
     private func padOrTruncate(_ text: String, to width: Int) -> String {
+        let w = max(1, width)
         let chars = Array(text)
-        if chars.count >= width {
-            if width > 1 {
-                return String(chars.prefix(width - 1)) + "…"
+        if chars.count >= w {
+            if w > 1 {
+                return String(chars.prefix(w - 1)) + "…"
             }
-            return String(chars.prefix(width))
+            return String(chars.prefix(w))
         }
-        return text + String(repeating: " ", count: width - chars.count)
+        return text + String(repeating: " ", count: w - chars.count)
     }
 }

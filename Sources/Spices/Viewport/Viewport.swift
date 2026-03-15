@@ -140,7 +140,7 @@ public struct Viewport: Sendable {
 
     /// Renders the visible portion of the content.
     public func view() -> ViewOutput {
-        guard height > 0 else { return "" }
+        guard height > 0, width > 0 else { return "" }
 
         var visibleLines: [String] = []
         let startLine = yOffset
@@ -233,8 +233,11 @@ public struct Viewport: Sendable {
     public var atBottom: Bool { yOffset >= maxYOffset }
 
     /// The vertical scroll percentage (0.0 – 1.0).
+    ///
+    /// Returns `0.0` when there is no scrollable overflow, consistent with
+    /// ``horizontalScrollPercent`` which also returns `0.0` in that case.
     public var scrollPercent: Double {
-        guard maxYOffset > 0 else { return 1.0 }
+        guard maxYOffset > 0 else { return 0.0 }
         return Double(yOffset) / Double(maxYOffset)
     }
 

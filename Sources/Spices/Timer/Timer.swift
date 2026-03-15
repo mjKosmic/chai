@@ -104,9 +104,10 @@ public struct SpiceTimer: Sendable {
                 return .perform { [id = _id] in TimerTimeoutMsg(id: id) }
             }
 
-            // Decrease timeout by the interval
-            timeout -= interval
-            if timeout < .zero { timeout = .zero }
+            // Adopt the post-tick timeout that was pre-computed when the
+            // tick was scheduled, so self.timeout and the message value
+            // are always in sync.
+            timeout = tick.timeout
 
             if timeout <= .zero {
                 _running = false
@@ -168,9 +169,13 @@ public struct SpiceTimer: Sendable {
         let id = self._id
         let tag = self._tag
         let interval = self.interval
-        let timeout = self.timeout
+        // Pre-compute the remaining time after the next tick fires, so
+        // TimerTickMsg.timeout reflects the *post-tick* remaining duration.
+        // update(_:) then adopts this value directly instead of subtracting
+        // again, keeping the message and self.timeout always in sync.
+        let postTickTimeout = max(.zero, self.timeout - interval)
         return .tick(interval) { _ in
-            TimerTickMsg(id: id, timeout: timeout, tag: tag)
+            TimerTickMsg(id: id, timeout: postTickTimeout, tag: tag)
         }
     }
 }

@@ -56,6 +56,10 @@ public struct Cursor: Sendable {
     /// The cursor display mode.
     public var mode: CursorMode {
         didSet {
+            // Bump the tag to invalidate any already-scheduled blink ticks
+            // from the previous mode, preventing stale ticks from toggling
+            // visibility after a mode change.
+            _tag += 1
             // Reset blink visibility when mode changes
             switch mode {
             case .blink:
@@ -118,8 +122,14 @@ public struct Cursor: Sendable {
     public mutating func update(_ msg: any Message) -> Command? {
         guard let blink = msg as? CursorBlinkMsg else { return nil }
 
-        // Reject stale ticks
+        // Reject stale ticks (also rejects ticks from before a mode change,
+        // because mode.didSet bumps _tag).
         guard blink.id == _id, blink.tag == _tag else { return nil }
+
+        // Only toggle visibility when actually blinking and focused; a stale
+        // tick that slips past the tag check (e.g. same-generation mode change)
+        // should not leave the cursor in an unexpected hidden state.
+        guard mode == .blink, _focused else { return nil }
 
         // Toggle visibility
         _visible.toggle()
