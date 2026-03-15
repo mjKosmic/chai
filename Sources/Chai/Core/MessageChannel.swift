@@ -5,7 +5,7 @@
 /// Wraps an ``AsyncStream`` and its continuation so that messages can be
 /// injected from outside the event loop (via ``Program/send(_:)``) while
 /// the runner consumes them.
-final class MessageChannel: @unchecked Sendable {
+final class MessageChannel: Sendable {
     let stream: AsyncStream<any Message>
     let continuation: AsyncStream<any Message>.Continuation
 
