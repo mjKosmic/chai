@@ -331,20 +331,12 @@ private final class ProgramRunner<M: Model>: Sendable {
             Task { [weak self] in
                 for cmd in cmds {
                     guard let self else { return }
-                    // For sequence, we execute each command and wait for its
-                    // message before proceeding to the next.
-                    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                        switch cmd {
-                        case .perform(let work):
-                            Task {
-                                let msg = await work()
-                                self.send(msg)
-                                cont.resume()
-                            }
-                        default:
-                            self.execute(cmd)
-                            cont.resume()
-                        }
+                    switch cmd {
+                    case .perform(let work):
+                        let msg = await work()
+                        self.send(msg)
+                    default:
+                        self.execute(cmd)
                     }
                 }
             }
