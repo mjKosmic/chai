@@ -65,7 +65,7 @@ public struct Program<M: Model>: Sendable {
     ///
     /// - Parameters:
     ///   - model: The initial model state.
-    ///   - options: Zero or more ``ProgramOption`` values.
+    ///   - options: Zero or more ``Program.Option`` values.
     public init(_ model: M, options: Option...) {
         self.initialModel = model
         self.options = options
@@ -81,7 +81,7 @@ public struct Program<M: Model>: Sendable {
     ///
     /// - Parameters:
     ///   - model: The initial model state.
-    ///   - options: ``ProgramOption`` values.
+    ///   - options: An array of ``Program.Option`` values.
     ///   - filter: A closure that can intercept, transform, or suppress messages.
     public init(
         _ model: M,
