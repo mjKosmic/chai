@@ -77,7 +77,7 @@ struct GroceryList: Model {
         lines.append("")
         lines.append("↑/↓ or j/k to move  •  Enter/Space to select  •  q to quit")
 
-        // Declaratively request the alternate screen buffer.
+        // Render without using the alternate screen buffer so output remains in scrollback.
         return ViewOutput(
             lines.joined(separator: "\n"),
             altScreen: false
