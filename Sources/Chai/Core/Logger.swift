@@ -95,6 +95,10 @@ public actor FileLogger: ChaiLogger {
             fileHandle.write(data)
         }
     }
+
+    deinit {
+        try? fileHandle.close()
+    }
 }
 
 /// Errors that can occur when creating a ``FileLogger``.
