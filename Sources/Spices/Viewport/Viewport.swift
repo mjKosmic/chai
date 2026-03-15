@@ -67,6 +67,12 @@ public struct ViewportKeyMap: Sendable {
 /// may exceed the visible area. It supports keyboard navigation and
 /// provides scroll position information.
 ///
+/// > Note: Horizontal scrolling and line-width measurement use Swift's
+/// > `Character`-count (`String.count`), not visible terminal columns.
+/// > This means wide characters (CJK, emoji) and ANSI escape sequences
+/// > are not measured accurately for the purposes of horizontal offset
+/// > and truncation. Vertical scrolling is unaffected.
+///
 /// ```swift
 /// var viewport = Viewport(width: 80, height: 24)
 /// viewport.setContent(longText)
@@ -167,6 +173,10 @@ public struct Viewport: Sendable {
     // MARK: - Content management
 
     /// Sets the viewport content, splitting it into lines.
+    ///
+    /// Line widths are measured by `String.count` (Swift `Character` count),
+    /// not by visible terminal columns. Wide characters and ANSI sequences
+    /// will therefore be counted incorrectly for horizontal scrolling purposes.
     ///
     /// - Parameter content: The full text content.
     public mutating func setContent(_ content: String) {
@@ -300,8 +310,9 @@ public struct Viewport: Sendable {
 
     /// Truncates a line to the visible horizontal window.
     ///
-    /// Note: This is a character-based implementation. A future version
-    /// could handle ANSI escape sequences for proper width calculation.
+    /// Uses `Array(Character)` slicing, so offsets and widths are in Swift
+    /// `Character` units rather than visible terminal columns. Wide characters
+    /// (CJK, emoji) and ANSI escape sequences are not column-aware.
     private func truncateLine(_ line: String, offset: Int, width: Int) -> String {
         let chars = Array(line)
         guard offset < chars.count else {

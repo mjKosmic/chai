@@ -18,12 +18,6 @@ public struct TimerTimeoutMsg: Message {
     public let id: Int
 }
 
-/// Internal message for starting or stopping the timer.
-struct TimerStartStopMsg: Message {
-    let id: Int
-    let running: Bool
-}
-
 // MARK: - ID generation
 
 private let _timerIDGenerator = IDGenerator()
@@ -85,17 +79,9 @@ public struct SpiceTimer: Sendable {
         start()
     }
 
-    /// Handles tick and start/stop messages.
+    /// Handles tick messages.
     public mutating func update(_ msg: any Message) -> Command? {
         switch msg {
-        case let startStop as TimerStartStopMsg where startStop.id == _id:
-            _running = startStop.running
-            _tag += 1
-            if _running {
-                return tickCommand()
-            }
-            return nil
-
         case let tick as TimerTickMsg where tick.id == _id && tick.tag == _tag:
             guard _running else { return nil }
 

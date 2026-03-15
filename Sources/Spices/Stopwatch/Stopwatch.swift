@@ -10,17 +10,6 @@ public struct StopwatchTickMsg: Message {
     let tag: Int
 }
 
-/// Internal message for starting or stopping the stopwatch.
-struct StopwatchStartStopMsg: Message {
-    let id: Int
-    let running: Bool
-}
-
-/// Internal message for resetting the stopwatch.
-struct StopwatchResetMsg: Message {
-    let id: Int
-}
-
 // MARK: - ID generation
 
 private let _stopwatchIDGenerator = IDGenerator()
@@ -69,22 +58,9 @@ public struct Stopwatch: Sendable {
         start()
     }
 
-    /// Handles tick, start/stop, and reset messages.
+    /// Handles tick messages.
     public mutating func update(_ msg: any Message) -> Command? {
         switch msg {
-        case let startStop as StopwatchStartStopMsg where startStop.id == _id:
-            _running = startStop.running
-            _tag += 1
-            if _running {
-                return tickCommand()
-            }
-            return nil
-
-        case let reset as StopwatchResetMsg where reset.id == _id:
-            _elapsed = .zero
-            _tag += 1
-            return nil
-
         case let tick as StopwatchTickMsg where tick.id == _id && tick.tag == _tag:
             guard _running else { return nil }
             _elapsed += interval
