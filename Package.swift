@@ -11,16 +11,43 @@ let package = Package(
             name: "Chai",
             targets: ["Chai"]
         ),
+        .library(
+            name: "Latte",
+            targets: ["Latte"]
+        ),
+        .library(
+            name: "Spices",
+            targets: ["Spices"]
+        ),
     ],
     targets: [
         .target(
             name: "Chai",
-            path: "Sources/Chai",
+            path: "Sources/Chai"
+        ),
+        .target(
+            name: "Latte",
+            path: "Sources/Latte"
+        ),
+        .target(
+            name: "Spices",
+            dependencies: ["Chai"],
+            path: "Sources/Spices"
         ),
         .testTarget(
             name: "ChaiTests",
             dependencies: ["Chai"],
             path: "Tests/ChaiTests"
+        ),
+        .testTarget(
+            name: "LatteTests",
+            dependencies: ["Latte"],
+            path: "Tests/LatteTests"
+        ),
+        .testTarget(
+            name: "SpicesTests",
+            dependencies: ["Spices"],
+            path: "Tests/SpicesTests"
         ),
         .executableTarget(
             name: "GroceryList",

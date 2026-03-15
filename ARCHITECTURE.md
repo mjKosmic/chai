@@ -2,6 +2,14 @@
 
 Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](https://github.com/charmbracelet/bubbletea). It implements the **Elm Architecture** (Model-Update-View) using modern Swift concurrency — `async`/`await`, actors, `AsyncStream`, and structured `Task`s — with zero external dependencies.
 
+The repository is a monorepo containing three libraries:
+
+| Library | Purpose | Dependencies |
+|---------|---------|--------------|
+| **Chai** | Core TUI framework (Elm Architecture runtime, input handling, rendering) | None |
+| **Latte** | Layout and styling primitives (borders, padding, alignment, wrapping, sizing) | None |
+| **Spices** | Pre-built interactive components (text input, lists, tables, spinners, timers, etc.) | Chai |
+
 ---
 
 ## Table of Contents
@@ -20,16 +28,18 @@ Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](http
    - [Renderer](#renderer)
    - [ANSICodes](#ansicodes)
    - [SignalHandler](#signalhandler)
-5. [Data Flow](#data-flow)
-6. [Concurrency Model](#concurrency-model)
-7. [Input Pipeline](#input-pipeline)
-8. [Rendering Pipeline](#rendering-pipeline)
-9. [Command Execution](#command-execution)
-10. [Signal Handling](#signal-handling)
-11. [Lifecycle](#lifecycle)
-12. [Testing Strategy](#testing-strategy)
-13. [Package Layout](#package-layout)
-14. [Design Decisions & Trade-offs](#design-decisions--trade-offs)
+5. [Latte — Layout & Styling Library](#latte--layout--styling-library)
+6. [Spices — Component Library](#spices--component-library)
+7. [Data Flow](#data-flow)
+8. [Concurrency Model](#concurrency-model)
+9. [Input Pipeline](#input-pipeline)
+10. [Rendering Pipeline](#rendering-pipeline)
+11. [Command Execution](#command-execution)
+12. [Signal Handling](#signal-handling)
+13. [Lifecycle](#lifecycle)
+14. [Testing Strategy](#testing-strategy)
+15. [Package Layout](#package-layout)
+16. [Design Decisions & Trade-offs](#design-decisions--trade-offs)
 
 ---
 
@@ -431,6 +441,70 @@ The two-step design for `SIGWINCH` (sentinel → runner queries size) is necessa
 
 ---
 
+## Latte — Layout & Styling Library
+
+**Path:** `Sources/Latte/`
+
+Latte is a standalone library (no dependency on Chai) that provides layout primitives and text styling utilities for building terminal UIs. It operates on plain strings (with ANSI escape code awareness) and produces styled string output.
+
+### Modules
+
+| Module | Files | Purpose |
+|--------|-------|---------|
+| **Borders** | `Border.swift`, `BorderRenderer.swift` | Render bordered boxes around text content. Supports rounded, normal, double, thick, ASCII, and hidden styles. Selective side rendering (top/bottom/left/right). |
+| **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction. |
+| **Composition** | `Join.swift`, `Place.swift` | Compose multiple blocks — horizontal and vertical joins with alignment control, absolute placement within a canvas. |
+| **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
+| **Utilities** | `TabExpansion.swift`, `StringLines.swift` | Tab-to-spaces expansion with configurable tab width, line splitting utilities. |
+| **Extensions** | `String+Layout.swift` | Chainable `String` extensions (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.placed()`, `.clamped()`, `.enforced()`, `.truncated()`, `.inlined()`, `.tabsExpanded()`). |
+
+### Design Notes
+
+- **ANSI-aware:** All width calculations and truncation functions correctly skip ANSI escape sequences (CSI, OSC, SS2, SS3) so that styling codes do not affect layout math.
+- **Pure functions:** Layout functions are stateless — they take a string and configuration, and return a new string. No side effects.
+- **Chainable API:** `String+Layout.swift` provides method-chaining extensions that mirror the free functions, enabling `"hello".padded(1).bordered().margined(1)`.
+
+---
+
+## Spices — Component Library
+
+**Path:** `Sources/Spices/`
+
+Spices provides pre-built, reusable interactive components built on top of Chai's Elm Architecture. Each component is a `struct` conforming to Chai's `Model` protocol (or designed to be embedded within a parent model).
+
+### Components
+
+| Component | File | Description |
+|-----------|------|-------------|
+| **TextInput** | `TextInput/TextInput.swift` | Single-line text input with cursor navigation, character limits, and focus/blur support. |
+| **TextArea** | `TextArea/TextArea.swift` | Multi-line text editing. |
+| **List** | `List/List.swift`, `List/FilterDelegate.swift` | Scrollable, selectable list with optional filtering/search. |
+| **Table** | `Table/Table.swift` | Tabular data display with column formatting. |
+| **Viewport** | `Viewport/Viewport.swift` | Scrollable content viewport with percentage-based scroll tracking. |
+| **Spinner** | `Spinner/Spinner.swift` | Animated loading spinner. |
+| **Progress** | `Progress/Progress.swift` | Progress bar with percentage display. |
+| **Timer** | `Timer/Timer.swift` | Countdown/elapsed timer with formatted display. |
+| **Stopwatch** | `Stopwatch/Stopwatch.swift` | Elapsed time tracking. |
+| **Paginator** | `Paginator/Paginator.swift` | Page navigation for paginated content. |
+| **FilePicker** | `FilePicker/FilePicker.swift` | File system browser. |
+| **Help** | `Help/Help.swift` | Keyboard shortcut help display. |
+| **KeyBinding** | `KeyBinding/KeyBinding.swift` | Declarative key binding matching with pattern support. |
+| **Cursor** | `Cursor/Cursor.swift` | Cursor position and shape management. |
+| **Style** | `Style/Style.swift`, `Style/Color.swift` | ANSI text styling (bold, foreground/background color, hex colors, 256-color, true color). |
+
+### Internal Utilities
+
+| File | Purpose |
+|------|---------|
+| `Internal/IDGenerator.swift` | Unique ID generation for component instances. |
+
+### Design Notes
+
+- **Depends on Chai only.** Spices imports `Chai` for the `Model`, `Message`, `Command`, and `KeyMsg` types. It does not depend on Latte.
+- **Composable.** Components are value types that can be embedded as fields within a parent model's `struct` and updated by delegating messages.
+
+---
+
 ## Data Flow
 
 ```
@@ -682,7 +756,7 @@ The `defer { terminal.disableRawMode() }` at the top of `run()` ensures the term
 
 ## Testing Strategy
 
-Tests live in `Tests/ChaiTests/` and use Swift Testing (`@Test`, `#expect`).
+Tests use Swift Testing (`@Test`, `#expect`) across three test targets.
 
 ### InputParserTests (35 tests)
 
@@ -722,6 +796,8 @@ Tests live in `Tests/ChaiTests/` and use Swift Testing (`@Test`, `#expect`).
 
 ### DisplayWidthTests (24 tests)
 
+**File:** `Tests/ChaiTests/RendererTests.swift`
+
 Tests cover:
 
 - Single character width calculation (ASCII → 1, CJK → 2, Hangul → 2, fullwidth → 2, control → 0)
@@ -755,34 +831,121 @@ Tests cover:
 - `.setWindowTitle` — produces the correct ANSI sequence
 - Integration: a `Model` that uses commands to update its state
 
+### LatteTests (Tests/LatteTests/)
+
+Tests cover all layout and styling modules:
+
+| Test file | Coverage |
+|-----------|----------|
+| `DisplayWidthTests.swift` | Character width calculation, ANSI-aware visible width, truncation |
+| `BorderTests.swift` | All border styles, selective sides, ANSI preservation, equatable |
+| `AlignmentTests.swift` | Left/center/right/fractional alignment, ANSI-aware padding, multi-line |
+| `PaddingTests.swift` | All-sides padding, shorthand constructors, custom fill characters, ANSI preservation |
+| `SizeTests.swift` | Width/height measurement, enforce/clamp dimensions, ANSI awareness |
+| `WrapTests.swift` | Word wrapping at spaces/hyphens/commas, wide characters, ANSI carry-over |
+| `InlineTests.swift` | First-line extraction, ANSI preservation, composition with other functions |
+| `JoinTests.swift` | Horizontal/vertical joins, alignment options, ANSI preservation |
+| `PlaceTests.swift` | Canvas placement, horizontal/vertical alignment, bordered content |
+| `StringExtensionTests.swift` | Chainable string extensions, composition chains |
+| `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
+
+### SpicesTests (Tests/SpicesTests/)
+
+| Test file | Coverage |
+|-----------|----------|
+| `SpicesTests.swift` | Component initialization, state management, view rendering, key binding matching, style rendering |
+
 ---
 
 ## Package Layout
 
 ```
 chai/
-├── Package.swift                        # swift-tools-version: 5.9
+├── Package.swift                        # swift-tools-version: 6.1.2
 │                                        # macOS 14+, StrictConcurrency enabled
 │
-├── Sources/Chai/
-│   ├── Chai.swift                    # Module documentation entry point
-│   ├── Core/
-│   │   ├── Model.swift                  # Model protocol
-│   │   ├── Message.swift                # Message protocol + built-in messages
-│   │   ├── Command.swift                # Command enum + convenience factories
-│   │   └── Program.swift                # Program<M>, ProgramRunner, SignalHandler
-│   ├── Terminal/
-│   │   ├── ANSICodes.swift              # ANSI/VT100 escape sequence constants
-│   │   ├── Terminal.swift               # TerminalOutput protocol + Terminal class
-│   │   ├── InputReader.swift            # Async stdin reader (background Thread)
-│   │   └── InputParser.swift            # Pure byte-sequence parser → KeyMsg
-│   └── Renderer/
-│       └── Renderer.swift               # Actor-based framerate diff renderer
+├── Sources/
+│   ├── Chai/                            # Core TUI framework
+│   │   ├── Chai.swift                   # Module documentation entry point
+│   │   ├── Core/
+│   │   │   ├── Model.swift              # Model protocol
+│   │   │   ├── Message.swift            # Message protocol + built-in messages
+│   │   │   ├── Command.swift            # Command enum + convenience factories
+│   │   │   └── Program.swift            # Program<M>, ProgramRunner, SignalHandler
+│   │   ├── Terminal/
+│   │   │   ├── ANSICodes.swift          # ANSI/VT100 escape sequence constants
+│   │   │   ├── Terminal.swift           # TerminalOutput protocol + Terminal class
+│   │   │   ├── InputReader.swift        # Async stdin reader (background Thread)
+│   │   │   └── InputParser.swift        # Pure byte-sequence parser → KeyMsg
+│   │   └── Renderer/
+│   │       └── Renderer.swift           # Actor-based framerate diff renderer
+│   │
+│   ├── Latte/                           # Layout & styling library (standalone)
+│   │   ├── Latte.swift                  # Module entry point
+│   │   ├── Borders/
+│   │   │   ├── Border.swift             # Border styles and configuration
+│   │   │   └── BorderRenderer.swift     # Border rendering logic
+│   │   ├── Layout/
+│   │   │   ├── Alignment.swift          # Horizontal/vertical/fractional alignment
+│   │   │   ├── Margin.swift             # Margin (outer spacing)
+│   │   │   ├── Padding.swift            # Padding (inner spacing)
+│   │   │   ├── Size.swift               # Width/height enforcement and clamping
+│   │   │   ├── Wrap.swift               # ANSI-aware word wrapping
+│   │   │   └── Inline.swift             # First-line extraction
+│   │   ├── Composition/
+│   │   │   ├── Join.swift               # Horizontal/vertical block joining
+│   │   │   └── Place.swift              # Absolute canvas placement
+│   │   ├── Measurement/
+│   │   │   └── DisplayWidth.swift       # Unicode-aware visible width
+│   │   ├── Utilities/
+│   │   │   ├── TabExpansion.swift        # Tab-to-spaces expansion
+│   │   │   └── StringLines.swift        # Line splitting utilities
+│   │   └── Extensions/
+│   │       └── String+Layout.swift      # Chainable String extensions
+│   │
+│   └── Spices/                          # Component library (depends on Chai)
+│       ├── Spices.swift                 # Module entry point
+│       ├── TextInput/TextInput.swift    # Single-line text input
+│       ├── TextArea/TextArea.swift      # Multi-line text editing
+│       ├── List/
+│       │   ├── List.swift               # Selectable list with filtering
+│       │   └── FilterDelegate.swift     # Filter behavior delegate
+│       ├── Table/Table.swift            # Tabular data display
+│       ├── Viewport/Viewport.swift      # Scrollable content viewport
+│       ├── Spinner/Spinner.swift        # Animated loading spinner
+│       ├── Progress/Progress.swift      # Progress bar
+│       ├── Timer/Timer.swift            # Countdown/elapsed timer
+│       ├── Stopwatch/Stopwatch.swift    # Elapsed time tracking
+│       ├── Paginator/Paginator.swift    # Page navigation
+│       ├── FilePicker/FilePicker.swift  # File system browser
+│       ├── Help/Help.swift              # Keyboard shortcut help
+│       ├── KeyBinding/KeyBinding.swift  # Declarative key binding matching
+│       ├── Cursor/Cursor.swift          # Cursor management
+│       ├── Style/
+│       │   ├── Style.swift              # ANSI text styling
+│       │   └── Color.swift              # Color definitions (hex, 256, true color)
+│       └── Internal/
+│           └── IDGenerator.swift        # Unique ID generation
 │
-├── Tests/ChaiTests/
-│   ├── InputParserTests.swift           # 35 tests
-│   ├── RendererTests.swift              # 61 tests (31 Renderer + 24 DisplayWidth + 6 ViewOutput)
-│   └── CommandTests.swift               # 10 tests
+├── Tests/
+│   ├── ChaiTests/
+│   │   ├── InputParserTests.swift       # 35 tests
+│   │   ├── RendererTests.swift          # 61 tests (Renderer + DisplayWidth + ViewOutput)
+│   │   └── CommandTests.swift           # 10 tests
+│   ├── LatteTests/                      # 11 test files covering all layout modules
+│   │   ├── DisplayWidthTests.swift
+│   │   ├── BorderTests.swift
+│   │   ├── AlignmentTests.swift
+│   │   ├── PaddingTests.swift
+│   │   ├── SizeTests.swift
+│   │   ├── WrapTests.swift
+│   │   ├── InlineTests.swift
+│   │   ├── JoinTests.swift
+│   │   ├── PlaceTests.swift
+│   │   ├── StringExtensionTests.swift
+│   │   └── TabExpansionTests.swift
+│   └── SpicesTests/
+│       └── SpicesTests.swift            # Component tests
 │
 └── Examples/
     └── GroceryList/
@@ -792,11 +955,15 @@ chai/
 
 **Package targets:**
 
-| Target | Type | Description |
-|--------|------|-------------|
-| `Chai` | library | The framework |
-| `ChaiTests` | test | Unit tests |
-| `GroceryList` | executable | Example app |
+| Target | Type | Dependencies | Description |
+|--------|------|-------------|-------------|
+| `Chai` | library | — | Core TUI framework |
+| `Latte` | library | — | Layout & styling primitives |
+| `Spices` | library | Chai | Pre-built interactive components |
+| `ChaiTests` | test | Chai | Core framework tests |
+| `LatteTests` | test | Latte | Layout & styling tests |
+| `SpicesTests` | test | Spices | Component tests |
+| `GroceryList` | executable | Chai | Example app |
 
 ---
 
