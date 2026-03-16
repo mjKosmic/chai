@@ -94,4 +94,66 @@ struct HyperlinkTests {
         let withoutLink = Style()
         #expect(withLink != withoutLink)
     }
+
+    // MARK: - Control-character sanitization (OSC injection prevention)
+
+    @Test func embeddedESCIsStrippedFromURL() {
+        // ESC (\u{1B}) would prematurely terminate the OSC sequence.
+        let style = Style().hyperlink("https://evil.com\u{1B}\\INJECTED")
+        let result = style.render("click")
+        // The rendered output must not contain the raw ESC followed by backslash
+        // inside the OSC parameter field. After stripping, the URL becomes
+        // "https://evil.com\\INJECTED" — the backslash is harmless on its own.
+        #expect(!result.contains("INJECTED\u{1B}]8;;"))
+        // The OSC open tag must contain only the sanitized URL
+        let openTag = "\u{1B}]8;;https://evil.com\\INJECTED\u{1B}\\"
+        #expect(result.hasPrefix(openTag))
+    }
+
+    @Test func embeddedBELIsStrippedFromURL() {
+        // BEL (\u{07}) is an alternative OSC string terminator.
+        let style = Style().hyperlink("https://evil.com\u{07}INJECTED")
+        let result = style.render("click")
+        let openTag = "\u{1B}]8;;https://evil.comINJECTED\u{1B}\\"
+        #expect(result.hasPrefix(openTag))
+    }
+
+    @Test func embeddedNULIsStrippedFromURL() {
+        let style = Style().hyperlink("https://x.com\u{00}payload")
+        let result = style.render("t")
+        #expect(result.hasPrefix("\u{1B}]8;;https://x.compayload\u{1B}\\"))
+    }
+
+    @Test func allC0ControlCharsAreStripped() {
+        // Build a URL containing every C0 control code (0x00–0x1F).
+        let controls = (0x00...0x1F).map { String(UnicodeScalar($0)!) }.joined()
+        let style = Style().hyperlink("https://x.com/\(controls)end")
+        let result = style.render("t")
+        // After stripping, the URL must contain no control characters.
+        #expect(result.hasPrefix("\u{1B}]8;;https://x.com/end\u{1B}\\"))
+    }
+
+    @Test func delCharIsStrippedFromURL() {
+        // DEL (0x7F) is also excluded.
+        let style = Style().hyperlink("https://x.com/\u{7F}end")
+        let result = style.render("t")
+        #expect(result.hasPrefix("\u{1B}]8;;https://x.com/end\u{1B}\\"))
+    }
+
+    @Test func cleanURLIsUnaffectedBySanitization() {
+        // A well-formed URL must pass through completely unchanged.
+        let url = "https://example.com/path?q=hello+world&lang=en#section"
+        let style = Style().hyperlink(url)
+        let result = style.render("click")
+        #expect(result.hasPrefix("\u{1B}]8;;\(url)\u{1B}\\"))
+    }
+
+    @Test func hyperlinkStoredVerbatimEquatableUnaffected() {
+        // The stored property keeps the raw string so Equatable comparisons
+        // are not affected by sanitization — sanitization is emission-only.
+        let raw = "https://x.com\u{1B}bad"
+        let style = Style().hyperlink(raw)
+        #expect(style.hyperlink == raw)
+        #expect(style == Style().hyperlink(raw))
+    }
 }

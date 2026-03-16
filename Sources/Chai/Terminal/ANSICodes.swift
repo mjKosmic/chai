@@ -142,11 +142,17 @@ enum ANSI {
     /// Terminals that do not support OSC 8 silently ignore the sequences and
     /// display the visible text as-is.
     ///
+    /// ASCII control characters (U+0000–U+001F and U+007F) are stripped from
+    /// `url` before the sequence is emitted. Embedded `ESC`, `BEL`, or `ST`
+    /// would prematurely terminate the OSC sequence and could inject arbitrary
+    /// escape sequences into the terminal stream.
+    ///
     /// ```
     /// ANSI.osc8(url: "https://example.com") + "click me" + ANSI.osc8Reset
     /// ```
     static func osc8(url: String) -> String {
-        "\u{1B}]8;;\(url)\u{1B}\\"
+        let safe = String(url.unicodeScalars.filter { $0.value >= 0x20 && $0.value != 0x7F })
+        return "\u{1B}]8;;\(safe)\u{1B}\\"
     }
 
     /// Closes an OSC 8 hyperlink sequence.

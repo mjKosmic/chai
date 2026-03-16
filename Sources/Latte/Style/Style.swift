@@ -232,7 +232,14 @@ public struct Style: Sendable, Equatable {
     /// the visible text only. Hyperlinks are omitted when rendering at the
     /// `.noColor` profile.
     ///
-    /// - Parameter url: The target URL for the hyperlink.
+    /// ASCII control characters (U+0000–U+001F and U+007F) are stripped from
+    /// `url` at render time. They must not appear in a well-formed OSC sequence
+    /// — any embedded `ESC`, `BEL`, or `ST` would prematurely terminate the
+    /// OSC 8 sequence and could inject arbitrary escape sequences into the
+    /// terminal stream.
+    ///
+    /// - Parameter url: The target URL for the hyperlink. Control characters
+    ///   are silently removed before the sequence is emitted.
     public func hyperlink(_ url: String) -> Style {
         var copy = self
         copy.hyperlink = url
@@ -287,8 +294,12 @@ public struct Style: Sendable, Equatable {
         guard let url = hyperlink else { return styled }
         // OSC 8 hyperlink: ESC]8;;<url>ST<styled-text>ESC]8;;ST
         // where ST (String Terminator) = ESC\
+        // The URL is sanitized before interpolation: any ASCII control character
+        // (U+0000–U+001F or U+007F) would prematurely terminate the OSC sequence
+        // and could inject additional escape sequences into the terminal stream.
         let st = "\u{1B}\\"
-        return "\u{1B}]8;;\(url)\(st)\(styled)\u{1B}]8;;\(st)"
+        let safeURL = Style.sanitizeOSCParam(url)
+        return "\u{1B}]8;;\(safeURL)\(st)\(styled)\u{1B}]8;;\(st)"
     }
 
     /// Wraps the given text in ANSI escape sequences for this style using the
@@ -325,6 +336,18 @@ public struct Style: Sendable, Equatable {
     }
 
     // MARK: - Internal
+
+    /// Strips ASCII control characters (U+0000–U+001F and U+007F) from an OSC
+    /// parameter string.
+    ///
+    /// OSC sequences are terminated by `BEL` (U+0007) or `ST` (`ESC \`,
+    /// U+001B U+005C). Any of those bytes — or any other C0 control character —
+    /// embedded in the parameter field would break the sequence and could allow
+    /// escape-sequence injection. Silently dropping them is the standard
+    /// mitigation used by terminal libraries (e.g. lipgloss).
+    private static func sanitizeOSCParam(_ value: String) -> String {
+        String(value.unicodeScalars.filter { $0.value >= 0x20 && $0.value != 0x7F })
+    }
 
     /// Collects the SGR parameter codes for all enabled attributes and colors,
     /// downsampling colors to the given profile.
