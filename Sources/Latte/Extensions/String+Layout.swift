@@ -96,6 +96,14 @@ extension String {
     /// Wraps ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``.
     ///
     /// ```swift
+    /// // Latte-only: raw ANSI escape codes
+    /// "Hello".bordered(.rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
+    ///
+    /// // With Spices (import Spices) — Style.render(_:) is (String) -> String
+    /// import Spices
+    /// let cyan = Style().foreground(.ansi(.cyan))
+    /// let red  = Style().foreground(.ansi(.red))
+    /// let blue = Style().foreground(.ansi(.blue))
     /// "Hello".bordered(.rounded, borderStyle: cyan.render)
     /// "Hello".bordered(.rounded, topStyle: red.render, bottomStyle: blue.render)
     /// ```

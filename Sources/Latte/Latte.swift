@@ -45,7 +45,8 @@
 /// // Latte-only: raw ANSI escape codes
 /// border("text", .rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
 ///
-/// // With Spices: pass Style.render directly
+/// // With Spices (import Spices) — Style.render(_:) is (String) -> String
+/// import Spices
 /// let cyan = Style().foreground(.ansi(.cyan))
 /// border("text", .rounded, borderStyle: cyan.render)
 ///

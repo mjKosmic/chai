@@ -175,6 +175,29 @@ public struct Style: Sendable, Equatable {
         return "\u{1B}[\(sequence)m\(text)\u{1B}[0m"
     }
 
+    /// Wraps the given text in ANSI escape sequences for this style using the
+    /// full ``ColorProfile/trueColor`` profile.
+    ///
+    /// This overload exists so that `style.render` can be used directly as a
+    /// `(String) -> String` closure — for example, as a border styling function:
+    ///
+    /// ```swift
+    /// import Spices
+    /// import Latte
+    ///
+    /// let cyan = Style().foreground(.ansi(.cyan))
+    /// border("Hello", .rounded, borderStyle: cyan.render)
+    /// ```
+    ///
+    /// It is equivalent to calling `render(_:profile:)` with the default
+    /// ``ColorProfile/trueColor`` profile.
+    ///
+    /// - Parameter text: The string to style.
+    /// - Returns: The styled string with ANSI escape codes.
+    public func render(_ text: String) -> String {
+        render(text, profile: .trueColor)
+    }
+
     /// Whether this style has any attributes or colors set.
     public var isEmpty: Bool {
         foreground == nil

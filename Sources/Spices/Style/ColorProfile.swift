@@ -1,3 +1,9 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+
 import Foundation
 
 /// Describes the color capability of the connected terminal.

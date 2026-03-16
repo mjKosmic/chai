@@ -151,7 +151,7 @@ struct ColorDownsamplingTests {
     @Test func ansiDownsampleReturnsAnsiCase() {
         let color = Color.trueColor(r: 255, g: 0, b: 0)
         let result = color.downsampled(to: .ansi)
-        if case .ansi = result {
+        if case .ansi? = result {
             // Good — downsampled to ANSI 16
         } else {
             #expect(Bool(false), "Expected .ansi case, got \(String(describing: result))")
@@ -161,7 +161,7 @@ struct ColorDownsamplingTests {
     @Test func ansi256DownsampleReturnsExtendedCase() {
         let color = Color.trueColor(r: 100, g: 200, b: 100)
         let result = color.downsampled(to: .ansi256)
-        if case .extended = result {
+        if case .extended? = result {
             // Good — downsampled to 256-color palette
         } else {
             #expect(Bool(false), "Expected .extended case, got \(String(describing: result))")

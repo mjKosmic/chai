@@ -24,11 +24,14 @@
 /// // Uniform cyan border (Latte-only, manual ANSI)
 /// border("Hello", .rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
 ///
-/// // With Spices Style — Style.render is already (String) -> String
+/// // With Spices (import Spices) — Style.render(_:) is (String) -> String
+/// import Spices
 /// let cyan = Style().foreground(.ansi(.cyan))
 /// border("Hello", .rounded, borderStyle: cyan.render)
 ///
 /// // Per-side styling
+/// let red  = Style().foreground(.ansi(.red))
+/// let blue = Style().foreground(.ansi(.blue))
 /// border("Hello", .rounded, topStyle: red.render, bottomStyle: blue.render)
 /// ```
 ///
@@ -106,7 +109,7 @@ public func border(
 // MARK: - Private
 
 /// Applies an optional styling closure to a border string segment.
-private func applyBorderStyle(_ text: String, _ style: ((String) -> String)?) -> String {
+private func applyBorderStyle(_ text: String, _ style: (@Sendable (String) -> String)?) -> String {
     guard let style else { return text }
     return style(text)
 }
