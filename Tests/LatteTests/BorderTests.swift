@@ -190,6 +190,81 @@ struct BorderTests {
         #expect(lines[2] == "*~~*")
     }
 
+    // MARK: - Styled borders
+
+    @Test func borderStyleAppliedToAllEdges() {
+        let cyan: @Sendable (String) -> String = { "\u{1B}[36m\($0)\u{1B}[0m" }
+        let result = border("Hi", .normal, borderStyle: cyan)
+        let lines = result.components(separatedBy: "\n")
+        // Top edge should be wrapped in cyan ANSI codes
+        #expect(lines[0].contains("\u{1B}[36m"))
+        #expect(lines[0].contains("\u{1B}[0m"))
+        // Left border on content line should be styled
+        #expect(lines[1].hasPrefix("\u{1B}[36m│\u{1B}[0m"))
+        // Content "Hi" must NOT be wrapped in cyan
+        #expect(lines[1].contains("Hi"))
+        // Bottom edge should be styled
+        #expect(lines[2].contains("\u{1B}[36m"))
+    }
+
+    @Test func borderStyleNilIsBackwardCompatible() {
+        let unstyled = border("Hi", .normal, borderStyle: nil)
+        let original = border("Hi", .normal)
+        #expect(unstyled == original)
+    }
+
+    @Test func perSideStyleOverridesBorderStyle() {
+        let red: @Sendable (String) -> String = { "R{\($0)}" }
+        let blue: @Sendable (String) -> String = { "B{\($0)}" }
+        let green: @Sendable (String) -> String = { "G{\($0)}" }
+
+        let result = border("X", .normal,
+                            borderStyle: green,
+                            topStyle: red,
+                            bottomStyle: blue)
+        let lines = result.components(separatedBy: "\n")
+        // Top edge uses red (topStyle overrides borderStyle)
+        #expect(lines[0].contains("R{"))
+        // Bottom edge uses blue (bottomStyle overrides borderStyle)
+        #expect(lines[2].contains("B{"))
+        // Left/right sides use green (fallback to borderStyle)
+        #expect(lines[1].hasPrefix("G{│}"))
+    }
+
+    @Test func cornersInheritHorizontalEdgeStyle() {
+        let top: @Sendable (String) -> String = { "T{\($0)}" }
+        let bottom: @Sendable (String) -> String = { "B{\($0)}" }
+        let result = border("X", .normal, topStyle: top, bottomStyle: bottom)
+        let lines = result.components(separatedBy: "\n")
+        // Top-left and top-right corners use topStyle
+        #expect(lines[0].hasPrefix("T{┌}"))
+        #expect(lines[0].hasSuffix("T{┐}"))
+        // Bottom-left and bottom-right corners use bottomStyle
+        #expect(lines[2].hasPrefix("B{└}"))
+        #expect(lines[2].hasSuffix("B{┘}"))
+    }
+
+    @Test func styledBorderVisibleWidthUnchanged() {
+        let cyan: @Sendable (String) -> String = { "\u{1B}[36m\($0)\u{1B}[0m" }
+        let unstyled = border("Hello", .rounded)
+        let styled = border("Hello", .rounded, borderStyle: cyan)
+        let unstyledLines = unstyled.components(separatedBy: "\n")
+        let styledLines = styled.components(separatedBy: "\n")
+        // Same number of lines
+        #expect(unstyledLines.count == styledLines.count)
+        // Same visible width on every line (ANSI codes don't count)
+        for (u, s) in zip(unstyledLines, styledLines) {
+            #expect(visibleWidth(of: u) == visibleWidth(of: s))
+        }
+    }
+
+    @Test func borderedExtensionWithStyling() {
+        let red: @Sendable (String) -> String = { "R{\($0)}" }
+        let result = "Hi".bordered(.normal, borderStyle: red)
+        let lines = result.components(separatedBy: "\n")
+        #expect(lines[0].contains("R{"))
+    }
+
     // MARK: - Equatable
 
     @Test func borderEquatable() {

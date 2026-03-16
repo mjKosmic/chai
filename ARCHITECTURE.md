@@ -451,7 +451,7 @@ Latte is a standalone library (no dependency on Chai) that provides layout primi
 
 | Module | Files | Purpose |
 |--------|-------|---------|
-| **Borders** | `Border.swift`, `BorderRenderer.swift` | Render bordered boxes around text content. Supports rounded, normal, double, thick, ASCII, and hidden styles. Selective side rendering (top/bottom/left/right). |
+| **Borders** | `Border.swift`, `BorderRenderer.swift` | Render bordered boxes around text content. Supports rounded, normal, double, thick, ASCII, and hidden styles. Selective side rendering (top/bottom/left/right). Optional styling closures (`borderStyle`, `topStyle`, `bottomStyle`, `leftStyle`, `rightStyle`) allow coloring border characters without introducing any dependency on Spices -- callers pass any `(String) -> String` closure, including `Style.render` from Spices. Per-side closures override the shared `borderStyle`; corners inherit the style of their horizontal edge (top or bottom). Content inside the border is never styled. |
 | **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction. |
 | **Composition** | `Join.swift`, `Place.swift` | Compose multiple blocks — horizontal and vertical joins with alignment control, absolute placement within a canvas. |
 | **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
@@ -463,6 +463,7 @@ Latte is a standalone library (no dependency on Chai) that provides layout primi
 - **ANSI-aware:** All width calculations and truncation functions correctly skip ANSI escape sequences (CSI, OSC, SS2, SS3) so that styling codes do not affect layout math.
 - **Pure functions:** Layout functions are stateless — they take a string and configuration, and return a new string. No side effects.
 - **Chainable API:** `String+Layout.swift` provides method-chaining extensions that mirror the free functions, enabling `"hello".padded(1).bordered().margined(1)`.
+- **Styling via closures:** Border rendering accepts optional `@Sendable (String) -> String` closures for styling border characters. This keeps Latte dependency-free while allowing any styling system (raw ANSI, Spices `Style.render`, etc.) to be plugged in at the call site.
 
 ---
 
@@ -490,7 +491,7 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 | **Help** | `Help/Help.swift` | Keyboard shortcut help display. |
 | **KeyBinding** | `KeyBinding/KeyBinding.swift` | Declarative key binding matching with pattern support. |
 | **Cursor** | `Cursor/Cursor.swift` | Cursor position and shape management. |
-| **Style** | `Style/Style.swift`, `Style/Color.swift` | ANSI text styling (bold, foreground/background color, hex colors, 256-color, true color). |
+| **Style** | `Style/Style.swift`, `Style/Color.swift`, `Style/ColorProfile.swift`, `Style/ColorPalette.swift` | ANSI text styling (bold, foreground/background color, hex colors, 256-color, true color). `ColorProfile` detects the terminal's color capability from environment variables and TTY state (`.noColor`, `.ansi`, `.ansi256`, `.trueColor`). `Color.downsampled(to:)` converts any color to the nearest representable color in a lower profile using squared Euclidean distance in RGB space. `Style.render(_:profile:)` accepts a `ColorProfile` parameter (defaulting to `.trueColor` for backward compatibility) and automatically downsamples colors before emitting SGR sequences; at `.noColor` all styling is stripped and raw text is returned. |
 
 ### Internal Utilities
 
@@ -502,6 +503,7 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 
 - **Depends on Chai only.** Spices imports `Chai` for the `Model`, `Message`, `Command`, and `KeyMsg` types. It does not depend on Latte.
 - **Composable.** Components are value types that can be embedded as fields within a parent model's `struct` and updated by delegating messages.
+- **Terminal-safe colors.** `ColorProfile.detect()` reads environment variables (`NO_COLOR`, `COLORTERM`, `TERM_PROGRAM`, `TERM`) and TTY state to determine color capability. `Style.render(_:profile:)` automatically downsamples colors to the detected profile, preventing garbled output on lower-capability terminals. The detection function accepts injectable parameters for unit testing without touching the real environment.
 
 ---
 

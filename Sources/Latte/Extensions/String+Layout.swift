@@ -93,15 +93,35 @@ extension String {
 
     /// Draws a border around this text block.
     ///
-    /// Wraps ``border(_:_:top:right:bottom:left:)``.
+    /// Wraps ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``.
+    ///
+    /// ```swift
+    /// // Latte-only: raw ANSI escape codes
+    /// "Hello".bordered(.rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
+    ///
+    /// // With Spices (import Spices) — Style.render(_:) is (String) -> String
+    /// import Spices
+    /// let cyan = Style().foreground(.ansi(.cyan))
+    /// let red  = Style().foreground(.ansi(.red))
+    /// let blue = Style().foreground(.ansi(.blue))
+    /// "Hello".bordered(.rounded, borderStyle: cyan.render)
+    /// "Hello".bordered(.rounded, topStyle: red.render, bottomStyle: blue.render)
+    /// ```
     public func bordered(
         _ style: Border = .rounded,
         top: Bool = true,
         right: Bool = true,
         bottom: Bool = true,
-        left: Bool = true
+        left: Bool = true,
+        borderStyle: (@Sendable (String) -> String)? = nil,
+        topStyle: (@Sendable (String) -> String)? = nil,
+        bottomStyle: (@Sendable (String) -> String)? = nil,
+        leftStyle: (@Sendable (String) -> String)? = nil,
+        rightStyle: (@Sendable (String) -> String)? = nil
     ) -> String {
-        border(self, style, top: top, right: right, bottom: bottom, left: left)
+        border(self, style, top: top, right: right, bottom: bottom, left: left,
+               borderStyle: borderStyle, topStyle: topStyle, bottomStyle: bottomStyle,
+               leftStyle: leftStyle, rightStyle: rightStyle)
     }
 
     // MARK: - Alignment

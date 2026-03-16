@@ -136,17 +136,66 @@ public struct Style: Sendable, Equatable {
 
     /// Wraps the given text in ANSI escape sequences for this style.
     ///
-    /// If no attributes or colors are set, returns the text unchanged.
+    /// Colors are automatically downsampled to match the given terminal
+    /// ``ColorProfile``. When `profile` is ``ColorProfile/noColor``, all
+    /// styling is stripped and the raw text is returned.
     ///
-    /// - Parameter text: The string to style.
-    /// - Returns: The styled string with ANSI escape codes.
-    public func render(_ text: String) -> String {
-        let params = sgrParameters()
+    /// The default profile of ``ColorProfile/trueColor`` preserves full
+    /// backward compatibility — existing callers that omit `profile` get
+    /// identical output to the previous API.
+    ///
+    /// ```swift
+    /// let style = Style().foreground(.trueColor(r: 255, g: 100, b: 50)).bold()
+    ///
+    /// // Full color (default)
+    /// style.render("Warning!")
+    ///
+    /// // Auto-detect terminal capability
+    /// let profile = ColorProfile.detect()
+    /// style.render("Warning!", profile: profile)
+    ///
+    /// // Force plain text (e.g. for file output)
+    /// style.render("Warning!", profile: .noColor)
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - text: The string to style.
+    ///   - profile: The terminal color profile to target. Defaults to
+    ///     ``ColorProfile/trueColor``.
+    /// - Returns: The styled string with ANSI escape codes, or the raw text
+    ///   when the profile is ``ColorProfile/noColor``.
+    public func render(_ text: String, profile: ColorProfile = .trueColor) -> String {
+        if profile == .noColor { return text }
+
+        let params = sgrParameters(profile: profile)
         if params.isEmpty {
             return text
         }
         let sequence = params.joined(separator: ";")
         return "\u{1B}[\(sequence)m\(text)\u{1B}[0m"
+    }
+
+    /// Wraps the given text in ANSI escape sequences for this style using the
+    /// full ``ColorProfile/trueColor`` profile.
+    ///
+    /// This overload exists so that `style.render` can be used directly as a
+    /// `(String) -> String` closure — for example, as a border styling function:
+    ///
+    /// ```swift
+    /// import Spices
+    /// import Latte
+    ///
+    /// let cyan = Style().foreground(.ansi(.cyan))
+    /// border("Hello", .rounded, borderStyle: cyan.render)
+    /// ```
+    ///
+    /// It is equivalent to calling `render(_:profile:)` with the default
+    /// ``ColorProfile/trueColor`` profile.
+    ///
+    /// - Parameter text: The string to style.
+    /// - Returns: The styled string with ANSI escape codes.
+    public func render(_ text: String) -> String {
+        render(text, profile: .trueColor)
     }
 
     /// Whether this style has any attributes or colors set.
@@ -159,14 +208,15 @@ public struct Style: Sendable, Equatable {
 
     // MARK: - Internal
 
-    /// Collects the SGR parameter codes for all enabled attributes and colors.
-    private func sgrParameters() -> [String] {
+    /// Collects the SGR parameter codes for all enabled attributes and colors,
+    /// downsampling colors to the given profile.
+    private func sgrParameters(profile: ColorProfile = .trueColor) -> [String] {
         var params: [String] = []
 
-        if let fg = foreground {
+        if let fg = foreground?.downsampled(to: profile) {
             params.append(fg.fgCode)
         }
-        if let bg = background {
+        if let bg = background?.downsampled(to: profile) {
             params.append(bg.bgCode)
         }
         if isBold { params.append("1") }
