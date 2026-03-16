@@ -319,8 +319,7 @@ public struct Style: Sendable, Equatable {
         foreground == nil
             && background == nil
             && !isBold && !isDim && !isItalic
-            && underlineStyle == .none
-            && underlineColor == nil
+            && (underlineStyle == .none || underlineColor == nil)
             && !isStrikethrough && !isReverse && !isBlink
             && hyperlink == nil
     }
@@ -345,7 +344,8 @@ public struct Style: Sendable, Equatable {
         if isBlink { params.append("5") }
         if isReverse { params.append("7") }
         if isStrikethrough { params.append("9") }
-        if let ulColor = underlineColor?.downsampled(to: profile) {
+        if underlineStyle != .none,
+           let ulColor = underlineColor?.downsampled(to: profile) {
             params.append(ulColor.ulCode)
         }
 
