@@ -1,8 +1,8 @@
-/// Latte — Terminal layout library for Swift.
+/// Latte — Terminal layout and styling library for Swift.
 ///
-/// Latte provides composable, string-based layout primitives for building
-/// terminal UIs. It is framework-agnostic: functions accept plain `String`
-/// values and return plain `String` values, so they work with any TUI
+/// Latte provides composable, string-based layout primitives and ANSI text
+/// styling for building terminal UIs. It is framework-agnostic: functions
+/// accept and return plain `String` values, so they work with any TUI
 /// framework (or no framework at all).
 ///
 /// ## Core concepts
@@ -11,6 +11,26 @@
 /// sequences. Every measurement operation uses ``visibleWidth(of:)`` to count
 /// only printable terminal columns, so styled text (bold, colored, etc.) is
 /// handled transparently.
+///
+/// ## Styling
+///
+/// ``Style`` is a composable value type that builds ANSI SGR sequences for
+/// colors and text attributes. ``Color`` supports ANSI 16, extended 256-color,
+/// and 24-bit true color, with automatic downsampling to match the connected
+/// terminal via ``ColorProfile``.
+///
+/// ```swift
+/// let warning = Style().foreground(.ansi(.yellow)).bold()
+/// let output  = warning.render("Caution!")
+/// // → \e[33;1mCaution!\e[0m
+///
+/// // Auto-detect terminal capability and downsample colors automatically
+/// let profile = ColorProfile.detect()
+/// let safe    = warning.render("Caution!", profile: profile)
+///
+/// // Strip all styling for piped / file output
+/// let plain   = warning.render("Caution!", profile: .noColor)  // "Caution!"
+/// ```
 ///
 /// ## Typical usage
 ///
@@ -38,35 +58,35 @@
 ///
 /// ## Styled borders
 ///
-/// Border characters can be styled with closures, keeping Latte free of
-/// any dependency on Spices or any other styling library:
+/// Pass a ``Style`` directly to any border parameter — no closures needed:
 ///
 /// ```swift
-/// // Latte-only: raw ANSI escape codes
-/// border("text", .rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
-///
-/// // With Spices (import Spices) — Style.render(_:) is (String) -> String
-/// import Spices
 /// let cyan = Style().foreground(.ansi(.cyan))
-/// border("text", .rounded, borderStyle: cyan.render)
+/// let red  = Style().foreground(.ansi(.red))
+/// let blue = Style().foreground(.ansi(.blue))
 ///
-/// // Per-side styling (top = red, bottom = blue)
-/// "text".bordered(.rounded,
-///     topStyle:    { "\u{1B}[31m\($0)\u{1B}[0m" },
-///     bottomStyle: { "\u{1B}[34m\($0)\u{1B}[0m" })
+/// // Uniform border color
+/// border("text", .rounded, borderStyle: cyan)
+///
+/// // Per-side styling
+/// border("text", .rounded, topStyle: red, bottomStyle: blue)
+///
+/// // Chainable
+/// "text".bordered(.rounded, borderStyle: cyan)
 /// ```
 ///
 /// ## Module organisation
 ///
-/// | Group | Functions |
+/// | Group | Types / Functions |
 /// |---|---|
+/// | **Styling** | ``Style``, ``Color``, ``ANSIColor``, ``ColorProfile`` |
 /// | **Measurement** | ``visibleWidth(of:)``, ``height(of:)``, ``size(of:)``, ``truncateToVisibleWidth(_:maxWidth:)`` |
 /// | **Alignment** | ``align(_:width:_:)`` |
-/// | **Padding** | ``pad(_:top:right:bottom:left:)`` (and variants with ``fill:``), ``pad(_:_:)``, ``pad(_:_:_:)``, ``pad(_:_:_:_:)`` |
-/// | **Margin** | ``margin(_:top:right:bottom:left:)`` (and variants with ``fill:``), ``margin(_:_:)``, ``margin(_:_:_:)``, ``margin(_:_:_:_:)`` |
+/// | **Padding** | ``pad(_:top:right:bottom:left:fill:)`` and shorthand overloads |
+/// | **Margin** | ``margin(_:top:right:bottom:left:fill:)`` and shorthand overloads |
 /// | **Size** | ``enforceWidth(_:_:alignment:)``, ``enforceHeight(_:_:alignment:)``, ``clampWidth(_:_:)``, ``clampHeight(_:_:)``, ``clamp(_:maxWidth:maxHeight:)`` |
 /// | **Borders** | ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``, ``Border`` |
 /// | **Utilities** | ``expandTabs(_:tabWidth:)``, ``inline(_:)``, ``wrap(_:width:breakCharacter:)`` |
 /// | **Composition** | ``joinHorizontal(_:_:)-5h7fk``, ``joinVertical(_:_:)-3zco8``, ``place(width:height:horizontal:vertical:_:)``, ``placeHorizontal(width:_:_:)``, ``placeVertical(height:_:_:)`` |
-/// | **String Extensions** | Chainable versions of all the above, including `fill:` variants of `.padded()` / `.margined()` and `.wrapped()`: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.placed()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |
+/// | **String Extensions** | Chainable versions of all the above: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.placed()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |
 public enum Latte {}

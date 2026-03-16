@@ -8,31 +8,32 @@
 /// to the width of the widest line), then the chosen sides are drawn. Corners
 /// appear only where two adjacent enabled sides meet.
 ///
-/// Border characters can optionally be styled using closure parameters. Each
-/// closure receives a border character string and returns the styled version.
-/// This design keeps Latte dependency-free while allowing any styling system
-/// (such as Spices' `Style.render`) to be plugged in:
+/// Border characters can optionally be styled using ``Style`` parameters.
+/// Per-side styles override the shared `borderStyle` for that side; corners
+/// inherit the style of their horizontal edge (top or bottom). Content inside
+/// the border is never styled.
 ///
 /// ```swift
-/// // Unstyled (unchanged from previous API)
+/// // Unstyled
 /// border("Hello\nWorld", .rounded)
 /// // ╭───────╮
 /// // │ Hello │
 /// // │ World │
 /// // ╰───────╯
 ///
-/// // Uniform cyan border (Latte-only, manual ANSI)
-/// border("Hello", .rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
-///
-/// // With Spices (import Spices) — Style.render(_:) is (String) -> String
-/// import Spices
-/// let cyan = Style().foreground(.ansi(.cyan))
-/// border("Hello", .rounded, borderStyle: cyan.render)
+/// // Uniform cyan border
+/// border("Hello", .rounded, borderStyle: Style().foreground(.ansi(.cyan)))
 ///
 /// // Per-side styling
-/// let red  = Style().foreground(.ansi(.red))
-/// let blue = Style().foreground(.ansi(.blue))
-/// border("Hello", .rounded, topStyle: red.render, bottomStyle: blue.render)
+/// border("Hello", .rounded,
+///     topStyle:    Style().foreground(.ansi(.red)),
+///     bottomStyle: Style().foreground(.ansi(.blue)))
+///
+/// // Terminal-capability-safe: detect once, pass everywhere
+/// let profile = ColorProfile.detect()
+/// border("Hello", .rounded,
+///     borderStyle: Style().foreground(.trueColor(r: 120, g: 80, b: 255)),
+///     profile: profile)
 /// ```
 ///
 /// - Parameters:
@@ -42,16 +43,20 @@
 ///   - right: Whether to draw the right edge. Defaults to `true`.
 ///   - bottom: Whether to draw the bottom edge. Defaults to `true`.
 ///   - left: Whether to draw the left edge. Defaults to `true`.
-///   - borderStyle: Styling closure applied to all border characters.
-///     Per-side styles override this when provided. Defaults to `nil`.
-///   - topStyle: Styling closure for the top edge. Overrides `borderStyle`
-///     for the top bar and top corners.
-///   - bottomStyle: Styling closure for the bottom edge. Overrides
-///     `borderStyle` for the bottom bar and bottom corners.
-///   - leftStyle: Styling closure for the left edge. Overrides `borderStyle`
-///     for left-side characters on content lines.
-///   - rightStyle: Styling closure for the right edge. Overrides `borderStyle`
-///     for right-side characters on content lines.
+///   - borderStyle: ``Style`` applied to all border characters. Per-side
+///     styles override this when provided. Defaults to `nil` (unstyled).
+///   - topStyle: ``Style`` for the top edge and top corners. Overrides
+///     `borderStyle` for those characters.
+///   - bottomStyle: ``Style`` for the bottom edge and bottom corners. Overrides
+///     `borderStyle` for those characters.
+///   - leftStyle: ``Style`` for the left edge on content lines. Overrides
+///     `borderStyle` for those characters.
+///   - rightStyle: ``Style`` for the right edge on content lines. Overrides
+///     `borderStyle` for those characters.
+///   - profile: The ``ColorProfile`` used when rendering border styles.
+///     Colors are downsampled to fit the terminal's capability. Defaults to
+///     `.trueColor` for backward compatibility — pass `ColorProfile.detect()`
+///     to enable terminal-safe color rendering.
 /// - Returns: The bordered string, with lines joined by `\n`.
 public func border(
     _ text: String,
@@ -60,11 +65,12 @@ public func border(
     right: Bool = true,
     bottom: Bool = true,
     left: Bool = true,
-    borderStyle: (@Sendable (String) -> String)? = nil,
-    topStyle: (@Sendable (String) -> String)? = nil,
-    bottomStyle: (@Sendable (String) -> String)? = nil,
-    leftStyle: (@Sendable (String) -> String)? = nil,
-    rightStyle: (@Sendable (String) -> String)? = nil
+    borderStyle: Style? = nil,
+    topStyle: Style? = nil,
+    bottomStyle: Style? = nil,
+    leftStyle: Style? = nil,
+    rightStyle: Style? = nil,
+    profile: ColorProfile = .trueColor
 ) -> String {
     let lines = splitLines(text)
     let contentWidth = maxVisibleWidth(of: lines)
@@ -72,34 +78,34 @@ public func border(
     // Normalise content into a uniform-width rectangular block.
     let uniformLines = lines.map { padLineRight($0, toWidth: contentWidth) }
 
-    // Resolve effective styling closures per position.
-    let effectiveTop = topStyle ?? borderStyle
+    // Resolve effective styling per position.
+    let effectiveTop    = topStyle    ?? borderStyle
     let effectiveBottom = bottomStyle ?? borderStyle
-    let effectiveLeft = leftStyle ?? borderStyle
-    let effectiveRight = rightStyle ?? borderStyle
+    let effectiveLeft   = leftStyle   ?? borderStyle
+    let effectiveRight  = rightStyle  ?? borderStyle
 
     var result: [String] = []
 
     // Top edge
     if top {
-        let bar = applyBorderStyle(String(repeating: style.top, count: contentWidth), effectiveTop)
-        let tl = left ? applyBorderStyle(style.topLeft, effectiveTop) : ""
-        let tr = right ? applyBorderStyle(style.topRight, effectiveTop) : ""
+        let bar = applyBorderStyle(String(repeating: style.top, count: contentWidth), effectiveTop, profile)
+        let tl = left  ? applyBorderStyle(style.topLeft,  effectiveTop, profile) : ""
+        let tr = right ? applyBorderStyle(style.topRight, effectiveTop, profile) : ""
         result.append(tl + bar + tr)
     }
 
     // Content lines with optional left/right borders
     for line in uniformLines {
-        let l = left ? applyBorderStyle(style.left, effectiveLeft) : ""
-        let r = right ? applyBorderStyle(style.right, effectiveRight) : ""
+        let l = left  ? applyBorderStyle(style.left,  effectiveLeft,  profile) : ""
+        let r = right ? applyBorderStyle(style.right, effectiveRight, profile) : ""
         result.append(l + line + r)
     }
 
     // Bottom edge
     if bottom {
-        let bar = applyBorderStyle(String(repeating: style.bottom, count: contentWidth), effectiveBottom)
-        let bl = left ? applyBorderStyle(style.bottomLeft, effectiveBottom) : ""
-        let br = right ? applyBorderStyle(style.bottomRight, effectiveBottom) : ""
+        let bar = applyBorderStyle(String(repeating: style.bottom, count: contentWidth), effectiveBottom, profile)
+        let bl = left  ? applyBorderStyle(style.bottomLeft,  effectiveBottom, profile) : ""
+        let br = right ? applyBorderStyle(style.bottomRight, effectiveBottom, profile) : ""
         result.append(bl + bar + br)
     }
 
@@ -108,8 +114,8 @@ public func border(
 
 // MARK: - Private
 
-/// Applies an optional styling closure to a border string segment.
-private func applyBorderStyle(_ text: String, _ style: (@Sendable (String) -> String)?) -> String {
+/// Applies an optional ``Style`` to a border string segment using the given color profile.
+private func applyBorderStyle(_ text: String, _ style: Style?, _ profile: ColorProfile) -> String {
     guard let style else { return text }
-    return style(text)
+    return style.render(text, profile: profile)
 }

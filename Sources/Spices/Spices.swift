@@ -24,13 +24,30 @@
 /// | ``FilePicker`` | Filesystem browser |
 /// | ``Cursor`` | Blinking text cursor |
 ///
-/// ## Foundation
+/// ## Styling & Layout
 ///
-/// | Module | Description |
-/// |--------|-------------|
-/// | ``Style`` | ANSI color and text attribute styling |
-/// | ``Color`` | Terminal color specification (ANSI 16, 256, true color) with ``Color/downsampled(to:)`` |
-/// | ``ColorProfile`` | Terminal color capability detection and comparison |
+/// `Style`, `Color`, and `ColorProfile` live in **Latte**, which Spices
+/// depends on. To use these types in your own code, add the `Latte` product
+/// as a dependency and import it explicitly:
+///
+/// ```swift
+/// import Chai
+/// import Latte
+/// import Spices
+///
+/// let profile = ColorProfile.detect()
+/// let style   = Style().foreground(.trueColor(r: 255, g: 100, b: 50)).bold()
+/// let output  = style.render("Warning!", profile: profile)
+/// let plain   = style.render("Warning!", profile: .noColor)  // "Warning!"
+/// ```
+///
+/// Layout primitives (`border`, `pad`, `align`, etc.) also live in Latte and
+/// accept `Style` values natively — no closure adapters needed.
+///
+/// ## Key Bindings
+///
+/// | Type | Description |
+/// |------|-------------|
 /// | ``KeyBinding`` | Configurable keybinding definitions |
 ///
 /// ## Terminal Color Safety

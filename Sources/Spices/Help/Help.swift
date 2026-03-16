@@ -1,5 +1,5 @@
 import Chai
-
+import Latte
 // MARK: - HelpKeyMap Protocol
 
 /// A protocol for types that provide keybinding information for the help view.
