@@ -17,6 +17,7 @@
 /// | ``Paginator`` | Page navigation state and rendering |
 /// | ``Table`` | Interactive data table |
 /// | ``List`` | Browsable list with filtering |
+/// | ``SelectableList`` | Multi-select list with configurable runes |
 /// | ``Help`` | Keybinding help renderer |
 /// | ``Timer`` | Countdown timer |
 /// | ``Stopwatch`` | Elapsed-time counter |

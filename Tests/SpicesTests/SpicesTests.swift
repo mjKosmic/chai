@@ -476,6 +476,267 @@ struct ListTests {
     }
 }
 
+@Suite("SelectableList")
+struct SelectableListTests {
+    struct Fruit: ListItem {
+        let name: String
+        func filterValue() -> String { name }
+    }
+
+    private func makeItems(_ names: String...) -> [any ListItem] {
+        names.map { Fruit(name: $0) }
+    }
+
+    // MARK: Initialization
+
+    @Test func emptyListHasNoCursor() {
+        let list = SelectableList()
+        #expect(list.cursorItem == nil)
+        #expect(list.selectedIndices.isEmpty)
+    }
+
+    @Test func itemsAreStoredInOrder() {
+        let list = SelectableList(items: makeItems("Apple", "Banana", "Cherry"))
+        #expect(list.items.count == 3)
+        #expect(list.items[1].filterValue() == "Banana")
+    }
+
+    @Test func defaultRunesAreCircles() {
+        let styles = SelectableListStyles()
+        #expect(styles.unselectedRune == "○")
+        #expect(styles.selectedRune == "●")
+    }
+
+    // MARK: Navigation
+
+    @Test func cursorStartsAtZero() {
+        let list = SelectableList(items: makeItems("A", "B", "C"))
+        #expect(list.cursorIndex == 0)
+        #expect(list.cursorItem?.filterValue() == "A")
+    }
+
+    @Test func cursorDownAdvancesOne() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        _ = list.update(KeyMsg(type: .down))
+        #expect(list.cursorIndex == 1)
+    }
+
+    @Test func cursorUpDecrements() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        _ = list.update(KeyMsg(type: .down))
+        _ = list.update(KeyMsg(type: .up))
+        #expect(list.cursorIndex == 0)
+    }
+
+    @Test func cursorDoesNotGoBelowZero() {
+        var list = SelectableList(items: makeItems("A", "B"))
+        _ = list.update(KeyMsg(type: .up))
+        #expect(list.cursorIndex == 0)
+    }
+
+    @Test func cursorDoesNotExceedLastItem() {
+        var list = SelectableList(items: makeItems("A", "B"))
+        _ = list.update(KeyMsg(type: .down))
+        _ = list.update(KeyMsg(type: .down))
+        _ = list.update(KeyMsg(type: .down))
+        #expect(list.cursorIndex == 1)
+    }
+
+    @Test func viBindingsWork() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        _ = list.update(KeyMsg(type: .runes, runes: ["j"]))
+        #expect(list.cursorIndex == 1)
+        _ = list.update(KeyMsg(type: .runes, runes: ["k"]))
+        #expect(list.cursorIndex == 0)
+    }
+
+    @Test func infiniteScrollingWrapsDown() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        list.infiniteScrolling = true
+        _ = list.update(KeyMsg(type: .down))
+        _ = list.update(KeyMsg(type: .down))
+        _ = list.update(KeyMsg(type: .down)) // wraps back to 0
+        #expect(list.cursorIndex == 0)
+    }
+
+    @Test func infiniteScrollingWrapsUp() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        list.infiniteScrolling = true
+        _ = list.update(KeyMsg(type: .up)) // wraps to last
+        #expect(list.cursorIndex == 2)
+    }
+
+    // MARK: Selection
+
+    @Test func spaceTogglesSelection() {
+        var list = SelectableList(items: makeItems("A", "B"))
+        _ = list.update(KeyMsg(type: .space))
+        #expect(list.selectedIndices.contains(0))
+        _ = list.update(KeyMsg(type: .space))
+        #expect(!list.selectedIndices.contains(0))
+    }
+
+    @Test func selectedItemsReturnInIndexOrder() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        _ = list.update(KeyMsg(type: .down))
+        _ = list.update(KeyMsg(type: .space)) // select index 1
+        _ = list.update(KeyMsg(type: .up))
+        _ = list.update(KeyMsg(type: .space)) // select index 0
+        let names = list.selectedItems.map { $0.filterValue() }
+        #expect(names == ["A", "B"])
+    }
+
+    @Test func selectAllSelectsEverything() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        _ = list.update(KeyMsg(type: .ctrl("a")))
+        #expect(list.selectedIndices.count == 3)
+    }
+
+    @Test func deselectAllClearsSelection() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        list.selectAll()
+        _ = list.update(KeyMsg(type: .escape))
+        #expect(list.selectedIndices.isEmpty)
+    }
+
+    @Test func toggleSelectionAtIndex() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        list.toggleSelection(at: 2)
+        #expect(list.selectedIndices == [2])
+        list.toggleSelection(at: 2)
+        #expect(list.selectedIndices.isEmpty)
+    }
+
+    @Test func toggleOutOfRangeIsNoop() {
+        var list = SelectableList(items: makeItems("A"))
+        list.toggleSelection(at: 99)
+        #expect(list.selectedIndices.isEmpty)
+    }
+
+    // MARK: setCursor / setItems
+
+    @Test func setCursorClampsToRange() {
+        var list = SelectableList(items: makeItems("A", "B", "C"))
+        list.setCursor(100)
+        #expect(list.cursorIndex == 2)
+        list.setCursor(-5)
+        #expect(list.cursorIndex == 0)
+    }
+
+    @Test func setItemsResetsState() {
+        var list = SelectableList(items: makeItems("A", "B"))
+        list.selectAll()
+        _ = list.update(KeyMsg(type: .down))
+        list.setItems(makeItems("X", "Y", "Z"))
+        #expect(list.cursorIndex == 0)
+        #expect(list.selectedIndices.isEmpty)
+        #expect(list.items.count == 3)
+    }
+
+    // MARK: Scrolling
+
+    @Test func viewportScrollsWithCursor() {
+        var list = SelectableList(items: makeItems("A", "B", "C", "D", "E"), height: 2)
+        // Move cursor to index 3
+        for _ in 0..<3 { _ = list.update(KeyMsg(type: .down)) }
+        let output = list.view().content
+        #expect(output.contains("D"))
+        #expect(!output.contains("A"))
+    }
+
+    @Test func viewportScrollsBackUp() {
+        var list = SelectableList(items: makeItems("A", "B", "C", "D", "E"), height: 2)
+        for _ in 0..<4 { _ = list.update(KeyMsg(type: .down)) }
+        for _ in 0..<4 { _ = list.update(KeyMsg(type: .up)) }
+        let output = list.view().content
+        #expect(output.contains("A"))
+    }
+
+    // MARK: View rendering
+
+    @Test func viewContainsUnselectedRuneByDefault() {
+        let list = SelectableList(items: makeItems("Alpha"))
+        let output = list.view().content
+        #expect(output.contains("○"))
+    }
+
+    @Test func viewContainsSelectedRuneWhenSelected() {
+        var list = SelectableList(items: makeItems("Alpha"))
+        _ = list.update(KeyMsg(type: .space))
+        let output = list.view().content
+        #expect(output.contains("●"))
+    }
+
+    @Test func viewShowsNoItemsWhenEmpty() {
+        let list = SelectableList()
+        let output = list.view().content
+        #expect(output.contains("No items."))
+    }
+
+    @Test func viewRendersAllVisibleItems() {
+        let list = SelectableList(items: makeItems("Apple", "Banana", "Cherry"), height: 10)
+        let output = list.view().content
+        #expect(output.contains("Apple"))
+        #expect(output.contains("Banana"))
+        #expect(output.contains("Cherry"))
+    }
+
+    @Test func customRunesAppearInView() {
+        var list = SelectableList(items: makeItems("Item"))
+        list.styles.selectedRune = "✓"
+        list.styles.unselectedRune = "✗"
+        _ = list.update(KeyMsg(type: .space))
+        let output = list.view().content
+        #expect(output.contains("✓"))
+    }
+
+    @Test func longItemTextIsTruncated() {
+        let longName = String(repeating: "x", count: 100)
+        let list = SelectableList(items: makeItems(longName), width: 10)
+        let output = list.view().content
+        // Output must be truncated — raw name should not appear verbatim
+        #expect(!output.contains(longName))
+        #expect(output.contains("…"))
+    }
+
+    // MARK: Quit commands
+
+    @Test func quitBindingReturnsQuit() {
+        var list = SelectableList(items: makeItems("A"))
+        let cmd = list.update(KeyMsg(type: .runes, runes: ["q"]))
+        #expect(cmd != nil)
+        if case .quit = cmd! { } else {
+            #expect(Bool(false), "Expected .quit command")
+        }
+    }
+
+    @Test func forceQuitReturnsQuit() {
+        var list = SelectableList(items: makeItems("A"))
+        let cmd = list.update(KeyMsg(type: .ctrl("c")))
+        #expect(cmd != nil)
+        if case .quit = cmd! { } else {
+            #expect(Bool(false), "Expected .quit command")
+        }
+    }
+
+    // MARK: Window resize
+
+    @Test func windowSizeMsgUpdatesDimensions() {
+        var list = SelectableList(items: makeItems("A", "B", "C", "D", "E"), height: 2)
+        _ = list.update(WindowSizeMsg(width: 80, height: 20))
+        // After resize to height 20 all items should be visible
+        let output = list.view().content
+        #expect(output.contains("E"))
+    }
+
+    // MARK: Initialize
+
+    @Test func initializeReturnsNil() {
+        let list = SelectableList()
+        #expect(list.initialize() == nil)
+    }
+}
+
 @Suite("Help")
 struct HelpTests {
     struct TestKeyMap: HelpKeyMap {
