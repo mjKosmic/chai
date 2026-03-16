@@ -93,7 +93,7 @@ extension String {
 
     /// Draws a border around this text block.
     ///
-    /// Wraps ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``.
+    /// Wraps ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:profile:)``.
     ///
     /// ```swift
     /// "Hello".bordered(.rounded)
@@ -103,6 +103,10 @@ extension String {
     /// let blue = Style().foreground(.ansi(.blue))
     /// "Hello".bordered(.rounded, borderStyle: cyan)
     /// "Hello".bordered(.rounded, topStyle: red, bottomStyle: blue)
+    ///
+    /// // Terminal-capability-safe
+    /// let profile = ColorProfile.detect()
+    /// "Hello".bordered(.rounded, borderStyle: cyan, profile: profile)
     /// ```
     public func bordered(
         _ style: Border = .rounded,
@@ -114,11 +118,12 @@ extension String {
         topStyle: Style? = nil,
         bottomStyle: Style? = nil,
         leftStyle: Style? = nil,
-        rightStyle: Style? = nil
+        rightStyle: Style? = nil,
+        profile: ColorProfile = .trueColor
     ) -> String {
         border(self, style, top: top, right: right, bottom: bottom, left: left,
                borderStyle: borderStyle, topStyle: topStyle, bottomStyle: bottomStyle,
-               leftStyle: leftStyle, rightStyle: rightStyle)
+               leftStyle: leftStyle, rightStyle: rightStyle, profile: profile)
     }
 
     // MARK: - Alignment

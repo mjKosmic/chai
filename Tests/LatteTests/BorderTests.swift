@@ -268,6 +268,31 @@ struct BorderTests {
         #expect(lines[0].contains("31"))
     }
 
+    @Test func noColorProfileStripsAllBorderStyling() {
+        // A trueColor style at .noColor profile must produce unstyled border characters
+        let purple = Style().foreground(.trueColor(r: 120, g: 80, b: 255))
+        let styled   = border("Hi", .normal, borderStyle: purple, profile: .noColor)
+        let unstyled = border("Hi", .normal)
+        #expect(styled == unstyled)
+    }
+
+    @Test func ansiProfileDownsamplesTrueColorBorderStyle() {
+        // A trueColor style at .ansi profile must emit a 16-color code, not 38;2;...
+        let trueBlue = Style().foreground(.trueColor(r: 0, g: 0, b: 255))
+        let result = border("Hi", .normal, borderStyle: trueBlue, profile: .ansi)
+        #expect(!result.contains("38;2;"))
+        #expect(!result.contains("38;5;"))
+        // Should contain some ANSI SGR code (the downsampled 16-color blue)
+        #expect(result.contains("\u{1B}["))
+    }
+
+    @Test func borderedExtensionForwardsProfile() {
+        let purple = Style().foreground(.trueColor(r: 120, g: 80, b: 255))
+        let viaFree      = border("Hi", .normal, borderStyle: purple, profile: .noColor)
+        let viaExtension = "Hi".bordered(.normal, borderStyle: purple, profile: .noColor)
+        #expect(viaFree == viaExtension)
+    }
+
     // MARK: - Equatable
 
     @Test func borderEquatable() {

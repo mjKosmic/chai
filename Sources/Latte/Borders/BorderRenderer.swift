@@ -28,6 +28,12 @@
 /// border("Hello", .rounded,
 ///     topStyle:    Style().foreground(.ansi(.red)),
 ///     bottomStyle: Style().foreground(.ansi(.blue)))
+///
+/// // Terminal-capability-safe: detect once, pass everywhere
+/// let profile = ColorProfile.detect()
+/// border("Hello", .rounded,
+///     borderStyle: Style().foreground(.trueColor(r: 120, g: 80, b: 255)),
+///     profile: profile)
 /// ```
 ///
 /// - Parameters:
@@ -47,6 +53,10 @@
 ///     `borderStyle` for those characters.
 ///   - rightStyle: ``Style`` for the right edge on content lines. Overrides
 ///     `borderStyle` for those characters.
+///   - profile: The ``ColorProfile`` used when rendering border styles.
+///     Colors are downsampled to fit the terminal's capability. Defaults to
+///     `.trueColor` for backward compatibility — pass `ColorProfile.detect()`
+///     to enable terminal-safe color rendering.
 /// - Returns: The bordered string, with lines joined by `\n`.
 public func border(
     _ text: String,
@@ -59,7 +69,8 @@ public func border(
     topStyle: Style? = nil,
     bottomStyle: Style? = nil,
     leftStyle: Style? = nil,
-    rightStyle: Style? = nil
+    rightStyle: Style? = nil,
+    profile: ColorProfile = .trueColor
 ) -> String {
     let lines = splitLines(text)
     let contentWidth = maxVisibleWidth(of: lines)
@@ -77,24 +88,24 @@ public func border(
 
     // Top edge
     if top {
-        let bar = applyBorderStyle(String(repeating: style.top, count: contentWidth), effectiveTop)
-        let tl = left  ? applyBorderStyle(style.topLeft,  effectiveTop) : ""
-        let tr = right ? applyBorderStyle(style.topRight, effectiveTop) : ""
+        let bar = applyBorderStyle(String(repeating: style.top, count: contentWidth), effectiveTop, profile)
+        let tl = left  ? applyBorderStyle(style.topLeft,  effectiveTop, profile) : ""
+        let tr = right ? applyBorderStyle(style.topRight, effectiveTop, profile) : ""
         result.append(tl + bar + tr)
     }
 
     // Content lines with optional left/right borders
     for line in uniformLines {
-        let l = left  ? applyBorderStyle(style.left,  effectiveLeft)  : ""
-        let r = right ? applyBorderStyle(style.right, effectiveRight) : ""
+        let l = left  ? applyBorderStyle(style.left,  effectiveLeft,  profile) : ""
+        let r = right ? applyBorderStyle(style.right, effectiveRight, profile) : ""
         result.append(l + line + r)
     }
 
     // Bottom edge
     if bottom {
-        let bar = applyBorderStyle(String(repeating: style.bottom, count: contentWidth), effectiveBottom)
-        let bl = left  ? applyBorderStyle(style.bottomLeft,  effectiveBottom) : ""
-        let br = right ? applyBorderStyle(style.bottomRight, effectiveBottom) : ""
+        let bar = applyBorderStyle(String(repeating: style.bottom, count: contentWidth), effectiveBottom, profile)
+        let bl = left  ? applyBorderStyle(style.bottomLeft,  effectiveBottom, profile) : ""
+        let br = right ? applyBorderStyle(style.bottomRight, effectiveBottom, profile) : ""
         result.append(bl + bar + br)
     }
 
@@ -103,8 +114,8 @@ public func border(
 
 // MARK: - Private
 
-/// Applies an optional ``Style`` to a border string segment.
-private func applyBorderStyle(_ text: String, _ style: Style?) -> String {
+/// Applies an optional ``Style`` to a border string segment using the given color profile.
+private func applyBorderStyle(_ text: String, _ style: Style?, _ profile: ColorProfile) -> String {
     guard let style else { return text }
-    return style.render(text)
+    return style.render(text, profile: profile)
 }
