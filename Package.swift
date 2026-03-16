@@ -20,6 +20,9 @@ let package = Package(
             targets: ["Spices"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
+    ],
     targets: [
         .target(
             name: "Chai",
@@ -51,7 +54,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "GroceryList",
-            dependencies: ["Chai"],
+            dependencies: ["Chai", "Spices", "Latte"],
             path: "Examples/GroceryList/Sources"
         ),
     ]

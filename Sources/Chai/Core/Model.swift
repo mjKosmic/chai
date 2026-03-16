@@ -42,7 +42,7 @@ public protocol Model: Sendable {
     ///
     /// Return a ``Command`` to perform initial I/O (e.g. load data, start a
     /// timer), or `nil` if no initial work is needed.
-    func initialize() -> Command?
+    mutating func initialize() -> Command?
 
     /// Called whenever a ``Message`` is received.
     ///
