@@ -50,6 +50,22 @@
 /// |------|-------------|
 /// | ``KeyBinding`` | Configurable keybinding definitions |
 ///
+/// ## Terminal Color Safety
+///
+/// Spices automatically downsample colors to match the connected terminal's
+/// capabilities. Detect the profile once and pass it to every render call:
+///
+/// ```swift
+/// let profile = ColorProfile.detect()
+/// let style = Style().foreground(.trueColor(r: 255, g: 100, b: 50)).bold()
+///
+/// // Colors automatically downsampled to fit the terminal
+/// let output = style.render("Warning!", profile: profile)
+///
+/// // Or strip all styling for piped / file output
+/// let plain = style.render("Warning!", profile: .noColor)  // returns "Warning!"
+/// ```
+///
 /// ## Usage
 ///
 /// Embed Spices components as properties of your ``Chai/Model`` struct
