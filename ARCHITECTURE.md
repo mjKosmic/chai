@@ -965,7 +965,7 @@ chai/
 | `Spices` | library | Chai, Latte | Pre-built interactive components |
 | `ChaiTests` | test | Chai | Core framework tests |
 | `LatteTests` | test | Latte | Layout, styling, and measurement tests |
-| `SpicesTests` | test | Spices, Latte | Component tests |
+| `SpicesTests` | test | Spices | Component tests |
 | `GroceryList` | executable | Chai, Latte, Spices | Example app |
 
 ---
