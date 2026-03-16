@@ -85,20 +85,26 @@ struct UnderlineStyleTests {
     // MARK: - Underline color
 
     @Test func underlineColorTrueColorEmitsSGR58() {
-        let style = Style().underlineColor(.trueColor(r: 255, g: 0, b: 0))
+        let style = Style()
+            .underlineStyle(.single)
+            .underlineColor(.trueColor(r: 255, g: 0, b: 0))
         let result = style.render("text")
         #expect(result.contains("58;2;255;0;0"))
     }
 
     @Test func underlineColorExtendedEmitsSGR58_5() {
-        let style = Style().underlineColor(.extended(196))
+        let style = Style()
+            .underlineStyle(.single)
+            .underlineColor(.extended(196))
         let result = style.render("text")
         #expect(result.contains("58;5;196"))
     }
 
     @Test func underlineColorAnsiEmitsSGR58_5WithRawValue() {
         // ANSI red = raw value 1
-        let style = Style().underlineColor(.ansi(.red))
+        let style = Style()
+            .underlineStyle(.single)
+            .underlineColor(.ansi(.red))
         let result = style.render("text")
         #expect(result.contains("58;5;1"))
     }
