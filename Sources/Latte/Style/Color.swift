@@ -46,6 +46,20 @@ public enum Color: Sendable, Equatable {
             return "48;2;\(r);\(g);\(b)"
         }
     }
+
+    /// The ANSI SGR parameter string for setting this color as the underline color (SGR 58).
+    ///
+    /// ANSI 16-color values are treated as extended palette indices 0–15.
+    var ulCode: String {
+        switch self {
+        case .ansi(let color):
+            return "58;5;\(color.rawValue)"
+        case .extended(let index):
+            return "58;5;\(index)"
+        case .trueColor(let r, let g, let b):
+            return "58;2;\(r);\(g);\(b)"
+        }
+    }
 }
 
 // MARK: - Convenience initializers

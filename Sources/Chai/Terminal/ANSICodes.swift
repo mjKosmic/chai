@@ -132,6 +132,28 @@ enum ANSI {
     /// Reset the cursor shape to the terminal's default.
     static let resetCursorShape = "\u{1B}[0 q"
 
+    // MARK: - OSC 8 Hyperlinks
+
+    /// Opens an OSC 8 hyperlink sequence pointing to the given URL.
+    ///
+    /// The caller is responsible for emitting the visible link text and then
+    /// closing the link with ``osc8Reset``.
+    ///
+    /// Terminals that do not support OSC 8 silently ignore the sequences and
+    /// display the visible text as-is.
+    ///
+    /// ```
+    /// ANSI.osc8(url: "https://example.com") + "click me" + ANSI.osc8Reset
+    /// ```
+    static func osc8(url: String) -> String {
+        "\u{1B}]8;;\(url)\u{1B}\\"
+    }
+
+    /// Closes an OSC 8 hyperlink sequence.
+    ///
+    /// Must follow the visible link text that was opened with ``osc8(url:)``.
+    static let osc8Reset = "\u{1B}]8;;\u{1B}\\"
+
     // MARK: - Attributes / reset
 
     /// Reset all text attributes.

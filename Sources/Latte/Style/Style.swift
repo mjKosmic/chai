@@ -1,3 +1,40 @@
+// MARK: - UnderlineStyle
+
+/// Underline style variants for terminal text.
+///
+/// Extended underline styles (`curly`, `dotted`, `dashed`) use SGR 4:n
+/// subparameter syntax and are supported in Kitty, WezTerm, iTerm2, and VTE.
+/// `double` uses SGR 21 and is supported in most modern terminals.
+/// `single` uses the traditional SGR 4 and is universally supported.
+public enum UnderlineStyle: Sendable, Equatable {
+    /// No underline (default).
+    case none
+    /// Single underline — SGR 4, widely supported.
+    case single
+    /// Double underline — SGR 21, supported in most modern terminals.
+    case double
+    /// Curly (wavy) underline — SGR 4:3, Kitty, WezTerm, iTerm2, VTE.
+    case curly
+    /// Dotted underline — SGR 4:4, Kitty, WezTerm, iTerm2, VTE.
+    case dotted
+    /// Dashed underline — SGR 4:5, Kitty, WezTerm, iTerm2, VTE.
+    case dashed
+
+    /// The SGR parameter string for this underline style, or `nil` for `.none`.
+    var sgrCode: String? {
+        switch self {
+        case .none:   return nil
+        case .single: return "4"
+        case .double: return "21"
+        case .curly:  return "4:3"
+        case .dotted: return "4:4"
+        case .dashed: return "4:5"
+        }
+    }
+}
+
+// MARK: - Style
+
 /// A composable terminal text style combining colors and attributes.
 ///
 /// `Style` is a value type — mutating methods return a new copy, leaving
@@ -30,8 +67,32 @@ public struct Style: Sendable, Equatable {
     /// Whether to render text in italic.
     public var isItalic: Bool
 
-    /// Whether to render text with an underline.
-    public var isUnderline: Bool
+    /// The underline style to apply. Defaults to `.none`.
+    ///
+    /// For a simple single underline, prefer the ``underline()`` builder or set
+    /// ``isUnderline`` to `true` — both map to `UnderlineStyle.single`.
+    public var underlineStyle: UnderlineStyle
+
+    /// Whether to render text with a single underline.
+    ///
+    /// This is a compatibility shim backed by ``underlineStyle``:
+    /// - Getting: returns `true` only when `underlineStyle == .single`.
+    /// - Setting `true`: equivalent to `underlineStyle = .single`.
+    /// - Setting `false`: equivalent to `underlineStyle = .none`.
+    ///
+    /// For extended underline styles (curly, dotted, dashed), set
+    /// ``underlineStyle`` directly or use the ``underlineStyle(_:)`` builder.
+    public var isUnderline: Bool {
+        get { underlineStyle == .single }
+        set { underlineStyle = newValue ? .single : .none }
+    }
+
+    /// The color of the underline, independent of the foreground color.
+    ///
+    /// Emits SGR 58 (underline color). Only meaningful when ``underlineStyle``
+    /// is not `.none`. When `nil` (the default), the underline uses the
+    /// foreground color.
+    public var underlineColor: Color?
 
     /// Whether to render text with a strikethrough.
     public var isStrikethrough: Bool
@@ -41,6 +102,14 @@ public struct Style: Sendable, Equatable {
 
     /// Whether to render blinking text (support varies by terminal).
     public var isBlink: Bool
+
+    /// An optional URL to wrap rendered text in an OSC 8 hyperlink sequence.
+    ///
+    /// Terminals that do not support OSC 8 silently ignore the sequences —
+    /// the visible text is still displayed, so degradation is graceful.
+    /// Hyperlink sequences are omitted when rendering at `.noColor` profile
+    /// (non-TTY output).
+    public var hyperlink: String?
 
     // MARK: - Initializer
 
@@ -61,10 +130,12 @@ public struct Style: Sendable, Equatable {
         self.isBold = isBold
         self.isDim = isDim
         self.isItalic = isItalic
-        self.isUnderline = isUnderline
+        self.underlineStyle = isUnderline ? .single : .none
+        self.underlineColor = nil
         self.isStrikethrough = isStrikethrough
         self.isReverse = isReverse
         self.isBlink = isBlink
+        self.hyperlink = nil
     }
 
     // MARK: - Builder methods
@@ -104,10 +175,30 @@ public struct Style: Sendable, Equatable {
         return copy
     }
 
-    /// Returns a copy with underline enabled.
+    /// Returns a copy with single underline enabled.
+    ///
+    /// This is the backward-compatible builder for `isUnderline`. It is
+    /// equivalent to `.underlineStyle(.single)`.
     public func underline() -> Style {
         var copy = self
-        copy.isUnderline = true
+        copy.underlineStyle = .single
+        return copy
+    }
+
+    /// Returns a copy with the given underline style applied.
+    public func underlineStyle(_ style: UnderlineStyle) -> Style {
+        var copy = self
+        copy.underlineStyle = style
+        return copy
+    }
+
+    /// Returns a copy with the underline color set.
+    ///
+    /// Emits SGR 58 (underline color). Only meaningful when an underline
+    /// style is also set. This color is independent of the foreground color.
+    public func underlineColor(_ color: Color) -> Style {
+        var copy = self
+        copy.underlineColor = color
         return copy
     }
 
@@ -132,13 +223,30 @@ public struct Style: Sendable, Equatable {
         return copy
     }
 
+    /// Returns a copy with an OSC 8 hyperlink URL set.
+    ///
+    /// The rendered text will be wrapped in OSC 8 sequences:
+    /// `ESC]8;;<url>ESC\\<styled-text>ESC]8;;ESC\\`
+    ///
+    /// Terminals that do not support OSC 8 ignore the sequences and display
+    /// the visible text only. Hyperlinks are omitted when rendering at the
+    /// `.noColor` profile.
+    ///
+    /// - Parameter url: The target URL for the hyperlink.
+    public func hyperlink(_ url: String) -> Style {
+        var copy = self
+        copy.hyperlink = url
+        return copy
+    }
+
     // MARK: - Rendering
 
     /// Wraps the given text in ANSI escape sequences for this style.
     ///
     /// Colors are automatically downsampled to match the given terminal
     /// ``ColorProfile``. When `profile` is ``ColorProfile/noColor``, all
-    /// styling is stripped and the raw text is returned.
+    /// styling is stripped and the raw text is returned (hyperlinks are also
+    /// omitted, since non-TTY output should not contain escape sequences).
     ///
     /// The default profile of ``ColorProfile/trueColor`` preserves full
     /// backward compatibility — existing callers that omit `profile` get
@@ -150,12 +258,12 @@ public struct Style: Sendable, Equatable {
     /// // Full color (default)
     /// style.render("Warning!")
     ///
-    /// // Auto-detect terminal capability
+    /// // Auto-detect terminal capability and downsample colors automatically
     /// let profile = ColorProfile.detect()
     /// style.render("Warning!", profile: profile)
     ///
     /// // Force plain text (e.g. for file output)
-    /// style.render("Warning!", profile: .noColor)
+    /// style.render("Warning!", profile: .noColor)  // "Warning!"
     /// ```
     ///
     /// - Parameters:
@@ -168,11 +276,19 @@ public struct Style: Sendable, Equatable {
         if profile == .noColor { return text }
 
         let params = sgrParameters(profile: profile)
+        let styled: String
         if params.isEmpty {
-            return text
+            styled = text
+        } else {
+            let sequence = params.joined(separator: ";")
+            styled = "\u{1B}[\(sequence)m\(text)\u{1B}[0m"
         }
-        let sequence = params.joined(separator: ";")
-        return "\u{1B}[\(sequence)m\(text)\u{1B}[0m"
+
+        guard let url = hyperlink else { return styled }
+        // OSC 8 hyperlink: ESC]8;;<url>ST<styled-text>ESC]8;;ST
+        // where ST (String Terminator) = ESC\
+        let st = "\u{1B}\\"
+        return "\u{1B}]8;;\(url)\(st)\(styled)\u{1B}]8;;\(st)"
     }
 
     /// Wraps the given text in ANSI escape sequences for this style using the
@@ -202,8 +318,11 @@ public struct Style: Sendable, Equatable {
     public var isEmpty: Bool {
         foreground == nil
             && background == nil
-            && !isBold && !isDim && !isItalic && !isUnderline
+            && !isBold && !isDim && !isItalic
+            && underlineStyle == .none
+            && underlineColor == nil
             && !isStrikethrough && !isReverse && !isBlink
+            && hyperlink == nil
     }
 
     // MARK: - Internal
@@ -222,10 +341,13 @@ public struct Style: Sendable, Equatable {
         if isBold { params.append("1") }
         if isDim { params.append("2") }
         if isItalic { params.append("3") }
-        if isUnderline { params.append("4") }
+        if let code = underlineStyle.sgrCode { params.append(code) }
         if isBlink { params.append("5") }
         if isReverse { params.append("7") }
         if isStrikethrough { params.append("9") }
+        if let ulColor = underlineColor?.downsampled(to: profile) {
+            params.append(ulColor.ulCode)
+        }
 
         return params
     }
