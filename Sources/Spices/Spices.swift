@@ -26,9 +26,9 @@
 ///
 /// ## Styling & Layout
 ///
-/// `Style`, `Color`, and `ColorProfile` live in **Latte** and are available
-/// to all Spices users through the transitive dependency. Import `Latte`
-/// directly to use them:
+/// `Style`, `Color`, and `ColorProfile` live in **Latte**, which Spices
+/// depends on. To use these types in your own code, add the `Latte` product
+/// as a dependency and import it explicitly:
 ///
 /// ```swift
 /// import Chai
