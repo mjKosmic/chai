@@ -299,7 +299,10 @@ public struct SelectableList: Sendable {
             let availableWidth = max(0, _width - 2)
             let rawText = _items[i].filterValue()
             let text: String
-            if rawText.count > availableWidth && availableWidth > 0 {
+            if availableWidth <= 0 {
+                // No room for text; render only the rune (and separator space).
+                text = ""
+            } else if rawText.count > availableWidth {
                 text = String(rawText.prefix(max(0, availableWidth - 1))) + "…"
             } else {
                 text = rawText
