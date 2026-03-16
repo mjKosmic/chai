@@ -1,5 +1,5 @@
 import Chai
-
+import Latte
 // MARK: - Spinner Type
 
 /// A spinner animation defined by its frames and tick interval.

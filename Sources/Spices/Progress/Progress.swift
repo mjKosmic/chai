@@ -1,5 +1,5 @@
 import Chai
-
+import Latte
 // MARK: - Progress messages
 
 /// Internal message for driving the progress bar animation.

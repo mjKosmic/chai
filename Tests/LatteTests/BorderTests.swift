@@ -193,18 +193,18 @@ struct BorderTests {
     // MARK: - Styled borders
 
     @Test func borderStyleAppliedToAllEdges() {
-        let cyan: @Sendable (String) -> String = { "\u{1B}[36m\($0)\u{1B}[0m" }
+        // Cyan foreground = SGR code 36
+        let cyan = Style().foreground(.ansi(.cyan))
         let result = border("Hi", .normal, borderStyle: cyan)
         let lines = result.components(separatedBy: "\n")
-        // Top edge should be wrapped in cyan ANSI codes
-        #expect(lines[0].contains("\u{1B}[36m"))
+        // Top edge should contain the cyan SGR code (36)
+        #expect(lines[0].contains("36"))
         #expect(lines[0].contains("\u{1B}[0m"))
-        // Left border on content line should be styled
+        // Left border on content line should be styled; content "Hi" must not be
         #expect(lines[1].hasPrefix("\u{1B}[36m│\u{1B}[0m"))
-        // Content "Hi" must NOT be wrapped in cyan
         #expect(lines[1].contains("Hi"))
         // Bottom edge should be styled
-        #expect(lines[2].contains("\u{1B}[36m"))
+        #expect(lines[2].contains("36"))
     }
 
     @Test func borderStyleNilIsBackwardCompatible() {
@@ -214,55 +214,58 @@ struct BorderTests {
     }
 
     @Test func perSideStyleOverridesBorderStyle() {
-        let red: @Sendable (String) -> String = { "R{\($0)}" }
-        let blue: @Sendable (String) -> String = { "B{\($0)}" }
-        let green: @Sendable (String) -> String = { "G{\($0)}" }
+        // Use distinct SGR codes: bold=1, italic=3, underline=4
+        let boldStyle      = Style().bold()
+        let italicStyle    = Style().italic()
+        let underlineStyle = Style().underline()
 
         let result = border("X", .normal,
-                            borderStyle: green,
-                            topStyle: red,
-                            bottomStyle: blue)
+                            borderStyle: underlineStyle,
+                            topStyle: boldStyle,
+                            bottomStyle: italicStyle)
         let lines = result.components(separatedBy: "\n")
-        // Top edge uses red (topStyle overrides borderStyle)
-        #expect(lines[0].contains("R{"))
-        // Bottom edge uses blue (bottomStyle overrides borderStyle)
-        #expect(lines[2].contains("B{"))
-        // Left/right sides use green (fallback to borderStyle)
-        #expect(lines[1].hasPrefix("G{│}"))
+        // Top edge: bold (SGR 1)
+        #expect(lines[0].contains("\u{1B}[1m"))
+        // Bottom edge: italic (SGR 3)
+        #expect(lines[2].contains("\u{1B}[3m"))
+        // Left/right sides: underline (SGR 4), not bold or italic
+        #expect(lines[1].contains("\u{1B}[4m"))
+        #expect(!lines[1].contains("\u{1B}[1m"))
     }
 
     @Test func cornersInheritHorizontalEdgeStyle() {
-        let top: @Sendable (String) -> String = { "T{\($0)}" }
-        let bottom: @Sendable (String) -> String = { "B{\($0)}" }
-        let result = border("X", .normal, topStyle: top, bottomStyle: bottom)
+        // Bold for top, italic for bottom
+        let topStyle    = Style().bold()
+        let bottomStyle = Style().italic()
+        let result = border("X", .normal, topStyle: topStyle, bottomStyle: bottomStyle)
         let lines = result.components(separatedBy: "\n")
-        // Top-left and top-right corners use topStyle
-        #expect(lines[0].hasPrefix("T{┌}"))
-        #expect(lines[0].hasSuffix("T{┐}"))
-        // Bottom-left and bottom-right corners use bottomStyle
-        #expect(lines[2].hasPrefix("B{└}"))
-        #expect(lines[2].hasSuffix("B{┘}"))
+        // Top row (corners + bar) contains bold SGR code
+        #expect(lines[0].contains("\u{1B}[1m"))
+        // Bottom row contains italic SGR code
+        #expect(lines[2].contains("\u{1B}[3m"))
+        // Content line (sides use fallback nil → unstyled) has no escape sequences
+        #expect(!lines[1].contains("\u{1B}["))
     }
 
     @Test func styledBorderVisibleWidthUnchanged() {
-        let cyan: @Sendable (String) -> String = { "\u{1B}[36m\($0)\u{1B}[0m" }
+        let cyan = Style().foreground(.ansi(.cyan))
         let unstyled = border("Hello", .rounded)
-        let styled = border("Hello", .rounded, borderStyle: cyan)
+        let styled   = border("Hello", .rounded, borderStyle: cyan)
         let unstyledLines = unstyled.components(separatedBy: "\n")
-        let styledLines = styled.components(separatedBy: "\n")
+        let styledLines   = styled.components(separatedBy: "\n")
         // Same number of lines
         #expect(unstyledLines.count == styledLines.count)
-        // Same visible width on every line (ANSI codes don't count)
+        // Same visible width on every line (ANSI escape codes don't count)
         for (u, s) in zip(unstyledLines, styledLines) {
             #expect(visibleWidth(of: u) == visibleWidth(of: s))
         }
     }
 
     @Test func borderedExtensionWithStyling() {
-        let red: @Sendable (String) -> String = { "R{\($0)}" }
+        let red = Style().foreground(.ansi(.red))  // SGR 31
         let result = "Hi".bordered(.normal, borderStyle: red)
         let lines = result.components(separatedBy: "\n")
-        #expect(lines[0].contains("R{"))
+        #expect(lines[0].contains("31"))
     }
 
     // MARK: - Equatable

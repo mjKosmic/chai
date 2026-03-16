@@ -96,16 +96,13 @@ extension String {
     /// Wraps ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``.
     ///
     /// ```swift
-    /// // Latte-only: raw ANSI escape codes
-    /// "Hello".bordered(.rounded, borderStyle: { "\u{1B}[36m\($0)\u{1B}[0m" })
+    /// "Hello".bordered(.rounded)
     ///
-    /// // With Spices (import Spices) — Style.render(_:) is (String) -> String
-    /// import Spices
     /// let cyan = Style().foreground(.ansi(.cyan))
     /// let red  = Style().foreground(.ansi(.red))
     /// let blue = Style().foreground(.ansi(.blue))
-    /// "Hello".bordered(.rounded, borderStyle: cyan.render)
-    /// "Hello".bordered(.rounded, topStyle: red.render, bottomStyle: blue.render)
+    /// "Hello".bordered(.rounded, borderStyle: cyan)
+    /// "Hello".bordered(.rounded, topStyle: red, bottomStyle: blue)
     /// ```
     public func bordered(
         _ style: Border = .rounded,
@@ -113,11 +110,11 @@ extension String {
         right: Bool = true,
         bottom: Bool = true,
         left: Bool = true,
-        borderStyle: (@Sendable (String) -> String)? = nil,
-        topStyle: (@Sendable (String) -> String)? = nil,
-        bottomStyle: (@Sendable (String) -> String)? = nil,
-        leftStyle: (@Sendable (String) -> String)? = nil,
-        rightStyle: (@Sendable (String) -> String)? = nil
+        borderStyle: Style? = nil,
+        topStyle: Style? = nil,
+        bottomStyle: Style? = nil,
+        leftStyle: Style? = nil,
+        rightStyle: Style? = nil
     ) -> String {
         border(self, style, top: top, right: right, bottom: bottom, left: left,
                borderStyle: borderStyle, topStyle: topStyle, bottomStyle: bottomStyle,

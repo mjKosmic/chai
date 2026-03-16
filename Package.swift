@@ -34,7 +34,7 @@ let package = Package(
         ),
         .target(
             name: "Spices",
-            dependencies: ["Chai"],
+            dependencies: ["Chai", "Latte"],
             path: "Sources/Spices"
         ),
         .testTarget(

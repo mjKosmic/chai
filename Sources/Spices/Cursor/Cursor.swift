@@ -1,5 +1,5 @@
 import Chai
-
+import Latte
 // MARK: - Cursor Mode
 
 /// The display mode of a text cursor.

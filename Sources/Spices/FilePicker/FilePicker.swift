@@ -1,5 +1,6 @@
 import Chai
 import Foundation
+import Latte
 
 // MARK: - File Entry
 
