@@ -228,18 +228,22 @@ struct RendererTests {
     @Test func printlnTruncationPreservesANSICodes() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.setSize(width: 8, height: 24)
+        // Width 5: "Red text" is 8 visible cols, so truncation WILL fire.
+        await renderer.setSize(width: 5, height: 24)
         await renderer.write("Live")
         await renderer.flush()
         mock.reset()
 
-        // "Red txt" is 7 visible cols (fits); ANSI wrapping must survive truncation.
-        let styled = "\u{1B}[31mRed txt\u{1B}[0m"
+        // The styled string is wider than the terminal; truncation drops the
+        // trailing ESC[0m, but the opening SGR must survive and an explicit
+        // ANSI.reset must be appended to prevent style bleed.
+        let styled = "\u{1B}[31mRed text\u{1B}[0m"
         await renderer.println(styled)
         await renderer.flush()
-        #expect(mock.output.contains("\u{1B}[31m"))
-        #expect(mock.output.contains("Red txt"))
-        #expect(mock.output.contains("\u{1B}[0m"))
+        #expect(mock.output.contains("\u{1B}[31m"))   // SGR open preserved
+        #expect(mock.output.contains("Red t"))         // first 5 visible cols
+        #expect(!mock.output.contains("Red text"))     // truncation occurred
+        #expect(mock.output.contains(ANSI.reset))      // bleed prevented
     }
 
     @Test func printlnNotTruncatedWhenWidthUnknown() async {

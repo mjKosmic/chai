@@ -81,6 +81,12 @@ actor Renderer {
         flushTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: interval)
+                // Re-check after the sleep: cancellation is co-operative and
+                // `try?` swallows the CancellationError thrown by `Task.sleep`.
+                // Without this guard a cancelled task can still call flush()
+                // once more, writing to the terminal *after* stop() has already
+                // emitted its cleanup sequences (eraseEntireLine + ANSI.reset).
+                guard !Task.isCancelled else { break }
                 await self?.flush()
             }
         }
@@ -227,7 +233,12 @@ actor Renderer {
                     if termWidth > 0 {
                         renderedLine = truncateToVisibleWidth(renderedLine, maxWidth: termWidth)
                     }
-                    out += renderedLine + ANSI.eraseLineRight + "\r\n"
+                    // Always emit a SGR reset after each logged line. Truncation
+                    // can drop a trailing ESC[0m that was part of the original
+                    // string, leaving attributes (colour, bold, etc.) active for
+                    // the erase-to-EOL and all subsequent output. Resetting first
+                    // also ensures eraseLineRight uses the terminal default colour.
+                    out += renderedLine + ANSI.reset + ANSI.eraseLineRight + "\r\n"
                 }
                 queuedLines = []
             }
