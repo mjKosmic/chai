@@ -125,7 +125,7 @@ struct StyleFlagTests {
         #expect(Style().notBlink().isBlink == .off)
     }
 
-    // MARK: .off flags emit NO SGR codes (terminal defaults apply)
+    // MARK: .off flags emit NO SGR codes (leave terminal state unchanged; affects inheritance)
 
     @Test func notBoldEmitsNoSGR() {
         let result = Style().notBold().render("x")
