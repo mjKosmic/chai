@@ -181,9 +181,9 @@ public func blend(_ from: Color, _ to: Color, t: Double) -> Color {
 
 /// Returns an array of `count` colors that blend linearly from `start` to `end`.
 ///
-/// The interpolation is performed in linear sRGB space (identical to
-/// ``blend(_:_:t:)``). All color variants are supported for `start` and `end`;
-/// results are always `.trueColor` values.
+/// The interpolation is performed by linearly interpolating the stored sRGB
+/// channel values (identical to ``blend(_:_:t:)``). All color variants are
+/// supported for `start` and `end`; results are always `.trueColor` values.
 ///
 /// Special cases:
 /// - `count ≤ 0`: returns `[]`.
