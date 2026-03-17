@@ -1,3 +1,5 @@
+import Foundation
+
 // MARK: - Layer
 
 /// A positioned content layer for use with ``Compositor``.
