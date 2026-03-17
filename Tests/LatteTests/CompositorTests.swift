@@ -251,6 +251,51 @@ struct CompositorTests {
     }
 
     // -------------------------------------------------------------------------
+    // SGR span persistence — all characters in a styled span must be styled
+
+    // A styled span produced by Style.render("Hello") looks like ESC[1mHello ESC[0m.
+    // Previously only 'H' received the SGR prefix because pendingANSI was cleared
+    // after the first character.  All five characters must now carry the bold prefix.
+    @Test func sgrSpanStylesAllCharactersInTheSpan() {
+        var comp = Compositor(width: 5, height: 1)
+        let boldHello = "\u{1B}[1mHello\u{1B}[0m"
+        comp.add(Layer(content: boldHello, x: 0, y: 0))
+
+        let result = comp.render()
+        // Every cell must carry the bold prefix exactly once.
+        let boldOccurrences = result.components(separatedBy: "\u{1B}[1m").count - 1
+        #expect(boldOccurrences == 5)   // H, e, l, l, o each get ESC[1m
+        #expect(stripANSI(result) == "Hello")
+    }
+
+    // A multi-colour span: ESC[31mAB ESC[32mCD.  After the colour switch each
+    // cell must use the colour active when it was parsed.
+    @Test func sgrStateUpdatesCorrectlyMidSpan() {
+        var comp = Compositor(width: 4, height: 1)
+        let multiColor = "\u{1B}[31mAB\u{1B}[32mCD"
+        comp.add(Layer(content: multiColor, x: 0, y: 0))
+
+        let result = comp.render()
+        #expect(result.contains("\u{1B}[31m"))  // red used for A and B
+        #expect(result.contains("\u{1B}[32m"))  // green used for C and D
+        #expect(stripANSI(result) == "ABCD")
+    }
+
+    // A SGR reset mid-span clears the active style so subsequent characters
+    // receive no SGR prefix.
+    @Test func sgrResetClearsActiveStyleForSubsequentChars() {
+        var comp = Compositor(width: 4, height: 1)
+        let span = "\u{1B}[1mAB\u{1B}[0mCD"   // bold AB, then reset, then plain CD
+        comp.add(Layer(content: span, x: 0, y: 0))
+
+        let result = comp.render()
+        // Bold SGR must appear exactly twice: once for A, once for B.
+        let boldOccurrences = result.components(separatedBy: "\u{1B}[1m").count - 1
+        #expect(boldOccurrences == 2)
+        #expect(stripANSI(result) == "ABCD")
+    }
+
+    // -------------------------------------------------------------------------
     // 8.1 — Multi-line layers
     // -------------------------------------------------------------------------
 
