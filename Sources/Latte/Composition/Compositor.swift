@@ -22,6 +22,8 @@ public struct Layer: Sendable {
     public var y: Int
 
     /// Z-index. Higher values are rendered on top of lower values.
+    /// For equal `z` values, layers preserve insertion order: earlier
+    /// layers are drawn first and can be visually overwritten by later ones.
     public var z: Int
 
     /// Creates a new layer.
@@ -30,7 +32,8 @@ public struct Layer: Sendable {
     ///   - content: A multi-line string block (lines separated by `\n`).
     ///   - x: Column offset from the left edge of the canvas (0-based).
     ///   - y: Row offset from the top of the canvas (0-based).
-    ///   - z: Z-index. Defaults to `0`.
+    ///   - z: Z-index. Defaults to `0`. For equal `z`, insertion order
+    ///     determines draw order.
     public init(content: String, x: Int, y: Int, z: Int = 0) {
         self.content = content
         self.x = x
@@ -133,7 +136,17 @@ public struct Compositor: Sendable {
         )
 
         // Sort ascending: lowest z drawn first, highest z drawn last (on top).
-        let sorted = _layers.sorted { $0.z < $1.z }
+        // For equal z, preserve insertion order by using the original index as
+        // a tiebreaker. This makes layer ordering deterministic.
+        let sorted = _layers
+            .enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.z == rhs.element.z {
+                    return lhs.offset < rhs.offset
+                }
+                return lhs.element.z < rhs.element.z
+            }
+            .map { $0.element }
 
         for layer in sorted {
             compositeLayer(layer, into: &grid, wideLeading: &wideLeading)
