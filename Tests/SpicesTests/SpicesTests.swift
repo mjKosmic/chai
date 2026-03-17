@@ -537,7 +537,10 @@ struct ProgressGradientTests {
         progress.fillGradient = [.ansi(.red)]
         let view = progress.viewAs(1.0)
         // Must still produce 4 fill characters (color-coded, but structurally solid)
-        #expect(view.contains("█"))
+        let fillCount = view.unicodeScalars.filter { $0 == "█" }.count
+        #expect(fillCount == 4)
+        // Single ANSI color stop should still result in ANSI escape sequences
+        #expect(view.contains("\u{1B}["))
     }
 
     // 7.1 — Two-color gradient produces ANSI output with fill characters
