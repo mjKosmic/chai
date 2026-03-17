@@ -157,15 +157,38 @@ public struct Compositor: Sendable {
 
             var col = layer.x
             var pendingANSI = ""
+            var activeSGR = ""
+            let sgrReset = "\u{1B}[0m"
+
+            func isSGR(_ sequence: String) -> Bool {
+                return sequence.hasPrefix("\u{1B}[") && sequence.hasSuffix("m")
+            }
+
             var i = line.startIndex
 
             while i < line.endIndex {
                 let char = line[i]
 
-                // Accumulate ANSI/escape sequences; associate them with the next visible char.
+                // Accumulate ANSI/escape sequences; track persistent CSI SGR state and
+                // associate non-SGR sequences with the next visible char.
                 if char.unicodeScalars.first == TerminalScalar.escape {
                     let end = skipANSISequence(in: line, from: i)
-                    pendingANSI += line[i..<end]
+                    let sequence = String(line[i..<end])
+
+                    if isSGR(sequence) {
+                        // Update active SGR state. A full reset clears it; other SGR
+                        // sequences are appended so they remain in effect for subsequent
+                        // visible characters.
+                        if sequence == sgrReset {
+                            activeSGR = ""
+                        } else {
+                            activeSGR += sequence
+                        }
+                    } else {
+                        // Non-SGR escape: attach to the next visible character only.
+                        pendingANSI += sequence
+                    }
+
                     i = end
                     continue
                 }
@@ -180,7 +203,17 @@ public struct Compositor: Sendable {
                     if charWidth == 2 && col + 1 >= width {
                         pendingANSI = ""  // discard pending ANSI — nothing to attach it to
                     } else {
-                        let cellContent = pendingANSI + String(char)
+                        var cellContent = ""
+                        if !activeSGR.isEmpty {
+                            cellContent += activeSGR
+                        }
+                        if !pendingANSI.isEmpty {
+                            cellContent += pendingANSI
+                        }
+                        cellContent += String(char)
+                        if !activeSGR.isEmpty || !pendingANSI.isEmpty {
+                            cellContent += sgrReset
+                        }
                         pendingANSI = ""
 
                         // Transparency rule: a space in a higher-z layer does not overwrite
