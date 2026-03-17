@@ -58,6 +58,18 @@ public struct Progress: Sendable {
     /// If set, the filled bar renders as a gradient from this color to ``fullColor``.
     public var gradientFrom: Color?
 
+    /// If set, the filled bar renders as a multi-stop gradient across these colors.
+    ///
+    /// Each filled character is colored by interpolating across the provided color
+    /// stops from left to right. Supports two or more stops.
+    ///
+    /// When `nil` (the default), the bar uses solid fill (``fullColor``) or a
+    /// two-color gradient via ``gradientFrom`` / ``fullColor``.
+    ///
+    /// **Priority:** `fillGradient` takes precedence over `gradientFrom` when both
+    /// are set.
+    public var fillGradient: [Color]?
+
     // MARK: - Spring animation
 
     /// The spring frequency (affects animation speed). Higher = faster.
@@ -102,6 +114,7 @@ public struct Progress: Sendable {
         self.percentFormat = " %3.0f%%"
         self.percentageStyle = Style()
         self.gradientFrom = nil
+        self.fillGradient = nil
         self.springFrequency = 7.0
         self.springDamping = 1.0
         self._id = _progressIDGenerator.next()
@@ -164,7 +177,9 @@ public struct Progress: Sendable {
         var bar = ""
 
         // Build filled portion
-        if let gradFrom = gradientFrom, let gradTo = fullColor {
+        if let stops = fillGradient, stops.count >= 2 {
+            bar += renderMultiStopGradient(colors: stops, width: filledWidth)
+        } else if let gradFrom = gradientFrom, let gradTo = fullColor {
             bar += renderGradient(from: gradFrom, to: gradTo, width: filledWidth)
         } else {
             let filled = String(repeating: fullCharacter, count: filledWidth)
@@ -246,6 +261,32 @@ public struct Progress: Sendable {
         return .tick(.milliseconds(16)) { _ in
             ProgressFrameMsg(id: id, tag: tag)
         }
+    }
+
+    /// Renders a multi-stop gradient by interpolating across `colors` per character.
+    ///
+    /// Requires at least two color stops. For a single-stop array, falls back to solid.
+    private func renderMultiStopGradient(colors: [Color], width: Int) -> String {
+        guard width > 0 else { return "" }
+        guard colors.count >= 2 else {
+            let filled = String(repeating: fullCharacter, count: width)
+            if let color = colors.first {
+                return Style(foreground: color).render(filled)
+            }
+            return filled
+        }
+
+        var result = ""
+        for i in 0..<width {
+            let t = width > 1 ? Double(i) / Double(width - 1) : 0.0
+            // Map t (0.0–1.0) across the color-stop array
+            let scaled = t * Double(colors.count - 1)
+            let segIdx = min(Int(scaled), colors.count - 2)
+            let segT = scaled - Double(segIdx)
+            let color = blend(colors[segIdx], colors[segIdx + 1], t: segT)
+            result += Style(foreground: color).render(String(fullCharacter))
+        }
+        return result
     }
 
     /// Renders a simple gradient by interpolating color per character.

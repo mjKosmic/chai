@@ -518,6 +518,191 @@ struct SelectableListTests {
     }
 }
 
+// MARK: - Milestone 7 additions
+
+@Suite("Progress — Gradient Fill")
+struct ProgressGradientTests {
+
+    // 7.1 — fillGradient = nil reproduces solid-fill behavior
+    @Test func fillGradientNilIsSolidFill() {
+        var progress = Progress(width: 10, showPercentage: false)
+        progress.fillGradient = nil
+        let view = progress.viewAs(1.0)
+        #expect(view == String(repeating: "█", count: 10))
+    }
+
+    // 7.1 — Single-stop array falls back to solid fill with that color
+    @Test func fillGradientSingleColorFallsBackToSolid() {
+        var progress = Progress(width: 4, showPercentage: false)
+        progress.fillGradient = [.ansi(.red)]
+        let view = progress.viewAs(1.0)
+        // Must still produce 4 fill characters (color-coded, but structurally solid)
+        #expect(view.contains("█"))
+    }
+
+    // 7.1 — Two-color gradient produces ANSI output with fill characters
+    @Test func fillGradientTwoColorProducesANSIOutput() {
+        var progress = Progress(width: 6, fullColor: nil, showPercentage: false)
+        progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
+        let view = progress.viewAs(1.0)
+        // Must contain ANSI colour sequences
+        #expect(view.contains("\u{1B}["))
+        // Must contain the fill character for every filled column
+        let fillCount = view.unicodeScalars.filter { $0 == "█" }.count
+        #expect(fillCount == 6)
+    }
+
+    // 7.1 — fillGradient is recomputed per view() call (wider fill ⟹ more content)
+    @Test func fillGradientIsRecomputedPerPercent() {
+        var progress = Progress(width: 10, showPercentage: false)
+        progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
+        let viewHalf = progress.viewAs(0.5)
+        let viewFull = progress.viewAs(1.0)
+        // Full bar has twice as many filled chars → longer raw string
+        #expect(viewFull.count > viewHalf.count)
+    }
+
+    // 7.1 — fillGradient takes precedence over gradientFrom / fullColor
+    @Test func fillGradientTakesPrecedenceOverGradientFrom() {
+        var progress = Progress(width: 4, fullColor: .ansi(.green), showPercentage: false)
+        progress.gradientFrom = .ansi(.yellow)
+        progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
+        let view = progress.viewAs(1.0)
+        // Must still produce content — primarily verifying it does not crash and
+        // fillGradient is used (the gradient contains custom trueColor values).
+        #expect(view.contains("█"))
+        #expect(view.contains("\u{1B}[38;2;"))   // trueColor SGR prefix
+    }
+
+    // 7.1 — Multi-stop (3-color) gradient produces output for every filled char
+    @Test func fillGradientThreeColorStops() {
+        var progress = Progress(width: 9, showPercentage: false)
+        progress.fillGradient = [
+            .trueColor(r: 255, g: 0,   b: 0),   // red
+            .trueColor(r: 0,   g: 255, b: 0),   // green
+            .trueColor(r: 0,   g: 0,   b: 255), // blue
+        ]
+        let view = progress.viewAs(1.0)
+        let fillCount = view.unicodeScalars.filter { $0 == "█" }.count
+        #expect(fillCount == 9)
+    }
+}
+
+@Suite("TextInput — Overflow Scrolling")
+struct TextInputScrollingTests {
+
+    // 7.2 — When text exceeds the width the cursor (last typed char) remains visible
+    @Test func cursorRemainsVisibleWhenTextExceedsWidth() {
+        var input = TextInput(width: 5)   // narrow field: prompt "> " (2) + 3 chars visible
+        _ = input.focus()
+        // Type 10 characters — far more than the 3 available after the prompt
+        for c: Character in "ABCDEFGHIJ" {
+            _ = input.update(KeyMsg(type: .runes, runes: [c]))
+        }
+        let view = input.view().content
+        // The last typed character ('J') must be visible in the rendered output
+        #expect(view.contains("J"))
+    }
+
+    // 7.2 — When the cursor moves back to the start, offset resets so 'A' is visible
+    @Test func scrollOffsetResetsWhenCursorMovesLeft() {
+        var input = TextInput(width: 6)
+        _ = input.focus()
+        for c: Character in "ABCDEFGH" {
+            _ = input.update(KeyMsg(type: .runes, runes: [c]))
+        }
+        // Jump to line start
+        _ = input.update(KeyMsg(type: .home))
+        let view = input.view().content
+        #expect(view.contains("A"))
+    }
+
+    // 7.2 — Pasted text (setValue) that overflows still scrolls to keep cursor visible
+    @Test func pastedTextOverflowScrollsToEnd() {
+        var input = TextInput(width: 5)
+        _ = input.focus()
+        input.setValue("Hello World")   // longer than the visible width
+        let view = input.view().content
+        // Cursor is at the end → last character 'd' must be visible
+        #expect(view.contains("d"))
+    }
+}
+
+@Suite("Viewport — Line Stability")
+struct ViewportLineStabilityTests {
+
+    // 7.3 — After a single-line scroll, overlapping lines are identical strings.
+    //
+    // Before scroll (yOffset=0): [line1, line2, line3]
+    // After  scroll (yOffset=1): [line2, line3, line4]
+    //
+    // The content that remains visible (line2, line3) must produce exactly the
+    // same padded strings in both frames — this is what lets the Renderer's
+    // line-level diff skip those rows.
+    @Test func scrollOneLineChangesOnlyOneLine() {
+        var vp = Viewport(width: 10, height: 3)
+        vp.setContent("line1\nline2\nline3\nline4\nline5")
+
+        let before = vp.view().content.components(separatedBy: "\n")
+        vp.scrollDown()
+        let after = vp.view().content.components(separatedBy: "\n")
+
+        #expect(before.count == 3)
+        #expect(after.count == 3)
+
+        // The overlapping rows must be string-equal between frames.
+        //   before[1] ("line2…") == after[0]
+        //   before[2] ("line3…") == after[1]
+        #expect(after[0] == before[1])
+        #expect(after[1] == before[2])
+
+        // Only the newly revealed bottom line is genuinely new.
+        #expect(after[2] != before[2])
+    }
+}
+
+@Suite("Spinner — Built-in Presets")
+struct SpinnerPresetTests {
+
+    // 7.4 — All named presets from the roadmap exist and have non-empty frame sets
+    @Test func allPresetsExistAndHaveFrames() {
+        let presets: [SpinnerType] = [
+            .dot, .line, .miniDot, .jump, .pulse, .globe,
+        ]
+        for preset in presets {
+            #expect(!preset.frames.isEmpty)
+            #expect(preset.interval > .zero)
+        }
+    }
+
+    // 7.4 — Custom frame sets continue to work
+    @Test func customFrameSetWorks() {
+        let custom = SpinnerType(frames: ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"],
+                                 interval: .milliseconds(100))
+        var spinner = Spinner(type: custom)
+        #expect(spinner.view().content == "→")   // first frame
+        _ = spinner.update(SpinnerTickMsg(id: 0, tag: 0))  // won't advance (wrong id/tag)
+        // Still first frame — but the type's frames are intact
+        #expect(custom.frames.count == 8)
+    }
+
+    // 7.4 — dot preset matches the expected frame sequence
+    @Test func dotPresetFrames() {
+        let frames = SpinnerType.dot.frames
+        #expect(frames.first == "⣾")
+        #expect(frames.last  == "⣷")
+    }
+
+    // 7.4 — line preset matches the documented frames
+    @Test func linePresetFrames() {
+        let frames = SpinnerType.line.frames
+        #expect(frames.contains("|"))
+        #expect(frames.contains("/"))
+        #expect(frames.contains("-"))
+        #expect(frames.contains("\\"))
+    }
+}
+
 @Suite("Help")
 struct HelpTests {
     struct TestKeyMap: HelpKeyMap {
