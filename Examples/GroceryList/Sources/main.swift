@@ -89,7 +89,7 @@ struct GroceryList: Model {
         let divider     = Style(isDim: true).render(String(repeating: "─", count: 36))
 
         // ── Items ──────────────────────────────────────────────────────────
-        let listView    = picker.view().content
+        let listView    = picker.view().content.plainText
 
         // ── Status bar ─────────────────────────────────────────────────────
         let inCart      = picker.selectedIndices.count

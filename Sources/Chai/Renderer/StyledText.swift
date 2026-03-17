@@ -37,6 +37,11 @@ public struct StyledText: Sendable, Equatable {
         segments.append(Segment(text, style: style))
     }
 
+    /// The concatenated plain text of all segments, without styling.
+    public var plainText: String {
+        segments.map(\.text).joined()
+    }
+
     /// Whether this styled text contains no visible content.
     public var isEmpty: Bool {
         segments.allSatisfy { $0.text.isEmpty }
@@ -217,6 +222,42 @@ extension StyledText {
     /// Apply strikethrough to all segments.
     public func strikethrough() -> StyledText {
         styled(CellStyle(attributes: [.strikethrough]))
+    }
+}
+
+// MARK: - Line operations
+
+extension StyledText {
+    /// Return only the last `count` lines of this styled text.
+    ///
+    /// Lines are delimited by `\n`. If the text has fewer than or equal to
+    /// `count` lines, the original text is returned unchanged.
+    func suffix(lines count: Int) -> StyledText {
+        let total = lineCount()
+        guard total > count, count > 0 else { return self }
+        let skip = total - count
+
+        var newlinesToSkip = skip
+        var result = StyledText()
+
+        for segment in segments {
+            if newlinesToSkip > 0 {
+                // Walk through this segment skipping newlines. Segments with
+                // no newlines are dropped entirely (they belong to skipped lines).
+                var remaining = segment.text[...]
+                while newlinesToSkip > 0 {
+                    guard let nlIndex = remaining.firstIndex(of: "\n") else { break }
+                    remaining = remaining[remaining.index(after: nlIndex)...]
+                    newlinesToSkip -= 1
+                }
+                if newlinesToSkip == 0 && !remaining.isEmpty {
+                    result.append(String(remaining), style: segment.style)
+                }
+            } else {
+                result.segments.append(Segment(segment.text, style: segment.style))
+            }
+        }
+        return result
     }
 }
 

@@ -326,7 +326,7 @@ public struct TextInput: Sendable {
                 }
                 var cursorCopy = cursor
                 cursorCopy.setChar(cursorChar)
-                output += cursorCopy.view().content
+                output += cursorCopy.view().content.plainText
             }
 
             // Render text after cursor
@@ -338,7 +338,7 @@ public struct TextInput: Sendable {
             }
         } else if _focused {
             // Empty value, show cursor
-            output += cursor.view().content
+            output += cursor.view().content.plainText
         }
 
         // Suggestion ghost text

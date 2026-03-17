@@ -57,13 +57,19 @@ struct RendererTests {
         #expect(mock.output.contains("Second frame"))
     }
 
-    @Test func emptyViewRendersSpace() async {
+    @Test func emptyViewProducesNoVisibleOutput() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         await renderer.write("")
         await renderer.flush()
-        // Empty string is replaced with a single space to clear the line.
-        #expect(mock.output.contains(" "))
+        // Empty content produces no visible output — the cell buffer is empty.
+        // Only sync update markers may be present.
+        let stripped = mock.output
+            .replacingOccurrences(of: ANSI.beginSyncUpdate, with: "")
+            .replacingOccurrences(of: ANSI.endSyncUpdate, with: "")
+            .replacingOccurrences(of: ANSI.eraseLineRight, with: "")
+            .replacingOccurrences(of: "\r", with: "")
+        #expect(stripped.isEmpty)
     }
 
     // MARK: - Multi-line diff
@@ -446,19 +452,19 @@ struct RendererTests {
 
     // MARK: - ANSI-aware width truncation
 
-    @Test func ansiCodesDoNotCountTowardWidth() async {
+    @Test func styledTextFitsWithinWidth() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         await renderer.setSize(width: 10, height: 24)
         // "Red text" is 8 visible characters — fits in 10 columns.
-        // But with ANSI codes, the string is 22 characters long.
-        let styled = "\u{1B}[31mRed text\u{1B}[0m"
+        // StyledText carries style structurally, not as embedded ANSI codes.
+        let styled = "Red text".fg(.red)
         await renderer.write(ViewOutput(styled))
         await renderer.flush()
         // The full styled string should appear because it's only 8 visible cols.
+        // Cell.render() emits SGR codes for styled cells.
         #expect(mock.output.contains("Red text"))
-        #expect(mock.output.contains("\u{1B}[31m"))
-        #expect(mock.output.contains("\u{1B}[0m"))
+        #expect(mock.output.contains("31"))  // red foreground SGR code
     }
 
     @Test func longPlainTextIsTruncated() async {
@@ -478,7 +484,7 @@ struct RendererTests {
         // rendered frame does not bleed into the shell prompt after exit.
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("\u{1B}[31mStyled content\u{1B}[0m")
+        await renderer.write(ViewOutput("Styled content".fg(.red)))
         await renderer.flush()
         mock.reset()
 
@@ -490,7 +496,7 @@ struct RendererTests {
         // kill() (forceful stop, no final flush) must also reset SGR attributes.
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("\u{1B}[31mStyled content\u{1B}[0m")
+        await renderer.write(ViewOutput("Styled content".fg(.red)))
         await renderer.flush()
         mock.reset()
 
@@ -677,7 +683,7 @@ struct ViewOutputTests {
 
     @Test func stringLiteralCreatesViewOutput() {
         let view: ViewOutput = "Hello, world!"
-        #expect(view.content == "Hello, world!")
+        #expect(view.content.plainText == "Hello, world!")
         #expect(view.altScreen == nil)
         #expect(view.windowTitle == nil)
         #expect(view.cursor == nil)
@@ -686,7 +692,7 @@ struct ViewOutputTests {
     @Test func stringInterpolationCreatesViewOutput() {
         let count = 42
         let view: ViewOutput = "Count: \(count)"
-        #expect(view.content == "Count: 42")
+        #expect(view.content.plainText == "Count: 42")
         #expect(view.altScreen == nil)
     }
 
@@ -698,7 +704,7 @@ struct ViewOutputTests {
             windowTitle: "Title",
             cursor: cursor
         )
-        #expect(view.content == "Content")
+        #expect(view.content.plainText == "Content")
         #expect(view.altScreen == true)
         #expect(view.windowTitle == "Title")
         #expect(view.cursor == cursor)
@@ -706,7 +712,7 @@ struct ViewOutputTests {
 
     @Test func defaultsAreNil() {
         let view = ViewOutput("Just content")
-        #expect(view.content == "Just content")
+        #expect(view.content.plainText == "Just content")
         #expect(view.altScreen == nil)
         #expect(view.windowTitle == nil)
         #expect(view.cursor == nil)

@@ -1,18 +1,18 @@
 import Foundation
 
-/// A framerate-based, diff-driven terminal renderer.
+/// A framerate-based, diff-driven terminal renderer using cell buffers.
 ///
 /// The renderer maintains a pending view buffer and flushes it to the terminal
-/// at a configurable frame rate (default 60 FPS). On each flush it compares
-/// the new frame against the previous one and only rewrites lines that have
-/// changed, minimising terminal I/O.
+/// at a configurable frame rate (default 60 FPS). On each flush it lays out the
+/// styled content into a ``CellBuffer``, diffs against the previous frame, and
+/// only rewrites rows that contain changed cells.
 ///
 /// ## How it works
 ///
-/// 1. ``write(_:)`` stores the latest view string in an internal buffer.
+/// 1. ``write(_:)`` stores the latest ``ViewOutput`` in an internal buffer.
 /// 2. A background `Task` ticks at `1/fps` seconds and calls ``flush()``.
-/// 3. ``flush()`` splits the view into lines, diffs against the last frame,
-///    moves the cursor, and writes only the changed lines.
+/// 3. ``flush()`` builds a ``CellBuffer`` via ``layout(_:width:height:)``,
+///    diffs against ``lastBuffer``, and writes only the changed rows.
 ///
 /// The renderer is an actor to serialise all state mutations.
 actor Renderer {
@@ -22,6 +22,9 @@ actor Renderer {
     static let defaultFPS = 60
     static let maxFPS = 120
 
+    /// Fallback buffer width when terminal size is unknown.
+    private static let fallbackWidth = 512
+
     // MARK: - State
 
     private let terminal: any TerminalOutput
@@ -29,14 +32,9 @@ actor Renderer {
 
     /// The view output queued for the next flush.
     private var pendingViewOutput = ViewOutput("")
-    /// The content string that was last written to the terminal.
-    private var lastContent: String = ""
-    /// The individual lines of the last rendered frame.
-    private var lastLines: [String] = []
-    /// Number of lines written in the last non-altscreen render.
-    private var linesRendered: Int = 0
-    /// Number of lines written in the last altscreen render.
-    private var altLinesRendered: Int = 0
+
+    /// The cell buffer from the last rendered frame (used for diffing).
+    private var lastBuffer = CellBuffer(width: 0, height: 0)
 
     /// Whether the alternate screen buffer is currently active.
     private(set) var altScreenActive: Bool = false
@@ -120,15 +118,12 @@ actor Renderer {
     /// cursor visibility) and content against the previous frame on the next
     /// ``flush()``.
     func write(_ view: ViewOutput) {
-        var output = view
-        if output.content.isEmpty { output.content = " " }
-        pendingViewOutput = output
+        pendingViewOutput = view
     }
 
     /// Force a full repaint on the next flush by clearing the last-render cache.
     func repaint() {
-        lastContent = ""
-        lastLines = []
+        lastBuffer = CellBuffer(width: 0, height: 0)
     }
 
     // MARK: - Flush
@@ -136,7 +131,8 @@ actor Renderer {
     /// Write the pending view to the terminal, diffing against the last frame.
     ///
     /// Terminal state transitions (alt screen, window title, cursor visibility)
-    /// are handled first, then content is diffed and written, and finally the
+    /// are handled first, then content is laid out into a cell buffer, diffed
+    /// against the previous frame, and changed rows are written. Finally the
     /// cursor is positioned.
     func flush() {
         let viewOutput = pendingViewOutput
@@ -153,16 +149,13 @@ actor Renderer {
                 // Cursor is hidden by default in alt screen mode.
                 cursorHidden = true
                 terminal.write(ANSI.hideCursor)
-                altLinesRendered = 0
-                lastContent = ""
-                lastLines = []
+                lastBuffer = CellBuffer(width: 0, height: 0)
                 queuedLines = []
                 cursorParkedRow = 0
             } else if !wantAltScreen && altScreenActive {
                 altScreenActive = false
                 terminal.write(ANSI.exitAltScreen)
-                lastContent = ""
-                lastLines = []
+                lastBuffer = CellBuffer(width: 0, height: 0)
                 queuedLines = []
                 cursorParkedRow = 0
             }
@@ -187,33 +180,47 @@ actor Renderer {
             terminal.write(ANSI.hideCursor)
         }
 
-        // ── Determine what needs updating ───────────────────────────────────
+        // ── Build cell buffer ─────────────────────────────────────────────
 
         let content = viewOutput.content
-        let contentChanged = !content.isEmpty && content != lastContent
+        let w = termWidth > 0 ? termWidth : Self.fallbackWidth
+
+        var contentToLayout = content
+        var bufferHeight: Int
+
+        if content.isEmpty {
+            // Empty content: use a single-row buffer with a space to maintain
+            // cursor position tracking. The space cell equals .empty so it
+            // won't produce visible output.
+            contentToLayout = " "
+            bufferHeight = 1
+        } else if altScreenActive {
+            bufferHeight = termHeight > 0 ? termHeight : 24
+        } else {
+            bufferHeight = content.lineCount()
+            // Clamp to terminal height if known, taking suffix lines.
+            if termHeight > 0 && bufferHeight > termHeight {
+                contentToLayout = content.suffix(lines: termHeight)
+                bufferHeight = termHeight
+            }
+        }
+
+        let newBuffer = layout(contentToLayout, width: w, height: bufferHeight)
+
+        // ── Determine what needs updating ─────────────────────────────────
+
+        let diff = newBuffer.diff(against: lastBuffer)
+        let contentChanged = !diff.changes.isEmpty || diff.eraseBelow
         let cursorChanged = viewOutput.cursor != lastCursor
 
         guard contentChanged || cursorChanged else { return }
 
         var out = ""
 
-        // ── Content diff and render ─────────────────────────────────────────
-
-        var newLineCount: Int
+        // ── Content diff and render ───────────────────────────────────────
 
         if contentChanged {
-            var newLines = content.components(separatedBy: "\n")
-
-            // Clamp to terminal height if known.
-            if termHeight > 0 && newLines.count > termHeight {
-                newLines = Array(newLines.suffix(termHeight))
-            }
-
-            newLineCount = newLines.count
-
             // Move cursor back to the start of the previously rendered content.
-            // Uses `cursorParkedRow` rather than `linesRendered - 1` because
-            // the cursor may have been positioned mid-content by a prior frame.
             if altScreenActive {
                 out += ANSI.cursorHome
             } else {
@@ -227,66 +234,42 @@ actor Renderer {
             let flushQueued = !queuedLines.isEmpty && !altScreenActive
             if flushQueued {
                 for line in queuedLines {
-                    // Truncate to terminal width so long logged lines don't
-                    // wrap and corrupt the layout of the live view below them.
                     var renderedLine = line
                     if termWidth > 0 {
                         renderedLine = truncateToVisibleWidth(renderedLine, maxWidth: termWidth)
                     }
-                    // Always emit a SGR reset after each logged line. Truncation
-                    // can drop a trailing ESC[0m that was part of the original
-                    // string, leaving attributes (colour, bold, etc.) active for
-                    // the erase-to-EOL and all subsequent output. Resetting first
-                    // also ensures eraseLineRight uses the terminal default colour.
                     out += renderedLine + ANSI.reset + ANSI.eraseLineRight + "\r\n"
                 }
                 queuedLines = []
             }
 
-            // Paint each line, skipping unchanged ones.
-            for (i, line) in newLines.enumerated() {
-                let canSkip = !flushQueued
-                    && i < lastLines.count
-                    && lastLines[i] == line
+            // Determine which rows have changes.
+            let changedRows = Set(diff.changes.map { $0.row })
+
+            // Paint each row, skipping unchanged ones.
+            for row in 0..<newBuffer.height {
+                let canSkip = !flushQueued && !changedRows.contains(row)
 
                 if canSkip {
-                    if i < newLines.count - 1 { out += "\n" }
+                    if row < newBuffer.height - 1 { out += "\n" }
                     continue
                 }
 
                 // On the very first render, reset to column 0.
-                if i == 0 && lastContent.isEmpty { out += "\r" }
+                if row == 0 && lastBuffer.width == 0 { out += "\r" }
 
-                // Truncate lines wider than the terminal to prevent wrapping.
-                // Uses ANSI-aware width measurement so that escape sequences are
-                // not counted and CJK wide characters count as 2 columns.
-                var rendered = line
-                if termWidth > 0 {
-                    rendered = truncateToVisibleWidth(rendered, maxWidth: termWidth)
-                }
-
+                let rendered = renderRow(newBuffer, row: row)
                 out += rendered + ANSI.eraseLineRight
 
-                if i < newLines.count - 1 { out += "\r\n" }
+                if row < newBuffer.height - 1 { out += "\r\n" }
             }
 
-            // Erase leftover lines from the previous frame.
-            let prevCount = altScreenActive ? altLinesRendered : linesRendered
-            if prevCount > newLines.count {
+            // Erase leftover rows from the previous frame.
+            if diff.eraseBelow {
                 out += ANSI.eraseScreenBelow
             }
 
-            // Update line counts.
-            if altScreenActive {
-                altLinesRendered = newLines.count
-            } else {
-                linesRendered = newLines.count
-            }
-
-            lastContent = content
-            lastLines = newLines
-        } else {
-            newLineCount = altScreenActive ? altLinesRendered : linesRendered
+            lastBuffer = newBuffer
         }
 
         // ── Cursor shape ────────────────────────────────────────────────────
@@ -299,9 +282,7 @@ actor Renderer {
 
         // ── Cursor positioning ──────────────────────────────────────────────
 
-        // After content painting the terminal cursor sits at the last printed
-        // line. For cursor-only updates it sits at `cursorParkedRow`. Compute
-        // a common `currentRow` so the positioning logic below works for both.
+        let newLineCount = contentChanged ? newBuffer.height : lastBuffer.height
 
         let currentRow: Int
         if contentChanged {
@@ -344,6 +325,85 @@ actor Renderer {
         terminal.write(ANSI.beginSyncUpdate + out + ANSI.endSyncUpdate)
     }
 
+    // MARK: - Row rendering
+
+    /// Render all non-trailing-empty cells in a row as a terminal string.
+    ///
+    /// Batches consecutive cells with the same style to minimize SGR output.
+    /// Continuation cells (width 0) are skipped. Trailing empty cells are omitted.
+    private func renderRow(_ buffer: CellBuffer, row: Int) -> String {
+        // Find the last column with a non-empty cell.
+        var lastNonEmpty = -1
+        for col in stride(from: buffer.width - 1, through: 0, by: -1) {
+            if buffer[col, row] != .empty {
+                lastNonEmpty = col
+                break
+            }
+        }
+
+        guard lastNonEmpty >= 0 else { return "" }
+
+        var result = ""
+        var col = 0
+        while col <= lastNonEmpty {
+            let cell = buffer[col, row]
+
+            // Skip continuation cells.
+            if cell.width == 0 {
+                col += 1
+                continue
+            }
+
+            // Build SGR for this cell's style.
+            let sgr = cellSGR(cell)
+            let hasHyperlink = cell.hyperlink != nil
+
+            // Batch consecutive cells with the same style.
+            var chars = String(cell.character)
+            var nextCol = col + Int(cell.width)
+            while nextCol <= lastNonEmpty {
+                let next = buffer[nextCol, row]
+                if next.width == 0 { nextCol += 1; continue }
+                if cellSGR(next) != sgr || next.hyperlink != cell.hyperlink { break }
+                chars += String(next.character)
+                nextCol += Int(next.width)
+            }
+
+            // Emit hyperlink open if needed.
+            if let url = cell.hyperlink {
+                result += ANSI.osc8(url: url)
+            }
+
+            // Emit SGR + characters + reset.
+            if sgr.isEmpty && !hasHyperlink {
+                result += chars
+            } else {
+                if !sgr.isEmpty {
+                    result += "\u{1B}[\(sgr)m"
+                }
+                result += chars
+                if !sgr.isEmpty {
+                    result += ANSI.reset
+                }
+                if hasHyperlink {
+                    result += ANSI.osc8Reset
+                }
+            }
+
+            col = nextCol
+        }
+        return result
+    }
+
+    /// Build the SGR parameter string for a cell's style.
+    private func cellSGR(_ cell: Cell) -> String {
+        var parts: [String] = []
+        if let fg = cell.foreground { parts.append(fg.sgrParams(foreground: true)) }
+        if let bg = cell.background { parts.append(bg.sgrParams(foreground: false)) }
+        parts.append(contentsOf: cell.attributes.sgrCodes.map(String.init))
+        return parts.joined(separator: ";")
+    }
+
     // MARK: - Terminal size
 
     /// Update the known terminal dimensions (called on WindowSizeMsg).
@@ -363,7 +423,6 @@ actor Renderer {
         terminal.write(ANSI.cursorHome)
         cursorHidden = true
         terminal.write(ANSI.hideCursor)
-        altLinesRendered = 0
         repaint()
     }
 

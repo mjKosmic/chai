@@ -335,14 +335,14 @@ public struct List: Sendable {
         if showTitle && !title.isEmpty {
             var titleLine = styles.title.render(title)
             if _showSpinner {
-                titleLine += " " + _spinner.view().content
+                titleLine += " " + _spinner.view().content.plainText
             }
             sections.append(styles.titleBar.render(titleLine))
         }
 
         // Filter input
         if _filterState == .filtering {
-            sections.append(filterInput.view().content)
+            sections.append(filterInput.view().content.plainText)
         }
 
         // Items
@@ -380,7 +380,7 @@ public struct List: Sendable {
 
         // Pagination
         if showPagination && paginator.totalPages > 1 {
-            sections.append(styles.paginationStyle.render(paginator.view().content))
+            sections.append(styles.paginationStyle.render(paginator.view().content.plainText))
         }
 
         // Help

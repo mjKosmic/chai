@@ -340,7 +340,7 @@ public struct TextArea: Sendable {
                 renderedLine += activeStyle.text.render(preCursor)
                 var cursorCopy = cursor
                 cursorCopy.setChar(cursorChar)
-                renderedLine += cursorCopy.view().content
+                renderedLine += cursorCopy.view().content.plainText
                 if !postCursor.isEmpty {
                     renderedLine += activeStyle.text.render(postCursor)
                 }
