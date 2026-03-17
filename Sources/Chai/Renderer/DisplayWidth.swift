@@ -106,6 +106,15 @@ private func isWide(_ v: UInt32) -> Bool {
     // CJK Unified Ideographs Extension G..I
     if v >= 0x30000 && v <= 0x3FFFD { return true }
 
+    // Miscellaneous Symbols and Dingbats
+    if v >= 0x2600 && v <= 0x27BF { return true }
+
+    // Emoticons, Misc Symbols & Pictographs, Transport & Map Symbols,
+    // Supplemental Symbols & Pictographs, Chess Symbols, etc.
+    if v >= 0x1F000 && v <= 0x1FAFF { return true }
+    // Extended-A Symbols & Pictographs
+    if v >= 0x1FB00 && v <= 0x1FBFF { return true }
+
     return false
 }
 
