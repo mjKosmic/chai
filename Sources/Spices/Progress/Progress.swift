@@ -278,7 +278,9 @@ public struct Progress: Sendable {
 
         var result = ""
         for i in 0..<width {
-            let t = width > 1 ? Double(i) / Double(width - 1) : 0.0
+            // When width == 1 use t = 1.0 (the last stop), matching the behaviour of
+            // the two-color `renderGradient` helper which also uses t = 1.0 in that case.
+            let t = width > 1 ? Double(i) / Double(width - 1) : 1.0
             // Map t (0.0–1.0) across the color-stop array
             let scaled = t * Double(colors.count - 1)
             let segIdx = min(Int(scaled), colors.count - 2)

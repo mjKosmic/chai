@@ -579,6 +579,20 @@ struct ProgressGradientTests {
         #expect(view.contains("\u{1B}[38;2;"))   // trueColor SGR prefix
     }
 
+    // C11 — Width-1 bar picks the LAST stop (t=1.0), matching renderGradient behavior
+    @Test func fillGradientWidthOnePicksLastStop() {
+        // With two stops: red → blue.  A 1-column bar should render blue (t=1.0).
+        var progress = Progress(width: 1, showPercentage: false)
+        progress.fillGradient = [
+            .trueColor(r: 255, g: 0, b: 0),    // red  (t = 0.0)
+            .trueColor(r: 0,   g: 0, b: 255),  // blue (t = 1.0)
+        ]
+        let view = progress.viewAs(1.0)
+        // The single cell must be coloured with the last stop (blue: 0,0,255).
+        #expect(view.contains("\u{1B}[38;2;0;0;255m"))
+        #expect(!view.contains("\u{1B}[38;2;255;0;0m"))
+    }
+
     // 7.1 — Multi-stop (3-color) gradient produces output for every filled char
     @Test func fillGradientThreeColorStops() {
         var progress = Progress(width: 9, showPercentage: false)

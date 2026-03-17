@@ -169,44 +169,64 @@ public struct Compositor: Sendable {
             guard row >= 0, row < height else { continue }
 
             var col = layer.x
-            var pendingANSI = ""
-            var activeSGR = ""
-            let sgrReset = "\u{1B}[0m"
 
-            func isSGR(_ sequence: String) -> Bool {
-                return sequence.hasPrefix("\u{1B}[") && sequence.hasSuffix("m")
-            }
+            // Cumulative CSI SGR state for this line (colours, bold, etc.).
+            // Every visible cell is prefixed with activeStyles.joined() so that a
+            // styled span such as ESC[1mHello ESC[0m renders all five characters
+            // in bold, not just the first one.  Managed via compositorTrackSGR,
+            // which correctly handles ESC[m, ESC[0m, and compound resets.
+            var activeStyles: [String] = []
+
+            // Non-SGR escape sequences (OSC 8 hyperlinks, etc.) waiting to be
+            // attached to the next visible character.  Preserved while col < 0
+            // so styles that open before the visible region carry in correctly;
+            // discarded once col >= width (no further in-bounds chars possible).
+            var pendingNonSGR = ""
+
+            // Column of the most recently written in-bounds cell, used to attach
+            // zero-width combining characters without advancing the column counter.
+            var lastInBoundsWrittenCol: Int? = nil
 
             var i = line.startIndex
 
             while i < line.endIndex {
                 let char = line[i]
 
-                // Accumulate ANSI/escape sequences; track persistent CSI SGR state and
-                // associate non-SGR sequences with the next visible char.
+                // Accumulate ANSI/escape sequences.
                 if char.unicodeScalars.first == TerminalScalar.escape {
                     let end = skipANSISequence(in: line, from: i)
-                    let sequence = String(line[i..<end])
-
-                    if isSGR(sequence) {
-                        // Update active SGR state. A full reset clears it; other SGR
-                        // sequences are appended so they remain in effect for subsequent
-                        // visible characters.
-                        if sequence == sgrReset {
-                            activeSGR = ""
-                        } else {
-                            activeSGR += sequence
-                        }
+                    let seq = String(line[i..<end])
+                    if compositorIsSGR(seq) {
+                        // Update the persistent SGR state list.  compositorTrackSGR
+                        // handles all reset forms (ESC[m, ESC[0m, ESC[0;1m, …) and
+                        // avoids unbounded growth by clearing on reset.
+                        compositorTrackSGR(&activeStyles, seq)
                     } else {
-                        // Non-SGR escape: attach to the next visible character only.
-                        pendingANSI += sequence
+                        // Non-SGR sequence: attach to the next visible character.
+                        // Preserved while left-clipped (col < 0) so it applies to
+                        // the first in-bounds character; discarded only at right edge.
+                        if col < width {
+                            pendingNonSGR += seq
+                        }
                     }
-
                     i = end
                     continue
                 }
 
                 let charWidth = displayWidth(of: char)
+
+                // Zero-width characters (combining marks, format scalars) must not
+                // consume a column.  Append them to the most recently written cell
+                // so they stack visually with their base character.
+                if charWidth == 0 {
+                    if let lwc = lastInBoundsWrittenCol,
+                       let existing = grid[row][lwc],
+                       existing != "" {
+                        grid[row][lwc] = existing + String(char)
+                    }
+                    i = line.index(after: i)
+                    continue
+                }
 
                 if col >= 0 && col < width {
                     // A double-wide character requires *both* col and col+1 to be within
@@ -214,39 +234,31 @@ public struct Compositor: Sendable {
                     // entirely — leave the cell as nil (renders as a plain space) so the
                     // rendered row never exceeds the compositor's declared width.
                     if charWidth == 2 && col + 1 >= width {
-                        pendingANSI = ""  // discard pending ANSI — nothing to attach it to
+                        pendingNonSGR = ""  // discard — nothing to attach it to
+                        // activeStyles is preserved (SGR state continues on this line).
                     } else {
-                        var cellContent = ""
-                        if !activeSGR.isEmpty {
-                            cellContent += activeSGR
-                        }
-                        if !pendingANSI.isEmpty {
-                            cellContent += pendingANSI
-                        }
-                        cellContent += String(char)
-                        if !activeSGR.isEmpty || !pendingANSI.isEmpty {
-                            cellContent += sgrReset
-                        }
-                        pendingANSI = ""
+                        // Build cell content: active SGR prefix + any pending non-SGR
+                        // sequences + the character itself.  No embedded reset — renderGrid
+                        // injects ESC[m between cells as needed.
+                        let cellContent = activeStyles.joined() + pendingNonSGR + String(char)
+                        pendingNonSGR = ""
 
                         // Transparency rule: a space in a higher-z layer does not overwrite
                         // existing content from a lower layer.
                         if char == " " && grid[row][col] != nil {
                             // transparent — leave the lower-layer cell intact
                         } else {
-                            // Before writing, normalize any existing wide-glyph whose halves
-                            // straddle the cell we are about to overwrite.  Leaving the
-                            // "other half" of a split wide char in the grid would cause
-                            // renderGrid to emit overlapping or missing columns.
+                            // Before writing, normalise any existing wide-glyph whose halves
+                            // straddle the cell we are about to overwrite.
                             normalizeWideChar(at: col, row: row,
                                              grid: &grid, wideLeading: &wideLeading)
 
                             grid[row][col] = cellContent
-                            wideLeading[row][col] = false   // will be set to true below if wide
+                            wideLeading[row][col] = false   // will be set true below if wide
+                            lastInBoundsWrittenCol = col
 
                             if charWidth == 2 {
                                 // col + 1 < width is guaranteed by the clip guard above.
-                                // Normalize whatever is already at col+1 before clobbering it.
                                 normalizeWideChar(at: col + 1, row: row,
                                                  grid: &grid, wideLeading: &wideLeading)
                                 grid[row][col + 1] = ""     // continuation marker
@@ -255,12 +267,14 @@ public struct Compositor: Sendable {
                         }
                     }
                 } else if col >= width {
-                    // Off the right edge: discard pending ANSI since no further visible
-                    // characters can appear on this line to attach it to.
-                    pendingANSI = ""
+                    // Off the right edge: discard pending non-SGR since no further
+                    // visible characters can appear on this line.
+                    pendingNonSGR = ""
+                    // activeStyles is preserved in case col somehow re-enters bounds
+                    // (e.g., negative-width layout), though this is not expected.
                 }
 
-                col += max(1, charWidth)
+                col += charWidth
                 i = line.index(after: i)
             }
         }
@@ -338,5 +352,41 @@ public struct Compositor: Sendable {
         }
 
         return rows.joined(separator: "\n")
+    }
+}
+
+// MARK: - Private SGR tracking helpers
+
+/// Returns `true` if `seq` is a CSI SGR sequence (`ESC [ … m`).
+private func compositorIsSGR(_ seq: String) -> Bool {
+    seq.hasPrefix("\u{1B}[") && seq.hasSuffix("m")
+}
+
+/// Updates `activeStyles` based on a newly encountered CSI SGR sequence.
+///
+/// Only CSI SGR sequences (`ESC[…m`) are processed. Any reset variant
+/// (`ESC[m`, `ESC[0m`, or a compound sequence whose parameters include `0`)
+/// clears all accumulated styles. Other SGR codes are appended.
+///
+/// This mirrors the `trackSGR` function in `Wrap.swift`; both should be kept
+/// in sync if the reset-detection logic changes.
+private func compositorTrackSGR(_ activeStyles: inout [String], _ sequence: String) {
+    guard compositorIsSGR(sequence) else { return }
+
+    let params = sequence.dropFirst(2).dropLast()   // strip "ESC[" and "m"
+
+    let isReset = params.isEmpty
+        || params == "0"
+        || params.split(separator: ";").contains(where: { $0 == "0" })
+
+    if isReset {
+        activeStyles.removeAll()
+    }
+
+    // Non-bare-reset SGR codes are accumulated.  A compound like ESC[0;1m is
+    // kept verbatim — the terminal applies codes left-to-right, so the reset
+    // fires first and then the remaining attributes take effect.
+    if !params.isEmpty && params != "0" {
+        activeStyles.append(sequence)
     }
 }

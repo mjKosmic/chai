@@ -295,6 +295,56 @@ struct CompositorTests {
         #expect(stripANSI(result) == "ABCD")
     }
 
+    // C12 — ESC[m (no params) must also clear the active SGR state, not just ESC[0m.
+    @Test func sgrNoParamResetAlsoClearsActiveStyle() {
+        var comp = Compositor(width: 4, height: 1)
+        // Bold AB, then ESC[m (bare reset, no "0" param), then plain CD.
+        let span = "\u{1B}[1mAB\u{1B}[mCD"
+        comp.add(Layer(content: span, x: 0, y: 0))
+
+        let result = comp.render()
+        // Bold must appear for A and B only (exactly twice).
+        let boldOccurrences = result.components(separatedBy: "\u{1B}[1m").count - 1
+        #expect(boldOccurrences == 2)
+        #expect(stripANSI(result) == "ABCD")
+    }
+
+    // C12 — Compound reset ESC[0;1m clears prior styles before applying bold.
+    @Test func sgrCompoundResetClearsAndAppliesNewStyle() {
+        var comp = Compositor(width: 3, height: 1)
+        // Red A, then compound reset+bold for B, then C inherits bold.
+        let span = "\u{1B}[31mA\u{1B}[0;1mBC"
+        comp.add(Layer(content: span, x: 0, y: 0))
+
+        let result = comp.render()
+        // ESC[31m (red) must appear once (for A); ESC[0;1m must appear for B and C.
+        let redOccurrences  = result.components(separatedBy: "\u{1B}[31m").count - 1
+        let compOccurrences = result.components(separatedBy: "\u{1B}[0;1m").count - 1
+        #expect(redOccurrences  == 1)   // only A is red
+        #expect(compOccurrences == 2)   // B and C each get the compound prefix
+        #expect(stripANSI(result) == "ABC")
+    }
+
+    // C13 — Zero-width characters must not advance the column counter.
+    //
+    // U+200B (ZERO WIDTH SPACE) is always its own grapheme cluster in Swift and
+    // has `displayWidth == 0`.  It must be appended to the preceding cell without
+    // consuming a column, so that 'B' still lands at column 1 in a width-2 grid.
+    @Test func zeroWidthCharDoesNotAdvanceColumn() {
+        var comp = Compositor(width: 2, height: 1)
+        // "A" + U+200B (zero-width space) + "B":  visible width = 2.
+        let content = "A\u{200B}B"
+        comp.add(Layer(content: content, x: 0, y: 0))
+
+        let result = comp.render()
+        #expect(result.components(separatedBy: "\n").count == 1)
+        let visible = stripANSI(result)
+        // 'B' must appear (it was not pushed out of bounds by the zero-width char).
+        #expect(visible.contains("B"))
+        // The rendered row must be exactly 2 visible columns wide.
+        #expect(visibleWidth(of: visible) == 2)
+    }
+
     // -------------------------------------------------------------------------
     // 8.1 — Multi-line layers
     // -------------------------------------------------------------------------
