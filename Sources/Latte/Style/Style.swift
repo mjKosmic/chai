@@ -570,8 +570,9 @@ public struct Style: Sendable, Equatable {
     /// Collects the SGR parameter codes for all enabled attributes and colors,
     /// downsampling colors to the given profile.
     ///
-    /// Only `.on` flags emit SGR codes. `.off` and `.unset` flags emit nothing,
-    /// so the terminal defaults (non-bold, non-italic, etc.) apply.
+    /// Only `.on` flags emit SGR codes. `.off` and `.unset` flags emit no codes
+    /// and therefore do not change the terminal’s existing rendering state;
+    /// emit explicit reset/disable SGR parameters if you need to force defaults.
     private func sgrParameters(profile: ColorProfile = .trueColor) -> [String] {
         var params: [String] = []
 
