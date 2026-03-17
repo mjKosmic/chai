@@ -168,8 +168,9 @@ public struct Compositor: Sendable {
                             grid[row][col + 1] = ""
                         }
                     }
-                } else {
-                    // Out-of-bounds column: discard pending ANSI (nothing to attach it to).
+                } else if col >= width {
+                    // Off the right edge: discard pending ANSI since no further visible
+                    // characters can appear on this line to attach it to.
                     pendingANSI = ""
                 }
 
