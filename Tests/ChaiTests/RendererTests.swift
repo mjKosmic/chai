@@ -208,6 +208,55 @@ struct RendererTests {
         }
     }
 
+    @Test func printlnLongLineIsTruncatedToTerminalWidth() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 10, height: 24)
+        await renderer.write("Live view")
+        await renderer.flush()
+        mock.reset()
+
+        // Log a line that is much wider than the 10-column terminal.
+        await renderer.println("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        await renderer.flush()
+
+        // Only the first 10 visible columns should appear.
+        #expect(mock.output.contains("ABCDEFGHIJ"))
+        #expect(!mock.output.contains("ABCDEFGHIJKLMN"))
+    }
+
+    @Test func printlnTruncationPreservesANSICodes() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 8, height: 24)
+        await renderer.write("Live")
+        await renderer.flush()
+        mock.reset()
+
+        // "Red txt" is 7 visible cols (fits); ANSI wrapping must survive truncation.
+        let styled = "\u{1B}[31mRed txt\u{1B}[0m"
+        await renderer.println(styled)
+        await renderer.flush()
+        #expect(mock.output.contains("\u{1B}[31m"))
+        #expect(mock.output.contains("Red txt"))
+        #expect(mock.output.contains("\u{1B}[0m"))
+    }
+
+    @Test func printlnNotTruncatedWhenWidthUnknown() async {
+        // When termWidth == 0 (not yet set) no truncation should occur.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        // Deliberately do NOT call setSize.
+        await renderer.write("Live")
+        await renderer.flush()
+        mock.reset()
+
+        await renderer.println("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        await renderer.flush()
+        // Full string must survive because width is unknown.
+        #expect(mock.output.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+    }
+
     @Test func printlnNoopInAltScreen() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
@@ -416,6 +465,53 @@ struct RendererTests {
         await renderer.flush()
         #expect(mock.output.contains("ABCDE"))
         #expect(!mock.output.contains("ABCDEFGH"))
+    }
+
+    // MARK: - SGR reset on stop / kill
+
+    @Test func stopEmitsSGRReset() async {
+        // stop() must write ANSI.reset so that active styling from the last
+        // rendered frame does not bleed into the shell prompt after exit.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write("\u{1B}[31mStyled content\u{1B}[0m")
+        await renderer.flush()
+        mock.reset()
+
+        await renderer.stop()
+        #expect(mock.output.contains(ANSI.reset))
+    }
+
+    @Test func killEmitsSGRReset() async {
+        // kill() (forceful stop, no final flush) must also reset SGR attributes.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write("\u{1B}[31mStyled content\u{1B}[0m")
+        await renderer.flush()
+        mock.reset()
+
+        await renderer.kill()
+        #expect(mock.output.contains(ANSI.reset))
+    }
+
+    @Test func stopSGRResetAppearsAfterErase() async {
+        // The SGR reset must come AFTER the line-erase sequence, not before,
+        // so the erase itself is not rendered in a stale colour.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.write("Content")
+        await renderer.flush()
+        mock.reset()
+
+        await renderer.stop()
+
+        let eraseIdx = mock.output.range(of: ANSI.eraseEntireLine)
+        let resetIdx = mock.output.range(of: ANSI.reset)
+        #expect(eraseIdx != nil)
+        #expect(resetIdx != nil)
+        if let e = eraseIdx, let r = resetIdx {
+            #expect(e.lowerBound < r.lowerBound)
+        }
     }
 }
 

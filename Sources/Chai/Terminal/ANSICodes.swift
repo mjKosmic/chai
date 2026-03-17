@@ -97,8 +97,15 @@ enum ANSI {
     // MARK: - Window title
 
     /// Set the terminal window title via OSC 0.
+    ///
+    /// ASCII control characters (U+0000–U+001F and U+007F) are stripped from
+    /// `title` before the sequence is emitted. Embedded `ESC` or `BEL` would
+    /// prematurely terminate the OSC sequence and could inject arbitrary escape
+    /// sequences into the terminal stream — the same sanitization applied by
+    /// ``osc8(url:)``.
     static func setWindowTitle(_ title: String) -> String {
-        "\u{1B}]0;\(title)\u{07}"
+        let safe = String(title.unicodeScalars.filter { $0.value >= 0x20 && $0.value != 0x7F })
+        return "\u{1B}]0;\(safe)\u{07}"
     }
 
     // MARK: - Synchronized output (mode 2026)

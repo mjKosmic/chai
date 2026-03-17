@@ -199,7 +199,77 @@ struct InputParserTests {
         #expect(msg?.type == .f(12))
     }
 
-    // MARK: - Alt modifier
+    // MARK: - Shift+Tab
+
+    @Test func shiftTab() {
+        // ESC [ Z is the standard BackTab / Shift+Tab sequence.
+        let msg = key([0x1B, 0x5B, 0x5A])
+        #expect(msg?.type == .shiftTab)
+        #expect(msg?.alt == false)
+    }
+
+    @Test func shiftTabDistinguishableFromTab() {
+        // Regular Tab (0x09) must remain .tab; ESC[Z must be .shiftTab.
+        // Applications that implement forward/backward focus traversal depend
+        // on this distinction being unambiguous.
+        let tab      = key([0x09])
+        let shiftTab = key([0x1B, 0x5B, 0x5A])
+        #expect(tab?.type == .tab)
+        #expect(shiftTab?.type == .shiftTab)
+        #expect(tab?.type != shiftTab?.type)
+    }
+
+    // MARK: - Alt + arrows (xterm CSI modifier encoding)
+
+    @Test func altArrowUpXtermCSI() {
+        // ESC [ 1 ; 3 A — xterm encodes Alt as modifier parameter 3.
+        let msg = key([0x1B, 0x5B, 0x31, 0x3B, 0x33, 0x41])
+        #expect(msg?.type == .up)
+        #expect(msg?.alt == true)
+    }
+
+    @Test func altArrowDownXtermCSI() {
+        let msg = key([0x1B, 0x5B, 0x31, 0x3B, 0x33, 0x42])
+        #expect(msg?.type == .down)
+        #expect(msg?.alt == true)
+    }
+
+    @Test func altArrowRightXtermCSI() {
+        let msg = key([0x1B, 0x5B, 0x31, 0x3B, 0x33, 0x43])
+        #expect(msg?.type == .right)
+        #expect(msg?.alt == true)
+    }
+
+    @Test func altArrowLeftXtermCSI() {
+        let msg = key([0x1B, 0x5B, 0x31, 0x3B, 0x33, 0x44])
+        #expect(msg?.type == .left)
+        #expect(msg?.alt == true)
+    }
+
+    @Test func altArrowXtermCSIDistinguishedFromPlainArrow() {
+        // ESC[A is plain up (alt=false); ESC[1;3A is Alt+Up (alt=true).
+        // Both must produce type == .up so existing switch handlers work,
+        // but they must differ in the alt flag.
+        let plain = key([0x1B, 0x5B, 0x41])
+        let alt   = key([0x1B, 0x5B, 0x31, 0x3B, 0x33, 0x41])
+        #expect(plain?.type == .up)
+        #expect(alt?.type   == .up)
+        #expect(plain?.alt  == false)
+        #expect(alt?.alt    == true)
+    }
+
+    @Test func altArrowXtermCSIDistinguishedFromShiftArrow() {
+        // ESC[1;2A is Shift+Up (type=.shiftUp, alt=false).
+        // ESC[1;3A is Alt+Up  (type=.up,      alt=true).
+        let shift = key([0x1B, 0x5B, 0x31, 0x3B, 0x32, 0x41])
+        let alt   = key([0x1B, 0x5B, 0x31, 0x3B, 0x33, 0x41])
+        #expect(shift?.type == .shiftUp)
+        #expect(shift?.alt  == false)
+        #expect(alt?.type   == .up)
+        #expect(alt?.alt    == true)
+    }
+
+    // MARK: - Alt modifier (ESC-prefix form — existing behaviour preserved)
 
     @Test func altA() {
         // ESC followed by 'a' → Alt+a
@@ -249,6 +319,11 @@ struct InputParserTests {
     }
 
     // MARK: - KeyMsg description
+
+    @Test func keyDescriptionShiftTab() {
+        let msg = KeyMsg(type: .shiftTab)
+        #expect(msg.description == "shift+tab")
+    }
 
     @Test func keyDescriptionCtrlC() {
         let msg = KeyMsg(type: .ctrl("c"))

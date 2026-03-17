@@ -91,8 +91,11 @@ actor Renderer {
         flushTask?.cancel()
         flushTask = nil
         flush()
-        // Move cursor to start of last line and erase it.
+        // Move cursor to start of last line, erase it, then reset all SGR
+        // attributes so the shell prompt is not affected by any active styling
+        // from the last rendered frame.
         terminal.write(ANSI.eraseEntireLine + "\r")
+        terminal.write(ANSI.reset)
     }
 
     /// Stop immediately without a final flush.
@@ -100,6 +103,7 @@ actor Renderer {
         flushTask?.cancel()
         flushTask = nil
         terminal.write(ANSI.eraseEntireLine + "\r")
+        terminal.write(ANSI.reset)
     }
 
     // MARK: - View buffer
@@ -217,7 +221,13 @@ actor Renderer {
             let flushQueued = !queuedLines.isEmpty && !altScreenActive
             if flushQueued {
                 for line in queuedLines {
-                    out += line + ANSI.eraseLineRight + "\r\n"
+                    // Truncate to terminal width so long logged lines don't
+                    // wrap and corrupt the layout of the live view below them.
+                    var renderedLine = line
+                    if termWidth > 0 {
+                        renderedLine = truncateToVisibleWidth(renderedLine, maxWidth: termWidth)
+                    }
+                    out += renderedLine + ANSI.eraseLineRight + "\r\n"
                 }
                 queuedLines = []
             }
