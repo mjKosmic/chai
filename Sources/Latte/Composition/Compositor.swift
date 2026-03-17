@@ -104,15 +104,29 @@ public struct Compositor: Sendable {
     /// 4. Space characters are transparent — they do not overwrite existing cells.
     /// 5. Content outside `width × height` is silently clipped.
     ///
+    /// Double-wide characters that cannot fully fit (their second column would be
+    /// out of bounds) are clipped entirely. When a layer overwrites either half of
+    /// an existing wide glyph, the other half is cleared automatically so the grid
+    /// always maintains consistent column alignment.
+    ///
     /// - Returns: A multi-line string with `height` rows separated by `\n`.
     ///   Each row is exactly `width` visible columns wide.
     public func render() -> String {
         guard width > 0, height > 0 else { return "" }
 
-        // Each cell stores the styled string fragment to emit, or nil (= unset / render as space).
-        // An empty string "" marks the continuation column of a double-wide character.
+        // Each cell stores the styled string fragment to emit, or nil (= unset / space).
+        // An empty string "" marks the *continuation* column of a double-wide character.
         var grid: [[String?]] = Array(
             repeating: Array(repeating: nil, count: width),
+            count: height
+        )
+
+        // Parallel grid: true when the cell holds the *leading* column of a wide char.
+        // The continuation column immediately to the right stores "" in `grid`.
+        // This lets us detect and repair split wide glyphs when a higher-z layer
+        // overwrites only one half.
+        var wideLeading: [[Bool]] = Array(
+            repeating: Array(repeating: false, count: width),
             count: height
         )
 
@@ -120,7 +134,7 @@ public struct Compositor: Sendable {
         let sorted = _layers.sorted { $0.z < $1.z }
 
         for layer in sorted {
-            compositeLayer(layer, into: &grid)
+            compositeLayer(layer, into: &grid, wideLeading: &wideLeading)
         }
 
         return renderGrid(grid)
@@ -128,7 +142,11 @@ public struct Compositor: Sendable {
 
     // MARK: - Private: layer compositing
 
-    private func compositeLayer(_ layer: Layer, into grid: inout [[String?]]) {
+    private func compositeLayer(
+        _ layer: Layer,
+        into grid: inout [[String?]],
+        wideLeading: inout [[Bool]]
+    ) {
         let lines = layer.content.components(separatedBy: "\n")
 
         for (lineIdx, line) in lines.enumerated() {
@@ -153,19 +171,39 @@ public struct Compositor: Sendable {
                 let charWidth = displayWidth(of: char)
 
                 if col >= 0 && col < width {
-                    let cellContent = pendingANSI + String(char)
-                    pendingANSI = ""
-
-                    // Transparency rule: a space in a higher-z layer does not overwrite
-                    // existing content from a lower layer.
-                    if char == " " && grid[row][col] != nil {
-                        // transparent — leave the lower-layer cell intact
+                    // A double-wide character requires *both* col and col+1 to be within
+                    // bounds. If col+1 would overflow the right edge, clip the character
+                    // entirely — leave the cell as nil (renders as a plain space) so the
+                    // rendered row never exceeds the compositor's declared width.
+                    if charWidth == 2 && col + 1 >= width {
+                        pendingANSI = ""  // discard pending ANSI — nothing to attach it to
                     } else {
-                        grid[row][col] = cellContent
-                        // Double-wide characters occupy two columns; mark the continuation
-                        // column with "" so nothing extra is emitted for it.
-                        if charWidth == 2 && col + 1 < width {
-                            grid[row][col + 1] = ""
+                        let cellContent = pendingANSI + String(char)
+                        pendingANSI = ""
+
+                        // Transparency rule: a space in a higher-z layer does not overwrite
+                        // existing content from a lower layer.
+                        if char == " " && grid[row][col] != nil {
+                            // transparent — leave the lower-layer cell intact
+                        } else {
+                            // Before writing, normalize any existing wide-glyph whose halves
+                            // straddle the cell we are about to overwrite.  Leaving the
+                            // "other half" of a split wide char in the grid would cause
+                            // renderGrid to emit overlapping or missing columns.
+                            normalizeWideChar(at: col, row: row,
+                                             grid: &grid, wideLeading: &wideLeading)
+
+                            grid[row][col] = cellContent
+                            wideLeading[row][col] = false   // will be set to true below if wide
+
+                            if charWidth == 2 {
+                                // col + 1 < width is guaranteed by the clip guard above.
+                                // Normalize whatever is already at col+1 before clobbering it.
+                                normalizeWideChar(at: col + 1, row: row,
+                                                 grid: &grid, wideLeading: &wideLeading)
+                                grid[row][col + 1] = ""     // continuation marker
+                                wideLeading[row][col] = true
+                            }
                         }
                     }
                 } else if col >= width {
@@ -177,6 +215,38 @@ public struct Compositor: Sendable {
                 col += max(1, charWidth)
                 i = line.index(after: i)
             }
+        }
+    }
+
+    /// Clears the *other half* of any wide character that occupies `col`, so
+    /// that a subsequent write to `col` does not leave a dangling leading or
+    /// continuation cell.
+    ///
+    /// - If `col` is a **continuation** cell (`grid[row][col] == ""`): the
+    ///   leading cell at `col - 1` is cleared (set to `nil`, renders as space).
+    /// - If `col` is a **leading** cell (`wideLeading[row][col] == true`): the
+    ///   continuation cell at `col + 1` is cleared.
+    /// - Otherwise: no-op.
+    private func normalizeWideChar(
+        at col: Int, row: Int,
+        grid: inout [[String?]],
+        wideLeading: inout [[Bool]]
+    ) {
+        if grid[row][col] == "" {
+            // This is the continuation half of a wide char whose lead is at col-1.
+            if col > 0 {
+                grid[row][col - 1] = nil
+                wideLeading[row][col - 1] = false
+            }
+            // The continuation cell itself will be overwritten by the caller.
+        } else if wideLeading[row][col] {
+            // This is the leading half of a wide char whose continuation is at col+1.
+            if col + 1 < width {
+                grid[row][col + 1] = nil
+                // (continuation cells have wideLeading == false by definition)
+            }
+            wideLeading[row][col] = false
+            // The leading cell itself will be overwritten by the caller.
         }
     }
 

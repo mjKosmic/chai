@@ -265,6 +265,68 @@ struct CompositorTests {
         #expect(lines[2].hasPrefix("EF"))
     }
 
+    // MARK: - Wide character split-glyph normalization
+
+    // If a higher-z layer writes into the *continuation* cell of an existing wide
+    // glyph, the leading cell must be cleared so the renderer doesn't emit the
+    // wide glyph AND the new character at the same terminal columns.
+    @Test func overwritingContinuationCellClearsLeadingCell() {
+        // Layer 0 (z=0): "A汉B"  → A at col0, 汉 at col1 (leading) + col2 (cont), B at col3
+        // Layer 1 (z=1): "X" at col 2  — writes into the continuation of 汉
+        var comp = Compositor(width: 4, height: 1)
+        comp.add(Layer(content: "A汉B", x: 0, y: 0, z: 0))
+        comp.add(Layer(content: "X",   x: 2, y: 0, z: 1))
+
+        let visible = stripANSI(comp.render()).components(separatedBy: "\n")[0]
+        let chars = Array(visible)
+        // Expected: A(col0) space(col1, cleared leading) X(col2) B(col3)
+        #expect(chars.count == 4)
+        #expect(chars[0] == "A")
+        #expect(chars[1] == " ")  // leading cell of 汉 was cleared
+        #expect(chars[2] == "X")
+        #expect(chars[3] == "B")
+    }
+
+    // If a higher-z layer writes into the *leading* cell of an existing wide
+    // glyph, the continuation cell must be cleared so it doesn't leave an
+    // invisible hole that makes the row appear 1 column short.
+    @Test func overwritingLeadingCellClearsContinuationCell() {
+        // Layer 0 (z=0): "A汉B"  → A at col0, 汉 at col1 (leading) + col2 (cont), B at col3
+        // Layer 1 (z=1): "X" at col 1  — overwrites the leading cell of 汉
+        var comp = Compositor(width: 4, height: 1)
+        comp.add(Layer(content: "A汉B", x: 0, y: 0, z: 0))
+        comp.add(Layer(content: "X",   x: 1, y: 0, z: 1))
+
+        let visible = stripANSI(comp.render()).components(separatedBy: "\n")[0]
+        let chars = Array(visible)
+        // Expected: A(col0) X(col1) space(col2, cleared continuation) B(col3)
+        #expect(chars.count == 4)
+        #expect(chars[0] == "A")
+        #expect(chars[1] == "X")
+        #expect(chars[2] == " ")  // continuation of 汉 was cleared
+        #expect(chars[3] == "B")
+    }
+
+    // A double-wide character placed at the last column must be clipped (not written)
+    // so the rendered row stays exactly `width` visible columns wide.
+    @Test func wideCharAtLastColumnIsClipped() {
+        var comp = Compositor(width: 3, height: 1)
+        // "A汉" — 'A' is 1 col, '汉' is 2 cols; with width=3, '汉' starts at col 1
+        // but needs col 2 as well.  That fits (cols 1 and 2).
+        comp.add(Layer(content: "A汉", x: 0, y: 0))
+        let fit = stripANSI(comp.render()).components(separatedBy: "\n")[0]
+        #expect(fit == "A汉")   // 1 + 2 = 3 cols — fits exactly
+
+        // Now place '汉' at the *last* column (col 2) so col 3 would be needed.
+        var comp2 = Compositor(width: 3, height: 1)
+        comp2.add(Layer(content: "AB汉", x: 0, y: 0))  // A=col0, B=col1, 汉 would need col2+col3
+        let clipped = stripANSI(comp2.render()).components(separatedBy: "\n")[0]
+        // '汉' must be clipped; the last column stays as a plain space.
+        #expect(clipped.count == 3)   // visible width still exactly 3 (A, B, space)
+        #expect(clipped.hasPrefix("AB"))
+        #expect(!clipped.contains("汉"))
+    }
+
     @Test func overlappingMultiLineLayers() {
         //  Layer 0 (z=0): 3×3 grid of A
         //  Layer 1 (z=1): "XY" placed at (1, 1)
