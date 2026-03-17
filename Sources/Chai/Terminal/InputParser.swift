@@ -136,6 +136,13 @@ struct InputParser {
         let seq = bytes[0..<totalLen].map { $0 }
         let seqStr = String(bytes: seq, encoding: .isoLatin1) ?? ""
 
+        // Check Alt-modifier sequences first: xterm encodes Alt as modifier
+        // parameter 3 (e.g. ESC[1;3A = Alt+Up). These live in a dedicated table
+        // so the returned KeyMsg correctly carries alt: true.
+        if let key = csiAltTable[seqStr] {
+            return (totalLen, KeyMsg(type: key, alt: true))
+        }
+
         if let key = csiTable[seqStr] {
             return (totalLen, KeyMsg(type: key))
         }
@@ -224,12 +231,6 @@ struct InputParser {
         "\u{1B}[c": .shiftRight, // urxvt
         "\u{1B}[d": .shiftLeft,  // urxvt
 
-        // Alt + arrows
-        "\u{1B}[1;3A": .up,   // handled as alt in parseOne
-        "\u{1B}[1;3B": .down,
-        "\u{1B}[1;3C": .right,
-        "\u{1B}[1;3D": .left,
-
         // Ctrl + arrows
         "\u{1B}[1;5A": .ctrlUp,
         "\u{1B}[1;5B": .ctrlDown,
@@ -242,8 +243,9 @@ struct InputParser {
         "\u{1B}[1;6C": .ctrlShiftRight,
         "\u{1B}[1;6D": .ctrlShiftLeft,
 
-        // Shift+Tab
-        "\u{1B}[Z": .tab,  // reported as shift+tab; caller can check modifier
+        // Shift+Tab (BackTab) — distinct from plain Tab so apps can implement
+        // forward/backward focus navigation unambiguously.
+        "\u{1B}[Z": .shiftTab,
 
         // Home / End
         "\u{1B}[H":    .home,
@@ -317,5 +319,19 @@ struct InputParser {
         "\u{1B}OQ": .f(2),
         "\u{1B}OR": .f(3),
         "\u{1B}OS": .f(4),
+    ]
+
+    /// CSI sequences that encode the **Alt modifier** via xterm's modifier
+    /// parameter 3 (e.g. `ESC[1;3A` = Alt+Up).
+    ///
+    /// These are checked before ``csiTable`` in `parseCSI` so that the returned
+    /// `KeyMsg` correctly carries `alt: true`. Sequences with other modifiers
+    /// (Shift=2, Ctrl=5, Ctrl+Shift=6) are handled directly in ``csiTable``
+    /// with dedicated `KeyType` cases and do not need the `alt` flag.
+    static let csiAltTable: [String: KeyType] = [
+        "\u{1B}[1;3A": .up,
+        "\u{1B}[1;3B": .down,
+        "\u{1B}[1;3C": .right,
+        "\u{1B}[1;3D": .left,
     ]
 }

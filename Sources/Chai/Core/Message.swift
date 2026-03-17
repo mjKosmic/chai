@@ -80,6 +80,11 @@ public enum KeyType: Sendable, Equatable {
     // MARK: Whitespace / editing
     case enter
     case tab
+    /// A Shift+Tab key press (BackTab). Sent by terminals as `ESC [ Z`.
+    ///
+    /// Distinct from ``tab`` so that applications can implement forward/backward
+    /// focus traversal without an ambiguous `.tab` case.
+    case shiftTab
     case backspace
     case delete
     case escape
@@ -138,6 +143,7 @@ public enum KeyType: Sendable, Equatable {
         case .runes:         return "runes"
         case .enter:         return "enter"
         case .tab:           return "tab"
+        case .shiftTab:      return "shift+tab"
         case .backspace:     return "backspace"
         case .delete:        return "delete"
         case .escape:        return "esc"

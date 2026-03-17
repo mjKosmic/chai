@@ -81,6 +81,12 @@ actor Renderer {
         flushTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: interval)
+                // Re-check after the sleep: cancellation is co-operative and
+                // `try?` swallows the CancellationError thrown by `Task.sleep`.
+                // Without this guard a cancelled task can still call flush()
+                // once more, writing to the terminal *after* stop() has already
+                // emitted its cleanup sequences (eraseEntireLine + ANSI.reset).
+                guard !Task.isCancelled else { break }
                 await self?.flush()
             }
         }
@@ -91,8 +97,11 @@ actor Renderer {
         flushTask?.cancel()
         flushTask = nil
         flush()
-        // Move cursor to start of last line and erase it.
+        // Move cursor to start of last line, erase it, then reset all SGR
+        // attributes so the shell prompt is not affected by any active styling
+        // from the last rendered frame.
         terminal.write(ANSI.eraseEntireLine + "\r")
+        terminal.write(ANSI.reset)
     }
 
     /// Stop immediately without a final flush.
@@ -100,6 +109,7 @@ actor Renderer {
         flushTask?.cancel()
         flushTask = nil
         terminal.write(ANSI.eraseEntireLine + "\r")
+        terminal.write(ANSI.reset)
     }
 
     // MARK: - View buffer
@@ -217,7 +227,18 @@ actor Renderer {
             let flushQueued = !queuedLines.isEmpty && !altScreenActive
             if flushQueued {
                 for line in queuedLines {
-                    out += line + ANSI.eraseLineRight + "\r\n"
+                    // Truncate to terminal width so long logged lines don't
+                    // wrap and corrupt the layout of the live view below them.
+                    var renderedLine = line
+                    if termWidth > 0 {
+                        renderedLine = truncateToVisibleWidth(renderedLine, maxWidth: termWidth)
+                    }
+                    // Always emit a SGR reset after each logged line. Truncation
+                    // can drop a trailing ESC[0m that was part of the original
+                    // string, leaving attributes (colour, bold, etc.) active for
+                    // the erase-to-EOL and all subsequent output. Resetting first
+                    // also ensures eraseLineRight uses the terminal default colour.
+                    out += renderedLine + ANSI.reset + ANSI.eraseLineRight + "\r\n"
                 }
                 queuedLines = []
             }
