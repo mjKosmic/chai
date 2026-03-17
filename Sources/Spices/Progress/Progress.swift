@@ -61,10 +61,11 @@ public struct Progress: Sendable {
     /// If set, the filled bar renders as a multi-stop gradient across these colors.
     ///
     /// Each filled character is colored by interpolating across the provided color
-    /// stops from left to right. Supports two or more stops.
+    /// stops from left to right. Supports one or more stops: a single stop is treated
+    /// as a solid fill using that color, while two or more stops produce a gradient.
     ///
-    /// When `nil` (the default), the bar uses solid fill (``fullColor``) or a
-    /// two-color gradient via ``gradientFrom`` / ``fullColor``.
+    /// When `nil` (the default) or when an empty array is provided, the bar uses solid
+    /// fill (``fullColor``) or a two-color gradient via ``gradientFrom`` / ``fullColor``.
     ///
     /// **Priority:** `fillGradient` takes precedence over `gradientFrom` when both
     /// are set.
