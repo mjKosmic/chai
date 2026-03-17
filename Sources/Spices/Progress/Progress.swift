@@ -177,7 +177,7 @@ public struct Progress: Sendable {
         var bar = ""
 
         // Build filled portion
-        if let stops = fillGradient {
+        if let stops = fillGradient, !stops.isEmpty {
             bar += renderMultiStopGradient(colors: stops, width: filledWidth)
         } else if let gradFrom = gradientFrom, let gradTo = fullColor {
             bar += renderGradient(from: gradFrom, to: gradTo, width: filledWidth)
