@@ -561,8 +561,10 @@ struct ProgressGradientTests {
         progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
         let viewHalf = progress.viewAs(0.5)
         let viewFull = progress.viewAs(1.0)
-        // Full bar has twice as many filled chars → longer raw string
-        #expect(viewFull.count > viewHalf.count)
+        // Full bar has twice as many filled chars — compare filled glyph counts, not raw length
+        let fillCountHalf = viewHalf.unicodeScalars.filter { $0 == "█" }.count
+        let fillCountFull = viewFull.unicodeScalars.filter { $0 == "█" }.count
+        #expect(fillCountFull == 2 * fillCountHalf)
     }
 
     // 7.1 — fillGradient takes precedence over gradientFrom / fullColor
