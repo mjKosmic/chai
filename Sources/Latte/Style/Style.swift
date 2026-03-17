@@ -1,3 +1,29 @@
+// MARK: - StyleFlag
+
+/// A three-state boolean flag for style attributes.
+///
+/// Unlike a plain `Bool`, `StyleFlag` can represent an **unset** state —
+/// meaning the attribute has not been explicitly specified. This is the key
+/// building block for style inheritance: `.unset` properties are filled in from
+/// a parent style, while `.on` and `.off` properties are always preserved.
+///
+/// ```swift
+/// let base  = Style().bold()                       // isBold = .on
+/// let child = Style().notBold()                    // isBold = .off
+/// let result = child.inheriting(from: base)        // isBold stays .off — child wins
+///
+/// let other = Style()                              // isBold = .unset
+/// let result2 = other.inheriting(from: base)      // isBold becomes .on — inherited
+/// ```
+public enum StyleFlag: Sendable, Equatable {
+    /// The attribute has not been set — transparent to inheritance.
+    case unset
+    /// The attribute is explicitly enabled.
+    case on
+    /// The attribute is explicitly disabled (blocks inheritance of `.on` from a parent).
+    case off
+}
+
 // MARK: - UnderlineStyle
 
 /// Underline style variants for terminal text.
@@ -51,6 +77,18 @@ public enum UnderlineStyle: Sendable, Equatable {
 ///
 /// Styles can also be applied via the ``render(_:)`` method, which wraps
 /// the given text in the appropriate ANSI escape sequences.
+///
+/// ## Style Inheritance
+///
+/// Use ``inheriting(from:)`` to fill in unset properties from a parent style.
+/// Properties that are explicitly `.on` or `.off` on the child are never
+/// overridden; only `.unset` properties are filled in from the parent.
+///
+/// ```swift
+/// let base  = Style().foreground(.ansi(.blue)).bold()
+/// let child = Style().foreground(.ansi(.red)).inheriting(from: base)
+/// // child: foreground = red (own value), bold = on (inherited)
+/// ```
 public struct Style: Sendable, Equatable {
     /// The foreground (text) color, or `nil` for the terminal default.
     public var foreground: Color?
@@ -59,13 +97,25 @@ public struct Style: Sendable, Equatable {
     public var background: Color?
 
     /// Whether to render text in bold.
-    public var isBold: Bool
+    ///
+    /// - `.unset` (default): no code emitted; transparent to inheritance.
+    /// - `.on`: emits SGR 1 (bold).
+    /// - `.off`: no code emitted; blocks inheritance of bold from a parent.
+    public var isBold: StyleFlag
 
     /// Whether to render text with reduced intensity.
-    public var isDim: Bool
+    ///
+    /// - `.unset` (default): no code emitted; transparent to inheritance.
+    /// - `.on`: emits SGR 2 (dim).
+    /// - `.off`: no code emitted; blocks inheritance of dim from a parent.
+    public var isDim: StyleFlag
 
     /// Whether to render text in italic.
-    public var isItalic: Bool
+    ///
+    /// - `.unset` (default): no code emitted; transparent to inheritance.
+    /// - `.on`: emits SGR 3 (italic).
+    /// - `.off`: no code emitted; blocks inheritance of italic from a parent.
+    public var isItalic: StyleFlag
 
     /// The underline style to apply. Defaults to `.none`.
     ///
@@ -95,13 +145,25 @@ public struct Style: Sendable, Equatable {
     public var underlineColor: Color?
 
     /// Whether to render text with a strikethrough.
-    public var isStrikethrough: Bool
+    ///
+    /// - `.unset` (default): no code emitted; transparent to inheritance.
+    /// - `.on`: emits SGR 9 (strikethrough).
+    /// - `.off`: no code emitted; blocks inheritance from a parent.
+    public var isStrikethrough: StyleFlag
 
     /// Whether to swap foreground and background colors.
-    public var isReverse: Bool
+    ///
+    /// - `.unset` (default): no code emitted; transparent to inheritance.
+    /// - `.on`: emits SGR 7 (reverse video).
+    /// - `.off`: no code emitted; blocks inheritance from a parent.
+    public var isReverse: StyleFlag
 
     /// Whether to render blinking text (support varies by terminal).
-    public var isBlink: Bool
+    ///
+    /// - `.unset` (default): no code emitted; transparent to inheritance.
+    /// - `.on`: emits SGR 5 (blink).
+    /// - `.off`: no code emitted; blocks inheritance from a parent.
+    public var isBlink: StyleFlag
 
     /// An optional URL to wrap rendered text in an OSC 8 hyperlink sequence.
     ///
@@ -114,6 +176,12 @@ public struct Style: Sendable, Equatable {
     // MARK: - Initializer
 
     /// Creates a style with no attributes or colors set.
+    ///
+    /// Boolean parameters are provided for backward compatibility — passing
+    /// `true` for any attribute sets the corresponding ``StyleFlag`` to `.on`.
+    /// The default of `false` maps to `.unset` (not set), which is transparent
+    /// to style inheritance. Use ``notBold()``, ``notItalic()``, etc. to
+    /// explicitly set a flag to `.off`.
     public init(
         foreground: Color? = nil,
         background: Color? = nil,
@@ -127,14 +195,14 @@ public struct Style: Sendable, Equatable {
     ) {
         self.foreground = foreground
         self.background = background
-        self.isBold = isBold
-        self.isDim = isDim
-        self.isItalic = isItalic
+        self.isBold = isBold ? .on : .unset
+        self.isDim = isDim ? .on : .unset
+        self.isItalic = isItalic ? .on : .unset
         self.underlineStyle = isUnderline ? .single : .none
         self.underlineColor = nil
-        self.isStrikethrough = isStrikethrough
-        self.isReverse = isReverse
-        self.isBlink = isBlink
+        self.isStrikethrough = isStrikethrough ? .on : .unset
+        self.isReverse = isReverse ? .on : .unset
+        self.isBlink = isBlink ? .on : .unset
         self.hyperlink = nil
     }
 
@@ -154,26 +222,79 @@ public struct Style: Sendable, Equatable {
         return copy
     }
 
-    /// Returns a copy with bold enabled.
+    // MARK: Bold
+
+    /// Returns a copy with bold explicitly enabled (sets flag to `.on`).
     public func bold() -> Style {
         var copy = self
-        copy.isBold = true
+        copy.isBold = .on
         return copy
     }
 
-    /// Returns a copy with dim enabled.
+    /// Returns a copy with bold explicitly disabled (sets flag to `.off`).
+    ///
+    /// `.off` blocks inheritance of bold from a parent style. Use this when
+    /// a child style must not be bold even if the parent is bold.
+    public func notBold() -> Style {
+        var copy = self
+        copy.isBold = .off
+        return copy
+    }
+
+    /// Returns a copy with bold reset to unset (transparent to inheritance).
+    public func unsetBold() -> Style {
+        var copy = self
+        copy.isBold = .unset
+        return copy
+    }
+
+    // MARK: Dim
+
+    /// Returns a copy with dim explicitly enabled (sets flag to `.on`).
     public func dim() -> Style {
         var copy = self
-        copy.isDim = true
+        copy.isDim = .on
         return copy
     }
 
-    /// Returns a copy with italic enabled.
-    public func italic() -> Style {
+    /// Returns a copy with dim explicitly disabled (sets flag to `.off`).
+    public func notDim() -> Style {
         var copy = self
-        copy.isItalic = true
+        copy.isDim = .off
         return copy
     }
+
+    /// Returns a copy with dim reset to unset (transparent to inheritance).
+    public func unsetDim() -> Style {
+        var copy = self
+        copy.isDim = .unset
+        return copy
+    }
+
+    // MARK: Italic
+
+    /// Returns a copy with italic explicitly enabled (sets flag to `.on`).
+    public func italic() -> Style {
+        var copy = self
+        copy.isItalic = .on
+        return copy
+    }
+
+    /// Returns a copy with italic explicitly disabled (sets flag to `.off`).
+    public func notItalic() -> Style {
+        var copy = self
+        copy.isItalic = .off
+        return copy
+    }
+
+    /// Returns a copy with italic reset to unset (transparent to inheritance).
+    public func unsetItalic() -> Style {
+        var copy = self
+        copy.isItalic = .unset
+        return copy
+    }
+
+    // MARK: Underline
 
     /// Returns a copy with single underline enabled.
     ///
@@ -202,26 +323,76 @@ public struct Style: Sendable, Equatable {
         return copy
     }
 
-    /// Returns a copy with strikethrough enabled.
+    // MARK: Strikethrough
+
+    /// Returns a copy with strikethrough explicitly enabled (sets flag to `.on`).
     public func strikethrough() -> Style {
         var copy = self
-        copy.isStrikethrough = true
+        copy.isStrikethrough = .on
         return copy
     }
 
-    /// Returns a copy with reverse video enabled.
+    /// Returns a copy with strikethrough explicitly disabled (sets flag to `.off`).
+    public func notStrikethrough() -> Style {
+        var copy = self
+        copy.isStrikethrough = .off
+        return copy
+    }
+
+    /// Returns a copy with strikethrough reset to unset (transparent to inheritance).
+    public func unsetStrikethrough() -> Style {
+        var copy = self
+        copy.isStrikethrough = .unset
+        return copy
+    }
+
+    // MARK: Reverse
+
+    /// Returns a copy with reverse video explicitly enabled (sets flag to `.on`).
     public func reverse() -> Style {
         var copy = self
-        copy.isReverse = true
+        copy.isReverse = .on
         return copy
     }
 
-    /// Returns a copy with blink enabled.
-    public func blink() -> Style {
+    /// Returns a copy with reverse video explicitly disabled (sets flag to `.off`).
+    public func notReverse() -> Style {
         var copy = self
-        copy.isBlink = true
+        copy.isReverse = .off
         return copy
     }
+
+    /// Returns a copy with reverse reset to unset (transparent to inheritance).
+    public func unsetReverse() -> Style {
+        var copy = self
+        copy.isReverse = .unset
+        return copy
+    }
+
+    // MARK: Blink
+
+    /// Returns a copy with blink explicitly enabled (sets flag to `.on`).
+    public func blink() -> Style {
+        var copy = self
+        copy.isBlink = .on
+        return copy
+    }
+
+    /// Returns a copy with blink explicitly disabled (sets flag to `.off`).
+    public func notBlink() -> Style {
+        var copy = self
+        copy.isBlink = .off
+        return copy
+    }
+
+    /// Returns a copy with blink reset to unset (transparent to inheritance).
+    public func unsetBlink() -> Style {
+        var copy = self
+        copy.isBlink = .unset
+        return copy
+    }
+
+    // MARK: Hyperlink
 
     /// Returns a copy with an OSC 8 hyperlink URL set.
     ///
@@ -244,6 +415,43 @@ public struct Style: Sendable, Equatable {
         var copy = self
         copy.hyperlink = url
         return copy
+    }
+
+    // MARK: - Inheritance
+
+    /// Returns a copy of this style with any `.unset` properties filled in from `parent`.
+    ///
+    /// Properties explicitly set on the receiver (`.on` or `.off` flags,
+    /// non-nil colors, non-default underline style) are never overridden.
+    /// Only properties that are at their default/unset state are inherited.
+    ///
+    /// ```swift
+    /// let base  = Style().foreground(.ansi(.blue)).bold()
+    /// let child = Style().foreground(.ansi(.red)).inheriting(from: base)
+    /// // child: foreground = red (own value), bold = on (inherited)
+    /// ```
+    ///
+    /// - Parameter parent: The style to inherit unset properties from.
+    /// - Returns: A new style with unset properties filled in from `parent`.
+    public func inheriting(from parent: Style) -> Style {
+        var result = self
+        // Colors: inherit if child has no color set
+        if result.foreground == nil { result.foreground = parent.foreground }
+        if result.background == nil { result.background = parent.background }
+        // StyleFlag attributes: inherit if child's flag is .unset
+        if result.isBold == .unset { result.isBold = parent.isBold }
+        if result.isDim == .unset { result.isDim = parent.isDim }
+        if result.isItalic == .unset { result.isItalic = parent.isItalic }
+        if result.isStrikethrough == .unset { result.isStrikethrough = parent.isStrikethrough }
+        if result.isReverse == .unset { result.isReverse = parent.isReverse }
+        if result.isBlink == .unset { result.isBlink = parent.isBlink }
+        // Underline: inherit if child has no underline style set
+        if result.underlineStyle == .none { result.underlineStyle = parent.underlineStyle }
+        // Underline color: inherit if child has none
+        if result.underlineColor == nil { result.underlineColor = parent.underlineColor }
+        // Hyperlink: inherit if child has none
+        if result.hyperlink == nil { result.hyperlink = parent.hyperlink }
+        return result
     }
 
     // MARK: - Rendering
@@ -325,13 +533,23 @@ public struct Style: Sendable, Equatable {
         render(text, profile: .trueColor)
     }
 
-    /// Whether this style has any attributes or colors set.
+    /// Whether this style has no attributes, colors, or other properties set.
+    ///
+    /// A style is empty when every flag is `.unset`, all colors are `nil`,
+    /// the underline style is `.none`, and no hyperlink is set. A style with
+    /// any `.off` flag is **not** empty, since it carries explicit intent (it
+    /// blocks inheritance of that attribute from a parent style).
     public var isEmpty: Bool {
         foreground == nil
             && background == nil
-            && !isBold && !isDim && !isItalic
-            && (underlineStyle == .none || underlineColor == nil)
-            && !isStrikethrough && !isReverse && !isBlink
+            && isBold == .unset
+            && isDim == .unset
+            && isItalic == .unset
+            && underlineStyle == .none
+            && underlineColor == nil
+            && isStrikethrough == .unset
+            && isReverse == .unset
+            && isBlink == .unset
             && hyperlink == nil
     }
 
@@ -351,6 +569,9 @@ public struct Style: Sendable, Equatable {
 
     /// Collects the SGR parameter codes for all enabled attributes and colors,
     /// downsampling colors to the given profile.
+    ///
+    /// Only `.on` flags emit SGR codes. `.off` and `.unset` flags emit nothing,
+    /// so the terminal defaults (non-bold, non-italic, etc.) apply.
     private func sgrParameters(profile: ColorProfile = .trueColor) -> [String] {
         var params: [String] = []
 
@@ -360,13 +581,13 @@ public struct Style: Sendable, Equatable {
         if let bg = background?.downsampled(to: profile) {
             params.append(bg.bgCode)
         }
-        if isBold { params.append("1") }
-        if isDim { params.append("2") }
-        if isItalic { params.append("3") }
+        if isBold == .on { params.append("1") }
+        if isDim == .on { params.append("2") }
+        if isItalic == .on { params.append("3") }
         if let code = underlineStyle.sgrCode { params.append(code) }
-        if isBlink { params.append("5") }
-        if isReverse { params.append("7") }
-        if isStrikethrough { params.append("9") }
+        if isBlink == .on { params.append("5") }
+        if isReverse == .on { params.append("7") }
+        if isStrikethrough == .on { params.append("9") }
         if underlineStyle != .none,
            let ulColor = underlineColor?.downsampled(to: profile) {
             params.append(ulColor.ulCode)
