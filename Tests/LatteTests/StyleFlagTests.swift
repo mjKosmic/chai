@@ -1,6 +1,24 @@
 import Testing
 @testable import Latte
 
+// MARK: - SGR test helper
+
+/// Parses the SGR parameter tokens from the first CSI escape sequence in `s`.
+///
+/// For example, `"\u{1B}[1;31mfoo\u{1B}[0m"` → `["1", "31"]`.
+/// Returns an empty array if no CSI sequence is found.
+private func sgrParams(_ s: String) -> [String] {
+    // Find ESC
+    guard let escIdx = s.firstIndex(of: "\u{1B}") else { return [] }
+    let afterEsc = s.index(after: escIdx)
+    guard afterEsc < s.endIndex, s[afterEsc] == "[" else { return [] }
+    let afterBracket = s.index(after: afterEsc)
+    // Find the closing 'm'
+    guard let mIdx = s[afterBracket...].firstIndex(of: "m") else { return [] }
+    let params = String(s[afterBracket..<mIdx])
+    return params.split(separator: ";", omittingEmptySubsequences: false).map(String.init)
+}
+
 // MARK: - Milestone 5.1: StyleFlag and three-state style properties
 
 @Suite("StyleFlag")
@@ -357,9 +375,11 @@ struct StyleInheritanceTests {
         let parent = Style().bold()
         let child  = Style().foreground(.ansi(.red)).inheriting(from: parent)
         let result = child.render("hello")
-        // Should contain red fg AND bold
-        #expect(result.contains("31"))  // red fg
-        #expect(result.contains("1"))   // bold
+        // Parse the SGR parameters to avoid substring false-positives:
+        // "31" (red fg) contains "1", so result.contains("1") is unreliable.
+        let params = sgrParams(result)
+        #expect(params.contains("31"))  // red fg
+        #expect(params.contains("1"))   // bold (exact token, not substring)
     }
 
     @Test func blockedBoldNotRendered() {
@@ -378,9 +398,13 @@ struct StyleInheritanceTests {
                                .inheriting(from: base)
         #expect(component.foreground == .ansi(.red))
         #expect(component.isBold == .off)
-        // Render should have red fg only, no bold
+        // Render should have red fg only, no bold.
+        // Parse SGR params for exact token matching — avoids substring
+        // false-positives (e.g. "31" containing "1", or bold appearing
+        // first/last in the param list defeating ";1;" substring checks).
         let result = component.render("text")
-        #expect(result.contains("31"))    // red
-        #expect(!result.contains(";1;") && !result.hasPrefix("\u{1B}[1m"))
+        let params = sgrParams(result)
+        #expect(params.contains("31"))   // red fg present
+        #expect(!params.contains("1"))   // bold token absent
     }
 }

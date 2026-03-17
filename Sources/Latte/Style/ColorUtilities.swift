@@ -89,10 +89,12 @@ private func hslToColor(h: Double, s: Double, l: Double) -> Color {
 ///
 /// - Parameters:
 ///   - color: The base color. Non-TrueColor values are converted internally.
-///   - amount: The fraction by which to reduce lightness (0.0–1.0).
+///   - amount: The fraction by which to reduce lightness. Clamped to 0.0–1.0
+///     before use, so negative values and values above 1.0 are safe.
 /// - Returns: A `.trueColor` value with the same hue and saturation but
 ///   reduced lightness.
 public func darken(_ color: Color, _ amount: Double) -> Color {
+    let amount = max(0.0, min(1.0, amount))
     var (h, s, l) = color.toHSL()
     l = max(0.0, l - amount)
     return hslToColor(h: h, s: s, l: l)
@@ -111,10 +113,12 @@ public func darken(_ color: Color, _ amount: Double) -> Color {
 ///
 /// - Parameters:
 ///   - color: The base color. Non-TrueColor values are converted internally.
-///   - amount: The fraction by which to increase lightness (0.0–1.0).
+///   - amount: The fraction by which to increase lightness. Clamped to 0.0–1.0
+///     before use, so negative values and values above 1.0 are safe.
 /// - Returns: A `.trueColor` value with the same hue and saturation but
 ///   increased lightness.
 public func lighten(_ color: Color, _ amount: Double) -> Color {
+    let amount = max(0.0, min(1.0, amount))
     var (h, s, l) = color.toHSL()
     l = min(1.0, l + amount)
     return hslToColor(h: h, s: s, l: l)
@@ -138,7 +142,13 @@ public func complementary(_ color: Color) -> Color {
     return hslToColor(h: h, s: s, l: l)
 }
 
-/// Blends `from` and `to` by factor `t` in linear sRGB space.
+/// Blends `from` and `to` by factor `t` in gamma-encoded sRGB space.
+///
+/// Component-wise linear interpolation is applied directly on the
+/// gamma-encoded 8-bit channel values (i.e. the stored `r`, `g`, `b` bytes),
+/// which matches common terminal and CSS colour-mixing conventions.
+/// This is **not** the same as linear-light (linearised) blending, which would
+/// require gamma-decoding before interpolating and re-encoding after.
 ///
 /// `t = 0.0` returns a color equal to `from`; `t = 1.0` returns a color equal
 /// to `to`. Values outside 0.0–1.0 are clamped.
