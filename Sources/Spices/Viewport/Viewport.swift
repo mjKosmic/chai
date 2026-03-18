@@ -163,11 +163,11 @@ public struct Viewport: Sendable {
             visibleLines.append(String(repeating: " ", count: width))
         }
 
+        // Join lines as plain text (truncateLine returns no ANSI), then apply
+        // the viewport style structurally so the cell-buffer renderer sees clean
+        // CellStyle metadata rather than embedded escape bytes.
         let output = visibleLines.joined(separator: "\n")
-        if style.isEmpty {
-            return ViewOutput(output)
-        }
-        return ViewOutput(style.render(output))
+        return ViewOutput(style.styledText(output))
     }
 
     // MARK: - Content management

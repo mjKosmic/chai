@@ -279,62 +279,62 @@ public struct FilePicker: Sendable {
     /// Renders the file picker.
     public func view() -> ViewOutput {
         if let error = _error {
-            return ViewOutput(styles.emptyDirectory.render("Error: \(error)"))
+            return ViewOutput(styles.emptyDirectory.styledText("Error: \(error)"))
         }
 
         guard !_files.isEmpty else {
-            return ViewOutput(styles.emptyDirectory.render("(empty directory)"))
+            return ViewOutput(styles.emptyDirectory.styledText("(empty directory)"))
         }
 
-        var lines: [String] = []
+        var lines: [StyledText] = []
         let start = _viewportMin
         let end = min(_viewportMax, _files.count)
 
         for i in start..<end {
             let entry = _files[i]
-            var line = ""
+            var line = StyledText()
 
             // Cursor
             if i == _selectedIndex {
-                line += styles.cursor.render(cursorString + " ")
+                line += styles.cursor.styledText(cursorString + " ")
             } else {
-                line += String(repeating: " ", count: cursorString.count + 1)
+                line += StyledText(String(repeating: " ", count: cursorString.count + 1))
             }
 
             // Permissions
             if showPermissions {
-                line += styles.permission.render(entry.permissions) + " "
+                line += styles.permission.styledText(entry.permissions) + StyledText(" ")
             }
 
             // Size
             if showSize {
                 if entry.isDirectory {
-                    line += styles.fileSize.render(padLeft("-", to: 7)) + " "
+                    line += styles.fileSize.styledText(padLeft("-", to: 7)) + StyledText(" ")
                 } else {
-                    line += styles.fileSize.render(padLeft(humanizeBytes(entry.size), to: 7)) + " "
+                    line += styles.fileSize.styledText(padLeft(humanizeBytes(entry.size), to: 7)) + StyledText(" ")
                 }
             }
 
             // Name
             let isAllowed = isFileAllowed(entry)
             if entry.isSymlink {
-                line += styles.symlink.render(entry.name)
+                line += styles.symlink.styledText(entry.name)
             } else if entry.isDirectory {
-                line += styles.directory.render(entry.name + "/")
+                line += styles.directory.styledText(entry.name + "/")
             } else if isAllowed {
                 if i == _selectedIndex {
-                    line += styles.selected.render(entry.name)
+                    line += styles.selected.styledText(entry.name)
                 } else {
-                    line += styles.file.render(entry.name)
+                    line += styles.file.styledText(entry.name)
                 }
             } else {
-                line += styles.disabledFile.render(entry.name)
+                line += styles.disabledFile.styledText(entry.name)
             }
 
             lines.append(line)
         }
 
-        return ViewOutput(lines.joined(separator: "\n"))
+        return ViewOutput(lines.joined())
     }
 
     // MARK: - Selection helpers

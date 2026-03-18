@@ -161,7 +161,7 @@ public struct Progress: Sendable {
 
     /// Renders the progress bar at the current animated position.
     public func view() -> ViewOutput {
-        ViewOutput(viewAs(_percent))
+        ViewOutput(viewAsStyledText(_percent))
     }
 
     // MARK: - Public API
@@ -253,6 +253,94 @@ public struct Progress: Sendable {
 
     /// The target percentage being animated toward.
     public var targetPercent: Double { _targetPercent }
+
+    // MARK: - Private (StyledText rendering)
+
+    /// Structured-styling equivalent of ``viewAs(_:)``.
+    ///
+    /// Used by ``view()`` to produce ``StyledText`` so the cell-buffer renderer
+    /// receives `CellStyle` metadata rather than raw ANSI escape bytes.
+    private func viewAsStyledText(_ percent: Double) -> StyledText {
+        let clamped = max(0, min(1, percent))
+        let filledWidth = Int(Double(width) * clamped)
+        let emptyWidth = width - filledWidth
+
+        var bar = StyledText()
+
+        // Build filled portion
+        if let stops = fillGradient, !stops.isEmpty {
+            bar += renderMultiStopGradientStyled(colors: stops, width: filledWidth)
+        } else if let gradFrom = gradientFrom, let gradTo = fullColor {
+            bar += renderGradientStyled(from: gradFrom, to: gradTo, width: filledWidth)
+        } else {
+            let filled = String(repeating: fullCharacter, count: filledWidth)
+            if let color = fullColor {
+                bar += Style(foreground: color).styledText(filled)
+            } else {
+                bar += StyledText(filled)
+            }
+        }
+
+        // Build empty portion
+        let empty = String(repeating: emptyCharacter, count: emptyWidth)
+        if let color = emptyColor {
+            bar += Style(foreground: color).styledText(empty)
+        } else {
+            bar += StyledText(empty)
+        }
+
+        // Percentage readout
+        if showPercentage {
+            let pct = String(format: percentFormat, clamped * 100)
+            bar += percentageStyle.styledText(pct)
+        }
+
+        return bar
+    }
+
+    /// StyledText equivalent of ``renderMultiStopGradient(colors:width:)``.
+    private func renderMultiStopGradientStyled(colors: [Color], width: Int) -> StyledText {
+        guard width > 0 else { return StyledText() }
+        guard colors.count >= 2 else {
+            let filled = String(repeating: fullCharacter, count: width)
+            if let color = colors.first {
+                return Style(foreground: color).styledText(filled)
+            }
+            return StyledText(filled)
+        }
+
+        var result = StyledText()
+        for i in 0..<width {
+            let t = width > 1 ? Double(i) / Double(width - 1) : 1.0
+            let scaled = t * Double(colors.count - 1)
+            let segIdx = min(Int(scaled), colors.count - 2)
+            let segT = scaled - Double(segIdx)
+            let color = blend(colors[segIdx], colors[segIdx + 1], t: segT)
+            result += Style(foreground: color).styledText(String(fullCharacter))
+        }
+        return result
+    }
+
+    /// StyledText equivalent of ``renderGradient(from:to:width:)``.
+    private func renderGradientStyled(from: Color, to: Color, width: Int) -> StyledText {
+        guard width > 0 else { return StyledText() }
+        guard case let .trueColor(r1, g1, b1) = from,
+              case let .trueColor(r2, g2, b2) = to else {
+            let filled = String(repeating: fullCharacter, count: width)
+            return Style(foreground: to).styledText(filled)
+        }
+
+        var result = StyledText()
+        for i in 0..<width {
+            let t = width > 1 ? Double(i) / Double(width - 1) : 1.0
+            let r = UInt8(Double(r1) + (Double(r2) - Double(r1)) * t)
+            let g = UInt8(Double(g1) + (Double(g2) - Double(g1)) * t)
+            let b = UInt8(Double(b1) + (Double(b2) - Double(b1)) * t)
+            result += Style(foreground: .trueColor(r: r, g: g, b: b))
+                .styledText(String(fullCharacter))
+        }
+        return result
+    }
 
     // MARK: - Private
 

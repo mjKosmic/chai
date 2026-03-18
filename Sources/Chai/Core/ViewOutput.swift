@@ -106,6 +106,12 @@ public struct ViewOutput: Sendable, Equatable {
         windowTitle: String? = nil,
         cursor: Cursor? = nil
     ) {
+        assert(
+            !content.contains("\u{1B}"),
+            "ViewOutput(String) received a string with embedded ANSI escape sequences. "
+            + "Use Style.styledText(_:) and ViewOutput(StyledText) instead, otherwise "
+            + "escape bytes will be treated as literal characters by the cell-buffer renderer."
+        )
         self.init(
             StyledText(content),
             altScreen: altScreen,
