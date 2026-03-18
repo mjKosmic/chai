@@ -143,14 +143,43 @@ struct CellBufferTests {
     }
 
     @Test func writeWrapsWideCharAtLineEnd() {
+        // Explicitly opt into wrapping: true to verify the wrap path.
         var buf = CellBuffer(width: 5, height: 2)
-        buf.write(StyledText("ABCD你"))
+        buf.write(StyledText("ABCD你"), wrapping: true)
         // "ABCD" fills cols 0-3. "你" needs 2 cols, only 1 left, so wraps.
         #expect(buf[0, 0].character == "A")
         #expect(buf[3, 0].character == "D")
         #expect(buf[4, 0] == .empty)  // gap at end of line
         #expect(buf[0, 1].character == "你")
         #expect(buf[0, 1].width == 2)
+    }
+
+    @Test func writeTruncatesOverflowWhenWrappingDisabled() {
+        // Regression: with wrapping: false, overflow chars are dropped instead of
+        // stealing rows allocated for subsequent logical lines.
+        var buf = CellBuffer(width: 5, height: 2)
+        buf.write(StyledText("ABCDEFGH\nIJ"), wrapping: false)
+        // "ABCDE" fits on row 0; "FGH" is truncated (overflow, no wrapping).
+        #expect(buf[0, 0].character == "A")
+        #expect(buf[4, 0].character == "E")
+        // The \n advances to row 1 — "IJ" must not be dropped.
+        #expect(buf[0, 1].character == "I")
+        #expect(buf[1, 1].character == "J")
+        // Row 1 should have no content beyond "IJ".
+        #expect(buf[2, 1] == .empty)
+    }
+
+    @Test func writeTruncatesWideCharOverflowWhenWrappingDisabled() {
+        // A wide char that doesn't fit should be skipped, not wrapped.
+        var buf = CellBuffer(width: 5, height: 2)
+        buf.write(StyledText("ABCD你\nXY"), wrapping: false)
+        // "ABCD" fits; "你" (2-col) doesn't fit in the 1 remaining column → truncated.
+        #expect(buf[0, 0].character == "A")
+        #expect(buf[3, 0].character == "D")
+        #expect(buf[4, 0] == .empty)  // "你" was truncated
+        // The \n must advance to row 1 — "XY" must not be dropped.
+        #expect(buf[0, 1].character == "X")
+        #expect(buf[1, 1].character == "Y")
     }
 
     @Test func writeStyledText() {

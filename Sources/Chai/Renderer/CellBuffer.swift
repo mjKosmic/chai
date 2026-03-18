@@ -106,7 +106,23 @@ public struct CellBuffer: Sendable, Equatable {
     // MARK: - Layout
 
     /// Layout styled text into the buffer, starting at (col, row).
-    public mutating func write(_ text: StyledText, at startCol: Int = 0, row startRow: Int = 0) {
+    ///
+    /// - Parameters:
+    ///   - text: The styled text to write.
+    ///   - startCol: Starting column (default 0).
+    ///   - startRow: Starting row (default 0).
+    ///   - wrapping: When `true` (default), characters that overflow the right
+    ///     edge are wrapped onto the next row. When `false`, overflow characters
+    ///     are **truncated** — skipped until the next explicit `\n`. Use `false`
+    ///     when the buffer height was sized by ``StyledText/lineCount()`` (i.e.
+    ///     inline-mode rendering) to prevent wrapped content from stealing rows
+    ///     that are allocated for subsequent logical lines.
+    public mutating func write(
+        _ text: StyledText,
+        at startCol: Int = 0,
+        row startRow: Int = 0,
+        wrapping: Bool = true
+    ) {
         var col = startCol
         var row = startRow
 
@@ -127,10 +143,16 @@ public struct CellBuffer: Sendable, Equatable {
 
                 // Check if character fits on current line.
                 if col + charWidth > width {
-                    // Wrap to next line.
-                    col = 0
-                    row += 1
-                    if row >= height { return }
+                    if wrapping {
+                        // Wrap to next line.
+                        col = 0
+                        row += 1
+                        if row >= height { return }
+                    } else {
+                        // Truncate: skip this character and the rest of the
+                        // line until the next explicit newline.
+                        continue
+                    }
                 }
 
                 let cell = Cell(
@@ -190,8 +212,16 @@ public struct CellBuffer: Sendable, Equatable {
 // MARK: - Layout function
 
 /// Layout styled text into a cell buffer with the given dimensions.
-public func layout(_ text: StyledText, width: Int, height: Int) -> CellBuffer {
+///
+/// - Parameters:
+///   - text: The styled text to lay out.
+///   - width: Buffer width in columns.
+///   - height: Buffer height in rows.
+///   - wrapping: When `true` (default), content that overflows the right edge
+///     is wrapped onto the next row. Pass `false` for inline rendering where
+///     buffer height is derived from ``StyledText/lineCount()``.
+public func layout(_ text: StyledText, width: Int, height: Int, wrapping: Bool = true) -> CellBuffer {
     var buffer = CellBuffer(width: width, height: height)
-    buffer.write(text)
+    buffer.write(text, wrapping: wrapping)
     return buffer
 }

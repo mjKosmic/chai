@@ -205,7 +205,13 @@ actor Renderer {
             }
         }
 
-        let newBuffer = layout(contentToLayout, width: w, height: bufferHeight)
+        // In inline mode the buffer height is derived from lineCount() (explicit
+        // newlines only). Wrapping must be disabled so that lines wider than the
+        // terminal width are truncated rather than spilling into rows that are
+        // allocated for subsequent logical lines, which would cause those lines
+        // to be dropped when the buffer fills.
+        let wrapping = altScreenActive
+        let newBuffer = layout(contentToLayout, width: w, height: bufferHeight, wrapping: wrapping)
 
         // ── Determine what needs updating ─────────────────────────────────
 
