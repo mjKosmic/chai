@@ -146,10 +146,9 @@ public struct Help: Sendable {
 
         for (i, binding) in bindings.enumerated() {
             let entry = renderShortEntry(binding)
-            let entryWidth = binding.help.key.count + 1 + binding.help.description.count
-
-            // Check if adding this entry would exceed width
-            let separatorWidth = i > 0 ? shortSeparator.count : 0
+            // Use display-column width so CJK/emoji keys are measured correctly.
+            let entryWidth = entry.columnWidth
+            let separatorWidth = i > 0 ? separatorText.columnWidth : 0
             let totalWidth = currentWidth + separatorWidth + entryWidth
 
             if totalWidth > width && i > 0 {

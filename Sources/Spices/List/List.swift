@@ -358,14 +358,14 @@ public struct List: Sendable {
             for i in bounds {
                 let match = visibleItems[i]
                 let isSelected = i == _cursor
-                // delegate.render() returns a plain String; wrap as StyledText.
+                // delegate.render() returns StyledText directly.
                 let rendered = delegate.render(
                     item: match.item,
                     index: i,
                     isSelected: isSelected,
                     width: _width
                 )
-                sections.append(StyledText(rendered))
+                sections.append(rendered)
 
                 // Spacing between items
                 if delegate.spacing > 0 && i < bounds.upperBound - 1 {

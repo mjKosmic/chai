@@ -41,15 +41,21 @@ public protocol ListItem: Sendable {
 /// }
 /// ```
 public protocol ListItemDelegate: Sendable {
-    /// Renders a single item.
+    /// Renders a single item as structured styled text.
     ///
     /// - Parameters:
     ///   - item: The item to render.
     ///   - index: The item's index in the visible list.
     ///   - isSelected: Whether this item is currently highlighted.
     ///   - width: The available width for rendering.
-    /// - Returns: The rendered string for this item.
-    func render(item: any ListItem, index: Int, isSelected: Bool, width: Int) -> String
+    /// - Returns: The rendered ``StyledText`` for this item.
+    ///
+    /// - Important: Use ``Latte/Style/styledText(_:)`` (from `StyleBridge`) rather than
+    ///   `Style.render(_:)` when building the return value. Raw ANSI escape sequences
+    ///   embedded in a plain `String` that is then wrapped in ``StyledText`` will be
+    ///   treated as literal characters by the cell-buffer renderer and will corrupt
+    ///   the display and width calculations.
+    func render(item: any ListItem, index: Int, isSelected: Bool, width: Int) -> StyledText
 
     /// The height in lines of each rendered item.
     var height: Int { get }
@@ -74,7 +80,7 @@ public struct DefaultListItemDelegate: ListItemDelegate, Sendable {
         self.normalStyle = Style()
     }
 
-    public func render(item: any ListItem, index: Int, isSelected: Bool, width: Int) -> String {
+    public func render(item: any ListItem, index: Int, isSelected: Bool, width: Int) -> StyledText {
         let prefix = isSelected ? "> " : "  "
         let text = item.filterValue()
         let line = prefix + text
@@ -82,10 +88,10 @@ public struct DefaultListItemDelegate: ListItemDelegate, Sendable {
         // Truncate if needed
         if line.count > width {
             let truncated = String(line.prefix(max(0, width - 1))) + "…"
-            return isSelected ? selectedStyle.render(truncated) : normalStyle.render(truncated)
+            return isSelected ? selectedStyle.styledText(truncated) : normalStyle.styledText(truncated)
         }
 
-        return isSelected ? selectedStyle.render(line) : normalStyle.render(line)
+        return isSelected ? selectedStyle.styledText(line) : normalStyle.styledText(line)
     }
 
     public var height: Int { 1 }

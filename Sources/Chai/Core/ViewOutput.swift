@@ -94,6 +94,12 @@ public struct ViewOutput: Sendable, Equatable {
     /// Create a view output from a plain string and optional terminal state.
     ///
     /// The string is wrapped in a ``StyledText`` with default styling.
+    ///
+    /// - Important: The string must be **plain text** with no embedded ANSI escape sequences.
+    ///   Passing `Style.render(...)` output or other ANSI-encoded strings will cause escape
+    ///   bytes to be treated as literal characters by the cell-buffer renderer, corrupting
+    ///   the display and width calculations. Use ``init(_:altScreen:windowTitle:cursor:)-swift.init``
+    ///   with a ``StyledText`` built via `Style.styledText(_:)` (from Spices' `StyleBridge`) instead.
     public init(
         _ content: String,
         altScreen: Bool? = nil,
