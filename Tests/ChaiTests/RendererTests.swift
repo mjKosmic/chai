@@ -464,7 +464,7 @@ struct RendererTests {
         // The full styled string should appear because it's only 8 visible cols.
         // Cell.render() emits SGR codes for styled cells.
         #expect(mock.output.contains("Red text"))
-        #expect(mock.output.contains("31"))  // red foreground SGR code
+        #expect(mock.output.contains("\u{1B}[31m"))  // red foreground SGR sequence
     }
 
     @Test func longPlainTextIsTruncated() async {

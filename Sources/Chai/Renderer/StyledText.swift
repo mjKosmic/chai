@@ -59,6 +59,20 @@ public struct StyledText: Sendable, Equatable {
         return count
     }
 
+    /// The total display-column width of all segments, measured using
+    /// terminal display widths (wide characters count as 2, zero-width as 0).
+    ///
+    /// Unlike `plainText.count`, this correctly handles CJK / emoji / wide characters.
+    public var columnWidth: Int {
+        var width = 0
+        for segment in segments {
+            for char in segment.text {
+                width += displayWidth(of: char)
+            }
+        }
+        return width
+    }
+
     /// Concatenate two StyledText values.
     public static func + (lhs: StyledText, rhs: StyledText) -> StyledText {
         var result = lhs

@@ -201,14 +201,17 @@ public struct Help: Sendable {
     }
 
     /// Joins columns of ``StyledText`` rows side-by-side, padding each column
-    /// to a uniform width using the plain-text length of each entry.
+    /// to a uniform width using the terminal display-column width of each entry.
+    ///
+    /// Uses ``StyledText/columnWidth`` rather than `plainText.count` so that
+    /// wide characters (CJK, emoji) are measured correctly and columns align.
     private func joinStyledColumns(_ columns: [[StyledText]], separator: String) -> StyledText {
         let maxRows = columns.reduce(0) { max($0, $1.count) }
         guard maxRows > 0 else { return StyledText() }
 
-        // Compute each column's display width from plain text.
+        // Compute each column's display width using terminal column widths.
         let columnWidths: [Int] = columns.map { rows in
-            rows.reduce(0) { max($0, $1.plainText.count) }
+            rows.reduce(0) { max($0, $1.columnWidth) }
         }
 
         var resultRows: [StyledText] = []
@@ -216,7 +219,7 @@ public struct Help: Sendable {
             var rowText = StyledText()
             for (colIdx, col) in columns.enumerated() {
                 let entry   = row < col.count ? col[row] : StyledText()
-                let padding = max(0, columnWidths[colIdx] - entry.plainText.count)
+                let padding = max(0, columnWidths[colIdx] - entry.columnWidth)
 
                 if colIdx > 0 {
                     rowText += StyledText(separator)

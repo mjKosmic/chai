@@ -281,11 +281,11 @@ public struct TextInput: Sendable {
 
     /// Renders the text input field.
     public func view() -> ViewOutput {
-        var output = promptStyle.render(prompt)
+        var output = promptStyle.styledText(prompt)
 
         if _value.isEmpty && !_focused {
             // Show placeholder
-            output += placeholderStyle.render(placeholder)
+            output += placeholderStyle.styledText(placeholder)
             return ViewOutput(output)
         }
 
@@ -313,10 +313,10 @@ public struct TextInput: Sendable {
 
             if preEnd > preStart {
                 let preCursor = String(displayChars[preStart..<preEnd])
-                output += textStyle.render(preCursor)
+                output += textStyle.styledText(preCursor)
             }
 
-            // Render cursor
+            // Render cursor — use .content directly to preserve structured styling.
             if _focused {
                 let cursorChar: String
                 if _position < displayChars.count {
@@ -326,7 +326,7 @@ public struct TextInput: Sendable {
                 }
                 var cursorCopy = cursor
                 cursorCopy.setChar(cursorChar)
-                output += cursorCopy.view().content.plainText
+                output += cursorCopy.view().content
             }
 
             // Render text after cursor
@@ -334,11 +334,11 @@ public struct TextInput: Sendable {
             let postEnd = min(visibleEnd, displayChars.count)
             if postEnd > postStart {
                 let postCursor = String(displayChars[postStart..<min(postEnd, displayChars.count)])
-                output += textStyle.render(postCursor)
+                output += textStyle.styledText(postCursor)
             }
         } else if _focused {
-            // Empty value, show cursor
-            output += cursor.view().content.plainText
+            // Empty value, show cursor — use .content directly.
+            output += cursor.view().content
         }
 
         // Suggestion ghost text
@@ -346,7 +346,7 @@ public struct TextInput: Sendable {
             if let suggestion = currentSuggestion {
                 let remaining = suggestion.dropFirst(_value.count)
                 if !remaining.isEmpty {
-                    output += completionStyle.render(String(remaining))
+                    output += completionStyle.styledText(String(remaining))
                 }
             }
         }
