@@ -30,11 +30,11 @@ public protocol ListItem: Sendable {
 ///
 /// ```swift
 /// struct TaskDelegate: ListItemDelegate {
-///     func render(item: any ListItem, index: Int, isSelected: Bool, width: Int) -> String {
-///         guard let task = item as? Task else { return "" }
+///     func render(item: any ListItem, index: Int, isSelected: Bool, width: Int) -> StyledText {
+///         guard let task = item as? Task else { return StyledText() }
 ///         let check = task.done ? "✓" : " "
 ///         let prefix = isSelected ? ">" : " "
-///         return "\(prefix) [\(check)] \(task.title)"
+///         return StyledText("\(prefix) [\(check)] \(task.title)")
 ///     }
 ///     var height: Int { 1 }
 ///     var spacing: Int { 0 }

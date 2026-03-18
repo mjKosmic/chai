@@ -169,7 +169,11 @@ public struct Progress: Sendable {
     /// Renders the progress bar at an arbitrary percentage (no animation).
     ///
     /// - Parameter percent: A value from 0.0 to 1.0.
-    /// - Returns: The rendered progress bar string.
+    /// - Returns: The rendered progress bar as an ANSI-encoded string suitable for
+    ///   **direct terminal printing only**. Do **not** pass this value to ``ViewOutput/init(_:altScreen:windowTitle:cursor:)-swift.init``
+    ///   — the embedded ANSI escape sequences will corrupt the cell-buffer renderer.
+    ///   Use ``viewAsStyledText(_:)`` instead when composing ``ViewOutput``.
+    @available(*, deprecated, renamed: "viewAsStyledText(_:)", message: "Returns an ANSI-encoded String that is unsafe to use with ViewOutput. Use viewAsStyledText(_:) instead.")
     public func viewAs(_ percent: Double) -> String {
         let clamped = max(0, min(1, percent))
         let filledWidth = Int(Double(width) * clamped)
@@ -254,13 +258,17 @@ public struct Progress: Sendable {
     /// The target percentage being animated toward.
     public var targetPercent: Double { _targetPercent }
 
-    // MARK: - Private (StyledText rendering)
+    // MARK: - StyledText rendering
 
-    /// Structured-styling equivalent of ``viewAs(_:)``.
+    /// Renders the progress bar at an arbitrary percentage (no animation) as structured styled text.
     ///
-    /// Used by ``view()`` to produce ``StyledText`` so the cell-buffer renderer
-    /// receives `CellStyle` metadata rather than raw ANSI escape bytes.
-    private func viewAsStyledText(_ percent: Double) -> StyledText {
+    /// Prefer this over the deprecated ``viewAs(_:)`` when building ``ViewOutput`` — it returns
+    /// ``StyledText`` so the cell-buffer renderer receives `CellStyle` metadata rather than raw
+    /// ANSI escape bytes.
+    ///
+    /// - Parameter percent: A value from 0.0 to 1.0.
+    /// - Returns: The rendered progress bar as ``StyledText``.
+    public func viewAsStyledText(_ percent: Double) -> StyledText {
         let clamped = max(0, min(1, percent))
         let filledWidth = Int(Double(width) * clamped)
         let emptyWidth = width - filledWidth

@@ -125,7 +125,9 @@ public struct ViewOutput: Sendable, Equatable {
 
 extension ViewOutput: ExpressibleByStringLiteral {
     public init(stringLiteral value: String) {
-        self.init(StyledText(value))
+        // Route through init(_ content: String) so the ESC-byte assertion is applied
+        // consistently, whether the caller uses a string literal or passes a String directly.
+        self.init(value)
     }
 }
 
