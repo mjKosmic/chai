@@ -87,7 +87,7 @@
 ///     }
 ///
 ///     func view() -> ViewOutput {
-///         ViewOutput(spinner.view().content.plainText + " Loading…")
+///         ViewOutput(spinner.view().content + " Loading…")
 ///     }
 /// }
 /// ```
