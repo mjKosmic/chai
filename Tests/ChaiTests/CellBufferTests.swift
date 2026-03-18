@@ -39,7 +39,7 @@ struct CellBufferTests {
 
     // MARK: - Wide character invariants
 
-    @Test func setWideCharCreatesContination() {
+    @Test func setWideCharCreatesContinuation() {
         var buf = CellBuffer(width: 10, height: 1)
         let cell = Cell(character: "你", width: 2, foreground: .red)
         buf.set(col: 0, row: 0, cell)
