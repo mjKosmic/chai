@@ -735,7 +735,8 @@ struct HelpTests {
     @Test func shortHelpRenders() {
         let help = Help(width: 80)
         let view = help.view(keyMap: TestKeyMap())
-        #expect(view.contains("up"))
-        #expect(view.contains("down"))
+        // help.view() returns StyledText; check via plainText.
+        #expect(view.plainText.contains("up"))
+        #expect(view.plainText.contains("down"))
     }
 }

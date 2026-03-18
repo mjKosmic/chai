@@ -255,8 +255,8 @@ public struct Table: Sendable {
         }
     }
 
-    /// Renders the help view for this table's keybindings.
-    public func helpView() -> String {
+    /// Renders the help view for this table's keybindings as structured styled text.
+    public func helpView() -> StyledText {
         help.view(keyMap: keyMap)
     }
 

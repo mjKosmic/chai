@@ -279,11 +279,11 @@ public struct SelectableList: Sendable {
     /// - Returns: A ``Chai/ViewOutput`` whose content is the rendered list.
     public func view() -> ViewOutput {
         guard !_items.isEmpty else {
-            return ViewOutput(styles.normalStyle.render("No items."))
+            return ViewOutput(styles.normalStyle.styledText("No items."))
         }
 
         let end = min(_offset + _height, _items.count)
-        var lines: [String] = []
+        var lines: [StyledText] = []
 
         for i in _offset..<end {
             let isSelected = _selectedIndices.contains(i)
@@ -291,9 +291,9 @@ public struct SelectableList: Sendable {
 
             // ── Rune column ──────────────────────────────────────────────
             let rune = isSelected ? styles.selectedRune : styles.unselectedRune
-            let styledRune = isSelected
-                ? styles.selectedRuneStyle.render(String(rune))
-                : styles.unselectedRuneStyle.render(String(rune))
+            let styledRune: StyledText = isSelected
+                ? styles.selectedRuneStyle.styledText(String(rune))
+                : styles.unselectedRuneStyle.styledText(String(rune))
 
             // ── Item text ────────────────────────────────────────────────
             // Available columns: total width minus rune (1) and separator space (1).
@@ -309,21 +309,21 @@ public struct SelectableList: Sendable {
                 text = rawText
             }
 
-            let styledText: String
+            let styledItem: StyledText
             if isFocused {
-                styledText = isSelected
-                    ? styles.focusedSelectedStyle.render(text)
-                    : styles.focusedStyle.render(text)
+                styledItem = isSelected
+                    ? styles.focusedSelectedStyle.styledText(text)
+                    : styles.focusedStyle.styledText(text)
             } else {
-                styledText = isSelected
-                    ? styles.selectedStyle.render(text)
-                    : styles.normalStyle.render(text)
+                styledItem = isSelected
+                    ? styles.selectedStyle.styledText(text)
+                    : styles.normalStyle.styledText(text)
             }
 
-            lines.append(styledRune + " " + styledText)
+            lines.append(styledRune + StyledText(" ") + styledItem)
         }
 
-        return ViewOutput(lines.joined(separator: "\n"))
+        return ViewOutput(lines.joined())
     }
 
     // MARK: - Public API

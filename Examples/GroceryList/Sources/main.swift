@@ -82,47 +82,46 @@ struct GroceryList: Model {
 
     func view() -> ViewOutput {
         // ── Title ──────────────────────────────────────────────────────────
-        let titleStyle  = Style(isBold: true).foreground(.ansi(.cyan))
-        let title       = titleStyle.render("  Grocery List")
+        let title   = Style(isBold: true).foreground(.ansi(.cyan))
+                        .styledText("  Grocery List")
 
         // ── Divider ────────────────────────────────────────────────────────
-        let divider     = Style(isDim: true).render(String(repeating: "─", count: 36))
+        let divider = Style(isDim: true).styledText(String(repeating: "─", count: 36))
 
         // ── Items ──────────────────────────────────────────────────────────
-        let listView    = picker.view().content.plainText
+        // Use .content directly — NOT .plainText — to preserve all styling.
+        let listView = picker.view().content
 
         // ── Status bar ─────────────────────────────────────────────────────
-        let inCart      = picker.selectedIndices.count
-        let total       = picker.items.count
-        let statusText: String
+        let inCart = picker.selectedIndices.count
+        let total  = picker.items.count
+        let status: StyledText
         if inCart == 0 {
-            statusText = Style(isDim: true).render("  Nothing in cart yet")
+            status = Style(isDim: true).styledText("  Nothing in cart yet")
         } else if inCart == total {
-            statusText = Style().foreground(.ansi(.green)).render(
-                "  All \(total) items in cart ✓"
-            )
+            status = Style().foreground(.ansi(.green))
+                        .styledText("  All \(total) items in cart ✓")
         } else {
-            statusText = Style().foreground(.ansi(.yellow)).render(
-                "  \(inCart) of \(total) items in cart"
-            )
+            status = Style().foreground(.ansi(.yellow))
+                        .styledText("  \(inCart) of \(total) items in cart")
         }
 
         // ── Help bar ───────────────────────────────────────────────────────
-        let helpText    = Style(isDim: true).render(
-            "  " + help.view(keyMap: picker.keyMap)
-        )
+        // help.view() now returns StyledText with per-key styling already applied;
+        // just prepend the indent as a plain segment.
+        let helpText = StyledText("  ") + help.view(keyMap: picker.keyMap)
 
         // ── Compose ────────────────────────────────────────────────────────
-        let content = [
-            "",
+        let content: StyledText = [
+            StyledText(""),
             title,
             divider,
             listView,
             divider,
-            statusText,
+            status,
             helpText,
-            "",
-        ].joined(separator: "\n")
+            StyledText(""),
+        ].joined()
 
         var out = ViewOutput(content)
         out.altScreen = true

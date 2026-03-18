@@ -385,7 +385,10 @@ public struct List: Sendable {
 
         // Help
         if showHelp {
-            sections.append(styles.helpStyle.render(help.view(keyMap: keyMap)))
+            // help.view() returns StyledText; extract plain text so it fits in
+            // this component's [String]-based section model.
+            // TODO: migrate List.view() to StyledText to preserve per-key styling.
+            sections.append(styles.helpStyle.render(help.view(keyMap: keyMap).plainText))
         }
 
         return ViewOutput(sections.joined(separator: "\n"))
