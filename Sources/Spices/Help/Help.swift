@@ -124,8 +124,8 @@ public struct Help: Sendable {
     /// Renders the help view for the given key map.
     ///
     /// - Parameter keyMap: A type providing keybinding information.
-    /// - Returns: The rendered help string.
-    public func view(keyMap: any HelpKeyMap) -> String {
+    /// - Returns: The rendered help as structured ``StyledText``.
+    public func view(keyMap: any HelpKeyMap) -> StyledText {
         if showAll {
             return fullHelpView(keyMap: keyMap)
         } else {
@@ -136,31 +136,30 @@ public struct Help: Sendable {
     // MARK: - Short help
 
     /// Renders a single-line help view showing the most important bindings.
-    public func shortHelpView(keyMap: any HelpKeyMap) -> String {
+    public func shortHelpView(keyMap: any HelpKeyMap) -> StyledText {
         let bindings = keyMap.shortHelp().filter { $0.isEnabled }
-        guard !bindings.isEmpty else { return "" }
+        guard !bindings.isEmpty else { return StyledText() }
 
-        let separator = styles.shortSeparator.render(shortSeparator)
-        var result = ""
+        let separatorText = styles.shortSeparator.styledText(shortSeparator)
+        var result = StyledText()
         var currentWidth = 0
 
         for (i, binding) in bindings.enumerated() {
             let entry = renderShortEntry(binding)
-            let entryWidth = binding.help.key.count + 1 + binding.help.description.count
-
-            // Check if adding this entry would exceed width
-            let separatorWidth = i > 0 ? shortSeparator.count : 0
+            // Use display-column width so CJK/emoji keys are measured correctly.
+            let entryWidth = entry.columnWidth
+            let separatorWidth = i > 0 ? separatorText.columnWidth : 0
             let totalWidth = currentWidth + separatorWidth + entryWidth
 
             if totalWidth > width && i > 0 {
                 // Truncate with ellipsis
-                result += styles.shortSeparator.render(shortSeparator)
-                result += styles.ellipsis.render(ellipsis)
+                result += separatorText
+                result += styles.ellipsis.styledText(ellipsis)
                 break
             }
 
             if i > 0 {
-                result += separator
+                result += separatorText
             }
             result += entry
             currentWidth = totalWidth
@@ -170,90 +169,68 @@ public struct Help: Sendable {
     }
 
     /// Renders the full multi-column help view.
-    public func fullHelpView(keyMap: any HelpKeyMap) -> String {
+    public func fullHelpView(keyMap: any HelpKeyMap) -> StyledText {
         let groups = keyMap.fullHelp()
-        guard !groups.isEmpty else { return "" }
+        guard !groups.isEmpty else { return StyledText() }
 
-        var columns: [String] = []
-
+        // Build one column (array of StyledText rows) per group.
+        var styledColumns: [[StyledText]] = []
         for group in groups {
-            let enabledBindings = group.filter { $0.isEnabled }
-            guard !enabledBindings.isEmpty else { continue }
-
-            let column = enabledBindings.map { binding in
-                renderFullEntry(binding)
-            }.joined(separator: "\n")
-
-            columns.append(column)
+            let enabled = group.filter { $0.isEnabled }
+            guard !enabled.isEmpty else { continue }
+            styledColumns.append(enabled.map { renderFullEntry($0) })
         }
 
-        guard !columns.isEmpty else { return "" }
-
-        // Join columns side by side
-        return joinColumns(columns, separator: fullSeparator)
+        guard !styledColumns.isEmpty else { return StyledText() }
+        return joinStyledColumns(styledColumns, separator: fullSeparator)
     }
 
     // MARK: - Private rendering
 
-    private func renderShortEntry(_ binding: KeyBinding) -> String {
-        let key = styles.shortKey.render(binding.help.key)
-        let desc = styles.shortDesc.render(binding.help.description)
-        return "\(key) \(desc)"
+    private func renderShortEntry(_ binding: KeyBinding) -> StyledText {
+        styles.shortKey.styledText(binding.help.key)
+            + StyledText(" ")
+            + styles.shortDesc.styledText(binding.help.description)
     }
 
-    private func renderFullEntry(_ binding: KeyBinding) -> String {
-        let key = styles.fullKey.render(binding.help.key)
-        let desc = styles.fullDesc.render(binding.help.description)
-        return "\(key) \(desc)"
+    private func renderFullEntry(_ binding: KeyBinding) -> StyledText {
+        styles.fullKey.styledText(binding.help.key)
+            + StyledText(" ")
+            + styles.fullDesc.styledText(binding.help.description)
     }
 
-    /// Joins multiple columns of text side by side.
-    private func joinColumns(_ columns: [String], separator: String) -> String {
-        let splitColumns: [[String]] = columns.map {
-            $0.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    /// Joins columns of ``StyledText`` rows side-by-side, padding each column
+    /// to a uniform width using the terminal display-column width of each entry.
+    ///
+    /// Uses ``StyledText/columnWidth`` rather than `plainText.count` so that
+    /// wide characters (CJK, emoji) are measured correctly and columns align.
+    private func joinStyledColumns(_ columns: [[StyledText]], separator: String) -> StyledText {
+        let maxRows = columns.reduce(0) { max($0, $1.count) }
+        guard maxRows > 0 else { return StyledText() }
+
+        // Compute each column's display width using terminal column widths.
+        let columnWidths: [Int] = columns.map { rows in
+            rows.reduce(0) { max($0, $1.columnWidth) }
         }
 
-        let maxRows = splitColumns.reduce(0) { max($0, $1.count) }
-        guard maxRows > 0 else { return "" }
-
-        // Calculate column widths (based on raw text, not ANSI)
-        let columnWidths: [Int] = splitColumns.map { rows in
-            rows.reduce(0) { max($0, stripANSI($1).count) }
-        }
-
-        var rows: [String] = []
+        var resultRows: [StyledText] = []
         for row in 0..<maxRows {
-            var parts: [String] = []
-            for (colIdx, col) in splitColumns.enumerated() {
-                let text = row < col.count ? col[row] : ""
-                let rawWidth = stripANSI(text).count
-                let padding = max(0, columnWidths[colIdx] - rawWidth)
-                parts.append(text + String(repeating: " ", count: padding))
-            }
-            rows.append(parts.joined(separator: separator))
-        }
+            var rowText = StyledText()
+            for (colIdx, col) in columns.enumerated() {
+                let entry   = row < col.count ? col[row] : StyledText()
+                let padding = max(0, columnWidths[colIdx] - entry.columnWidth)
 
-        return rows.joined(separator: "\n")
-    }
-
-    /// Strips ANSI escape sequences from a string for width calculation.
-    private func stripANSI(_ text: String) -> String {
-        // Remove ESC[ ... m sequences
-        var result = ""
-        var inEscape = false
-        for char in text {
-            if char == "\u{1B}" {
-                inEscape = true
-                continue
-            }
-            if inEscape {
-                if char == "m" {
-                    inEscape = false
+                if colIdx > 0 {
+                    rowText += StyledText(separator)
                 }
-                continue
+                rowText += entry
+                if padding > 0 {
+                    rowText += StyledText(String(repeating: " ", count: padding))
+                }
             }
-            result.append(char)
+            resultRows.append(rowText)
         }
-        return result
+
+        return resultRows.joined()
     }
 }

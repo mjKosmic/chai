@@ -142,9 +142,9 @@ public struct Cursor: Sendable {
     /// - When hidden or blinked off: renders with ``textStyle``.
     public func view() -> ViewOutput {
         if _visible && mode != .hidden {
-            return ViewOutput(style.render(char))
+            return ViewOutput(style.styledText(char))
         } else {
-            return ViewOutput(textStyle.render(char))
+            return ViewOutput(textStyle.styledText(char))
         }
     }
 

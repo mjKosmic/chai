@@ -186,7 +186,7 @@ public struct Spinner: Sendable {
     public func view() -> ViewOutput {
         let frameCount = type.frames.count
         guard frameCount > 0 else { return "" }
-        return ViewOutput(style.render(type.frames[_frame]))
+        return ViewOutput(style.styledText(type.frames[_frame]))
     }
 
     // MARK: - Public API

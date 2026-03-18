@@ -328,19 +328,19 @@ public struct List: Sendable {
 
     /// Renders the complete list view.
     public func view() -> ViewOutput {
-        var sections: [String] = []
+        var sections: [StyledText] = []
         let visibleItems = currentVisibleItems
 
         // Title bar
         if showTitle && !title.isEmpty {
-            var titleLine = styles.title.render(title)
+            var titleLine = styles.title.styledText(title)
             if _showSpinner {
-                titleLine += " " + _spinner.view().content
+                titleLine += StyledText(" ") + _spinner.view().content
             }
-            sections.append(styles.titleBar.render(titleLine))
+            sections.append(titleLine.styled(styles.titleBar.cellStyle))
         }
 
-        // Filter input
+        // Filter input — use .content directly to preserve structured styling.
         if _filterState == .filtering {
             sections.append(filterInput.view().content)
         }
@@ -349,15 +349,16 @@ public struct List: Sendable {
         if visibleItems.isEmpty {
             let noun = _items.count == 1 ? _itemNameSingular : _itemNamePlural
             if _filterState == .filterApplied {
-                sections.append(styles.noItems.render("No matching \(noun)."))
+                sections.append(styles.noItems.styledText("No matching \(noun)."))
             } else {
-                sections.append(styles.noItems.render("No \(noun)."))
+                sections.append(styles.noItems.styledText("No \(noun)."))
             }
         } else {
             let bounds = paginator.sliceBounds(totalItems: visibleItems.count)
             for i in bounds {
                 let match = visibleItems[i]
                 let isSelected = i == _cursor
+                // delegate.render() returns StyledText directly.
                 let rendered = delegate.render(
                     item: match.item,
                     index: i,
@@ -368,7 +369,7 @@ public struct List: Sendable {
 
                 // Spacing between items
                 if delegate.spacing > 0 && i < bounds.upperBound - 1 {
-                    sections.append(String(repeating: "\n", count: delegate.spacing))
+                    sections.append(StyledText(String(repeating: "\n", count: delegate.spacing)))
                 }
             }
         }
@@ -378,17 +379,18 @@ public struct List: Sendable {
             sections.append(statusBarView())
         }
 
-        // Pagination
+        // Pagination — use paginator's StyledText content directly, then apply style.
         if showPagination && paginator.totalPages > 1 {
-            sections.append(styles.paginationStyle.render(paginator.view().content))
+            sections.append(paginator.view().content.styled(styles.paginationStyle.cellStyle))
         }
 
-        // Help
+        // Help — help.view() already returns StyledText with per-key styling;
+        // apply the list's helpStyle as a base style over all segments.
         if showHelp {
-            sections.append(styles.helpStyle.render(help.view(keyMap: keyMap)))
+            sections.append(help.view(keyMap: keyMap).styled(styles.helpStyle.cellStyle))
         }
 
-        return ViewOutput(sections.joined(separator: "\n"))
+        return ViewOutput(sections.joined())
     }
 
     // MARK: - Public API
@@ -676,9 +678,9 @@ public struct List: Sendable {
         return h
     }
 
-    private func statusBarView() -> String {
+    private func statusBarView() -> StyledText {
         if let msg = _statusMessage {
-            return styles.statusBar.render(msg)
+            return styles.statusBar.styledText(msg)
         }
 
         let items = currentVisibleItems
@@ -688,9 +690,9 @@ public struct List: Sendable {
 
         switch _filterState {
         case .unfiltered:
-            return styles.statusBar.render("\(total) \(noun)")
+            return styles.statusBar.styledText("\(total) \(noun)")
         case .filtering, .filterApplied:
-            return styles.statusBarFilterCount.render("\(visible)/\(total) \(noun)")
+            return styles.statusBarFilterCount.styledText("\(visible)/\(total) \(noun)")
         }
     }
 }

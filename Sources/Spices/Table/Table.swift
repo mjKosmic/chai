@@ -185,10 +185,7 @@ public struct Table: Sendable {
     /// Renders the table.
     public func view() -> ViewOutput {
         guard !_columns.isEmpty else { return "" }
-
-        var output = headerView() + "\n"
-        output += bodyView()
-        return ViewOutput(output)
+        return ViewOutput(headerView() + StyledText("\n") + bodyView())
     }
 
     // MARK: - Public API
@@ -255,8 +252,8 @@ public struct Table: Sendable {
         }
     }
 
-    /// Renders the help view for this table's keybindings.
-    public func helpView() -> String {
+    /// Renders the help view for this table's keybindings as structured styled text.
+    public func helpView() -> StyledText {
         help.view(keyMap: keyMap)
     }
 
@@ -311,18 +308,18 @@ public struct Table: Sendable {
 
     // MARK: - Private rendering
 
-    private func headerView() -> String {
+    private func headerView() -> StyledText {
         let cells = _columns.map { col in
             padOrTruncate(col.title, to: col.width)
         }
-        return styles.header.render(cells.joined(separator: " "))
+        return styles.header.styledText(cells.joined(separator: " "))
     }
 
-    private func bodyView() -> String {
-        guard !_rows.isEmpty else { return "" }
+    private func bodyView() -> StyledText {
+        guard !_rows.isEmpty else { return StyledText() }
 
         let endIndex = min(_viewportStart + _height, _rows.count)
-        var lines: [String] = []
+        var lines: [StyledText] = []
 
         for i in _viewportStart..<endIndex {
             let row = _rows[i]
@@ -333,13 +330,13 @@ public struct Table: Sendable {
             let line = cells.joined(separator: " ")
 
             if i == _cursor && _focused {
-                lines.append(styles.selected.render(line))
+                lines.append(styles.selected.styledText(line))
             } else {
-                lines.append(styles.cell.render(line))
+                lines.append(styles.cell.styledText(line))
             }
         }
 
-        return lines.joined(separator: "\n")
+        return lines.joined()
     }
 
     private mutating func updateViewportStart() {

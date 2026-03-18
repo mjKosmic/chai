@@ -298,34 +298,34 @@ public struct TextArea: Sendable {
 
         // Show placeholder if empty and unfocused
         if _value == [[]] && !_focused {
-            return ViewOutput(activeStyle.placeholder.render(placeholder))
+            return ViewOutput(activeStyle.placeholder.styledText(placeholder))
         }
 
-        var lines: [String] = []
+        var lines: [StyledText] = []
         let lineNumberWidth = showLineNumbers ? String(_value.count).count + 1 : 0
 
         for (i, line) in _value.enumerated() {
-            var renderedLine = ""
+            var renderedLine = StyledText()
 
             // Line number
             if showLineNumbers {
                 let num = String(format: "%\(lineNumberWidth)d ", i + 1)
                 if i == _row {
-                    renderedLine += activeStyle.cursorLineNumber.render(num)
+                    renderedLine += activeStyle.cursorLineNumber.styledText(num)
                 } else {
-                    renderedLine += activeStyle.lineNumber.render(num)
+                    renderedLine += activeStyle.lineNumber.styledText(num)
                 }
             }
 
             // Prompt
             if !prompt.isEmpty {
-                renderedLine += activeStyle.prompt.render(prompt)
+                renderedLine += activeStyle.prompt.styledText(prompt)
             }
 
             // Line content
             let lineStr = String(line)
             if i == _row && _focused {
-                // Render with cursor
+                // Render with cursor — use .content directly to preserve structured styling.
                 let preCursor = String(line.prefix(_col))
                 let cursorChar: String
                 if _col < line.count {
@@ -337,17 +337,18 @@ public struct TextArea: Sendable {
                     ? String(line[(_col + 1)...])
                     : ""
 
-                renderedLine += activeStyle.text.render(preCursor)
+                renderedLine += activeStyle.text.styledText(preCursor)
                 var cursorCopy = cursor
                 cursorCopy.setChar(cursorChar)
                 renderedLine += cursorCopy.view().content
                 if !postCursor.isEmpty {
-                    renderedLine += activeStyle.text.render(postCursor)
+                    renderedLine += activeStyle.text.styledText(postCursor)
                 }
 
-                renderedLine = activeStyle.cursorLine.render(renderedLine)
+                // Apply cursor-line background over all segments on this line.
+                renderedLine = renderedLine.styled(activeStyle.cursorLine.cellStyle)
             } else {
-                renderedLine += activeStyle.text.render(lineStr)
+                renderedLine += activeStyle.text.styledText(lineStr)
             }
 
             lines.append(renderedLine)
@@ -356,11 +357,11 @@ public struct TextArea: Sendable {
         // End-of-buffer lines
         let totalLines = max(_height, lines.count)
         while lines.count < totalLines {
-            var eob = ""
+            var eob = StyledText()
             if showLineNumbers {
-                eob += String(repeating: " ", count: lineNumberWidth + 1)
+                eob += StyledText(String(repeating: " ", count: lineNumberWidth + 1))
             }
-            eob += activeStyle.endOfBuffer.render(String(endOfBufferCharacter))
+            eob += activeStyle.endOfBuffer.styledText(String(endOfBufferCharacter))
             lines.append(eob)
         }
 
@@ -370,7 +371,7 @@ public struct TextArea: Sendable {
         let visibleStart = max(0, startLine)
 
         let visibleLines = Array(lines[visibleStart..<endLine])
-        return ViewOutput(visibleLines.joined(separator: "\n"))
+        return ViewOutput(visibleLines.joined())
     }
 
     // MARK: - Public API
