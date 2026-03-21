@@ -73,8 +73,9 @@ public struct CellAttributes: OptionSet, Sendable, Equatable, Hashable {
 
 // MARK: - CellStyle
 
-/// Grouping of foreground color, background color, attributes, and hyperlink.
-public struct CellStyle: Sendable, Equatable {
+/// Grouping of foreground color, background color, attributes, and hyperlink
+/// applied to a run of text prior to layout.
+public struct TextAttributes: Sendable, Equatable {
     public var foreground: CellColor?
     public var background: CellColor?
     public var attributes: CellAttributes
@@ -92,7 +93,7 @@ public struct CellStyle: Sendable, Equatable {
         self.hyperlink = hyperlink
     }
 
-    public static let `default` = CellStyle()
+    public static let `default` = TextAttributes()
 }
 
 // MARK: - Cell

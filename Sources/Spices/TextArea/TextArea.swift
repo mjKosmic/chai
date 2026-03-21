@@ -346,7 +346,7 @@ public struct TextArea: Sendable {
                 }
 
                 // Apply cursor-line background over all segments on this line.
-                renderedLine = renderedLine.styled(activeStyle.cursorLine.cellStyle)
+                renderedLine = renderedLine.styled(activeStyle.cursorLine.textAttributes)
             } else {
                 renderedLine += activeStyle.text.styledText(lineStr)
             }

@@ -81,51 +81,11 @@ struct GroceryList: Model {
     }
 
     func view() -> ViewOutput {
-        // ── Title ──────────────────────────────────────────────────────────
-        let title   = Style(isBold: true).foreground(.ansi(.cyan))
-                        .styledText("  Grocery List")
+        var view = picker.view()
+        view.windowTitle = "Grocery List"
+        view.altScreen = true
 
-        // ── Divider ────────────────────────────────────────────────────────
-        let divider = Style(isDim: true).styledText(String(repeating: "─", count: 36))
-
-        // ── Items ──────────────────────────────────────────────────────────
-        // Use .content directly — NOT .plainText — to preserve all styling.
-        let listView = picker.view().content
-
-        // ── Status bar ─────────────────────────────────────────────────────
-        let inCart = picker.selectedIndices.count
-        let total  = picker.items.count
-        let status: StyledText
-        if inCart == 0 {
-            status = Style(isDim: true).styledText("  Nothing in cart yet")
-        } else if inCart == total {
-            status = Style().foreground(.ansi(.green))
-                        .styledText("  All \(total) items in cart ✓")
-        } else {
-            status = Style().foreground(.ansi(.yellow))
-                        .styledText("  \(inCart) of \(total) items in cart")
-        }
-
-        // ── Help bar ───────────────────────────────────────────────────────
-        // help.view() now returns StyledText with per-key styling already applied;
-        // just prepend the indent as a plain segment.
-        let helpText = StyledText("  ") + help.view(keyMap: picker.keyMap)
-
-        // ── Compose ────────────────────────────────────────────────────────
-        let content: StyledText = [
-            StyledText(""),
-            title,
-            divider,
-            listView,
-            divider,
-            status,
-            helpText,
-            StyledText(""),
-        ].joined()
-
-        var out = ViewOutput(content)
-        out.altScreen = true
-        return out
+        return ViewOutput(place(width: view.content.columnWidth, height: view.content.lineCount(), horizontal: .center, vertical: .middle, view.content.plainText))
     }
 }
 

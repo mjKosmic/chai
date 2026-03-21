@@ -263,7 +263,7 @@ public struct Progress: Sendable {
     /// Renders the progress bar at an arbitrary percentage (no animation) as structured styled text.
     ///
     /// Prefer this over the deprecated ``viewAs(_:)`` when building ``ViewOutput`` — it returns
-    /// ``StyledText`` so the cell-buffer renderer receives `CellStyle` metadata rather than raw
+    /// ``StyledText`` so the cell-buffer renderer receives ``TextAttributes`` metadata rather than raw
     /// ANSI escape bytes.
     ///
     /// - Parameter percent: A value from 0.0 to 1.0.

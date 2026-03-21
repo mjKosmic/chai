@@ -62,12 +62,12 @@ struct CellAttributesTests {
     }
 }
 
-// MARK: - CellStyle Tests
+// MARK: - TextAttributes Tests
 
-@Suite("CellStyle")
-struct CellStyleTests {
+@Suite("TextAttributes")
+struct TextAttributesTests {
     @Test func defaultStyle() {
-        let style = CellStyle.default
+        let style = TextAttributes.default
         #expect(style.foreground == nil)
         #expect(style.background == nil)
         #expect(style.attributes == [])
@@ -75,14 +75,14 @@ struct CellStyleTests {
     }
 
     @Test func styleEquality() {
-        let a = CellStyle(foreground: .red, attributes: [.bold])
-        let b = CellStyle(foreground: .red, attributes: [.bold])
+        let a = TextAttributes(foreground: .red, attributes: [.bold])
+        let b = TextAttributes(foreground: .red, attributes: [.bold])
         #expect(a == b)
     }
 
     @Test func styleInequality() {
-        let a = CellStyle(foreground: .red)
-        let b = CellStyle(foreground: .blue)
+        let a = TextAttributes(foreground: .red)
+        let b = TextAttributes(foreground: .blue)
         #expect(a != b)
     }
 }

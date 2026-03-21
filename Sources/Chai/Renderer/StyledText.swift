@@ -13,9 +13,9 @@ public struct StyledText: Sendable, Equatable {
     /// A contiguous text span with uniform styling.
     public struct Segment: Sendable, Equatable {
         public var text: String
-        public var style: CellStyle
+        public var style: TextAttributes
 
-        public init(_ text: String, style: CellStyle = .default) {
+        public init(_ text: String, style: TextAttributes = .default) {
             self.text = text
             self.style = style
         }
@@ -27,12 +27,12 @@ public struct StyledText: Sendable, Equatable {
     }
 
     /// Create styled text from a single string and style.
-    public init(_ text: String, style: CellStyle = .default) {
+    public init(_ text: String, style: TextAttributes = .default) {
         self.segments = text.isEmpty ? [] : [Segment(text, style: style)]
     }
 
     /// Append a segment.
-    public mutating func append(_ text: String, style: CellStyle = .default) {
+    public mutating func append(_ text: String, style: TextAttributes = .default) {
         guard !text.isEmpty else { return }
         segments.append(Segment(text, style: style))
     }
@@ -126,14 +126,14 @@ extension StyledText: ExpressibleByStringInterpolation {
             result.segments.append(Segment(str, style: .default))
         }
 
-        public mutating func appendInterpolation(_ value: String, style: CellStyle) {
+        public mutating func appendInterpolation(_ value: String, style: TextAttributes) {
             guard !value.isEmpty else { return }
             result.segments.append(Segment(value, style: style))
         }
 
         public mutating func appendInterpolation(_ value: String, _ color: CellColor) {
             guard !value.isEmpty else { return }
-            result.segments.append(Segment(value, style: CellStyle(foreground: color)))
+            result.segments.append(Segment(value, style: TextAttributes(foreground: color)))
         }
     }
 
@@ -146,43 +146,43 @@ extension StyledText: ExpressibleByStringInterpolation {
 
 extension String {
     /// Wrap this string in a StyledText with the given style.
-    public func styled(_ style: CellStyle) -> StyledText {
+    public func styled(_ style: TextAttributes) -> StyledText {
         StyledText(self, style: style)
     }
 
     /// Wrap this string in a StyledText with the given foreground color.
     public func fg(_ color: CellColor) -> StyledText {
-        StyledText(self, style: CellStyle(foreground: color))
+        StyledText(self, style: TextAttributes(foreground: color))
     }
 
     /// Wrap this string in a StyledText with the given background color.
     public func bg(_ color: CellColor) -> StyledText {
-        StyledText(self, style: CellStyle(background: color))
+        StyledText(self, style: TextAttributes(background: color))
     }
 
     /// Wrap this string in a bold StyledText.
     public func bold() -> StyledText {
-        StyledText(self, style: CellStyle(attributes: [.bold]))
+        StyledText(self, style: TextAttributes(attributes: [.bold]))
     }
 
     /// Wrap this string in an italic StyledText.
     public func italic() -> StyledText {
-        StyledText(self, style: CellStyle(attributes: [.italic]))
+        StyledText(self, style: TextAttributes(attributes: [.italic]))
     }
 
     /// Wrap this string in an underlined StyledText.
     public func underline() -> StyledText {
-        StyledText(self, style: CellStyle(attributes: [.underline]))
+        StyledText(self, style: TextAttributes(attributes: [.underline]))
     }
 
     /// Wrap this string in a dim StyledText.
     public func dim() -> StyledText {
-        StyledText(self, style: CellStyle(attributes: [.dim]))
+        StyledText(self, style: TextAttributes(attributes: [.dim]))
     }
 
     /// Wrap this string in a strikethrough StyledText.
     public func strikethrough() -> StyledText {
-        StyledText(self, style: CellStyle(attributes: [.strikethrough]))
+        StyledText(self, style: TextAttributes(attributes: [.strikethrough]))
     }
 }
 
@@ -190,7 +190,7 @@ extension String {
 
 extension StyledText {
     /// Apply a style to all segments.
-    public func styled(_ style: CellStyle) -> StyledText {
+    public func styled(_ style: TextAttributes) -> StyledText {
         var copy = self
         copy.segments = copy.segments.map { seg in
             var merged = seg.style
@@ -205,37 +205,37 @@ extension StyledText {
 
     /// Apply a foreground color to all segments.
     public func fg(_ color: CellColor) -> StyledText {
-        styled(CellStyle(foreground: color))
+        styled(TextAttributes(foreground: color))
     }
 
     /// Apply a background color to all segments.
     public func bg(_ color: CellColor) -> StyledText {
-        styled(CellStyle(background: color))
+        styled(TextAttributes(background: color))
     }
 
     /// Apply bold to all segments.
     public func bold() -> StyledText {
-        styled(CellStyle(attributes: [.bold]))
+        styled(TextAttributes(attributes: [.bold]))
     }
 
     /// Apply italic to all segments.
     public func italic() -> StyledText {
-        styled(CellStyle(attributes: [.italic]))
+        styled(TextAttributes(attributes: [.italic]))
     }
 
     /// Apply underline to all segments.
     public func underline() -> StyledText {
-        styled(CellStyle(attributes: [.underline]))
+        styled(TextAttributes(attributes: [.underline]))
     }
 
     /// Apply dim to all segments.
     public func dim() -> StyledText {
-        styled(CellStyle(attributes: [.dim]))
+        styled(TextAttributes(attributes: [.dim]))
     }
 
     /// Apply strikethrough to all segments.
     public func strikethrough() -> StyledText {
-        styled(CellStyle(attributes: [.strikethrough]))
+        styled(TextAttributes(attributes: [.strikethrough]))
     }
 }
 

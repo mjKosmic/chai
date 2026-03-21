@@ -20,7 +20,7 @@ struct StyledTextTests {
     }
 
     @Test func styledCreation() {
-        let text = StyledText("Error", style: CellStyle(foreground: .red))
+        let text = StyledText("Error", style: TextAttributes(foreground: .red))
         #expect(text.segments.count == 1)
         #expect(text.segments[0].text == "Error")
         #expect(text.segments[0].style.foreground == .red)
@@ -36,7 +36,7 @@ struct StyledTextTests {
 
     @Test func appendText() {
         var text = StyledText("Hello")
-        text.append(" World", style: CellStyle(foreground: .blue))
+        text.append(" World", style: TextAttributes(foreground: .blue))
         #expect(text.segments.count == 2)
         #expect(text.segments[1].text == " World")
     }
