@@ -37,65 +37,6 @@ public enum CellColor: Sendable, Equatable, Hashable {
     }
 }
 
-// MARK: - CellAttributes
-
-/// Text decoration attributes as a bit set.
-public struct CellAttributes: OptionSet, Sendable, Equatable, Hashable {
-    public let rawValue: UInt8
-
-    public init(rawValue: UInt8) {
-        self.rawValue = rawValue
-    }
-
-    public static let bold          = CellAttributes(rawValue: 1 << 0)
-    public static let dim           = CellAttributes(rawValue: 1 << 1)
-    public static let italic        = CellAttributes(rawValue: 1 << 2)
-    public static let underline     = CellAttributes(rawValue: 1 << 3)
-    public static let blink         = CellAttributes(rawValue: 1 << 4)
-    public static let reverse       = CellAttributes(rawValue: 1 << 5)
-    public static let strikethrough = CellAttributes(rawValue: 1 << 6)
-    public static let hidden        = CellAttributes(rawValue: 1 << 7)
-
-    /// SGR codes for all set attributes.
-    var sgrCodes: [Int] {
-        var codes: [Int] = []
-        if contains(.bold)          { codes.append(1) }
-        if contains(.dim)           { codes.append(2) }
-        if contains(.italic)        { codes.append(3) }
-        if contains(.underline)     { codes.append(4) }
-        if contains(.blink)         { codes.append(5) }
-        if contains(.reverse)       { codes.append(7) }
-        if contains(.hidden)        { codes.append(8) }
-        if contains(.strikethrough) { codes.append(9) }
-        return codes
-    }
-}
-
-// MARK: - CellStyle
-
-/// Grouping of foreground color, background color, attributes, and hyperlink
-/// applied to a run of text prior to layout.
-public struct TextAttributes: Sendable, Equatable {
-    public var foreground: CellColor?
-    public var background: CellColor?
-    public var attributes: CellAttributes
-    public var hyperlink: String?
-
-    public init(
-        foreground: CellColor? = nil,
-        background: CellColor? = nil,
-        attributes: CellAttributes = [],
-        hyperlink: String? = nil
-    ) {
-        self.foreground = foreground
-        self.background = background
-        self.attributes = attributes
-        self.hyperlink = hyperlink
-    }
-
-    public static let `default` = TextAttributes()
-}
-
 // MARK: - Cell
 
 /// A single terminal cell representing one display column.
@@ -108,7 +49,7 @@ public struct Cell: Sendable, Equatable {
     public var width: Int8
     public var foreground: CellColor?
     public var background: CellColor?
-    public var attributes: CellAttributes
+    public var attributes: Attributes
     public var hyperlink: String?
     public var layer: Int8
 
@@ -117,7 +58,7 @@ public struct Cell: Sendable, Equatable {
         width: Int8 = 1,
         foreground: CellColor? = nil,
         background: CellColor? = nil,
-        attributes: CellAttributes = [],
+        attributes: Attributes = [],
         hyperlink: String? = nil,
         layer: Int8 = 0
     ) {
@@ -170,4 +111,65 @@ public struct Cell: Sendable, Equatable {
 
         return result
     }
+}
+
+// MARK: - Cell.Attributes
+
+extension Cell {
+    /// Text decoration attributes as a bit set.
+    public struct Attributes: OptionSet, Sendable, Equatable, Hashable {
+        public let rawValue: UInt8
+
+        public init(rawValue: UInt8) {
+            self.rawValue = rawValue
+        }
+
+        public static let bold          = Attributes(rawValue: 1 << 0)
+        public static let dim           = Attributes(rawValue: 1 << 1)
+        public static let italic        = Attributes(rawValue: 1 << 2)
+        public static let underline     = Attributes(rawValue: 1 << 3)
+        public static let blink         = Attributes(rawValue: 1 << 4)
+        public static let reverse       = Attributes(rawValue: 1 << 5)
+        public static let strikethrough = Attributes(rawValue: 1 << 6)
+        public static let hidden        = Attributes(rawValue: 1 << 7)
+
+        /// SGR codes for all set attributes.
+        var sgrCodes: [Int] {
+            var codes: [Int] = []
+            if contains(.bold)          { codes.append(1) }
+            if contains(.dim)           { codes.append(2) }
+            if contains(.italic)        { codes.append(3) }
+            if contains(.underline)     { codes.append(4) }
+            if contains(.blink)         { codes.append(5) }
+            if contains(.reverse)       { codes.append(7) }
+            if contains(.hidden)        { codes.append(8) }
+            if contains(.strikethrough) { codes.append(9) }
+            return codes
+        }
+    }
+}
+
+// MARK: - TextAttributes
+
+/// Grouping of foreground color, background color, attributes, and hyperlink
+/// applied to a run of text prior to layout.
+public struct TextAttributes: Sendable, Equatable {
+    public var foreground: CellColor?
+    public var background: CellColor?
+    public var attributes: Cell.Attributes
+    public var hyperlink: String?
+
+    public init(
+        foreground: CellColor? = nil,
+        background: CellColor? = nil,
+        attributes: Cell.Attributes = [],
+        hyperlink: String? = nil
+    ) {
+        self.foreground = foreground
+        self.background = background
+        self.attributes = attributes
+        self.hyperlink = hyperlink
+    }
+
+    public static let `default` = TextAttributes()
 }

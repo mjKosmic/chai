@@ -48,7 +48,7 @@ extension Style {
     /// Only `.on` ``StyleFlag`` values emit attribute bits; `.off` and `.unset`
     /// produce no output (they do not emit disable codes).
     public var textAttributes: TextAttributes {
-        var attrs: CellAttributes = []
+        var attrs: Cell.Attributes = []
         if isBold          == .on { attrs.insert(.bold) }
         if isDim           == .on { attrs.insert(.dim) }
         if isItalic        == .on { attrs.insert(.italic) }
