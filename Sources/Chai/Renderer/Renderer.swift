@@ -228,14 +228,6 @@ actor Renderer {
         if contentChanged {
             // Move cursor back to the start of the previously rendered content.
             if altScreenActive {
-                // When lastBuffer is 0×0 (post-repaint), the screen may contain
-                // stale content from a previous render at different dimensions.
-                // Empty padding rows diff as "unchanged" (both sides are .empty),
-                // so they would be skipped and the old content would ghost through.
-                // Erasing the screen here guarantees a clean slate before repaint.
-                if lastBuffer.width == 0 && lastBuffer.height == 0 {
-                    out += ANSI.eraseEntireScreen
-                }
                 out += ANSI.cursorHome
             } else {
                 if cursorParkedRow > 0 {
@@ -260,9 +252,17 @@ actor Renderer {
             // Determine which rows have changes.
             let changedRows = Set(diff.changes.map { $0.row })
 
+            // When lastBuffer is 0×0 the screen state is unknown — stale content
+            // may exist at any row, including rows that are blank in the new buffer
+            // (e.g. vertical centering padding). Those blank rows diff as unchanged
+            // (both sides are .empty), so without this flag they'd be skipped and
+            // old content would ghost through. Forcing a full repaint ensures every
+            // row gets eraseLineRight.
+            let forceFullRepaint = lastBuffer.width == 0 && lastBuffer.height == 0
+
             // Paint each row, skipping unchanged ones.
             for row in 0..<newBuffer.height {
-                let canSkip = !flushQueued && !changedRows.contains(row)
+                let canSkip = !forceFullRepaint && !flushQueued && !changedRows.contains(row)
 
                 if canSkip {
                     if row < newBuffer.height - 1 { out += "\n" }
