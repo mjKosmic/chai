@@ -58,6 +58,43 @@ struct ViewOutputLayoutTests {
         #expect(lines[0] == "Hi    ")
     }
 
+    // MARK: - Frame
+
+    @Test func frameEnforcesBothDimensions() {
+        let view = ViewOutput("Hi").frame(width: 6, height: 3)
+        let lines = view.content.plainText.split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines.count == 3)
+        #expect(lines[0] == "Hi    ")
+    }
+
+    @Test func frameCentersContentWithMiddleAlignment() {
+        let view = ViewOutput("Hi").frame(width: 6, height: 3, horizontalAlignment: .center, verticalAlignment: .middle)
+        let lines = view.content.plainText.split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines.count == 3)
+        #expect(lines[1] == "  Hi  ")
+    }
+
+    @Test func frameWithBottomRightAlignment() {
+        let view = ViewOutput("Hi").frame(width: 6, height: 3, horizontalAlignment: .right, verticalAlignment: .bottom)
+        let lines = view.content.plainText.split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines.count == 3)
+        #expect(lines[2] == "    Hi")
+    }
+
+    @Test func frameDoesNotShrinkLargerContent() {
+        let view = ViewOutput("Hello, World!\nLine 2\nLine 3\nLine 4").frame(width: 3, height: 2)
+        let lines = view.content.plainText.split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines.count == 4)
+        #expect(lines[0] == "Hello, World!")
+    }
+
+    @Test func framePreservesTerminalState() {
+        let view = ViewOutput("Hi", altScreen: true, windowTitle: "Test")
+            .frame(width: 10, height: 5, horizontalAlignment: .center, verticalAlignment: .middle)
+        #expect(view.altScreen == true)
+        #expect(view.windowTitle == "Test")
+    }
+
     // MARK: - Clamping
 
     @Test func clampedWidthTruncatesLongLines() {

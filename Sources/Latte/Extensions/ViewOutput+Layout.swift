@@ -40,6 +40,43 @@ extension ViewOutput {
         transformContent { $0.enforceWidth(width).enforceHeight(height) }
     }
 
+    /// Enforce both minimum width and height with independent alignment on each axis.
+    ///
+    /// This is the alignment-aware counterpart to ``size(width:height:)``. The
+    /// primary use case is centering a root view within the terminal dimensions
+    /// received from ``WindowSizeMsg``:
+    ///
+    /// ```swift
+    /// ViewOutput(content)
+    ///     .frame(
+    ///         width: termWidth,
+    ///         height: termHeight,
+    ///         horizontalAlignment: .center,
+    ///         verticalAlignment: .middle
+    ///     )
+    ///     .altScreen(true)
+    /// ```
+    ///
+    /// Lines already wider than `width` or content already taller than `height`
+    /// are unchanged — this enforces minimums, not maximums.
+    ///
+    /// - Parameters:
+    ///   - width: The minimum column width.
+    ///   - height: The minimum line count.
+    ///   - horizontalAlignment: How to distribute horizontal padding. Defaults to `.left`.
+    ///   - verticalAlignment: Where to place the content vertically. Defaults to `.top`.
+    public func frame(
+        width: Int,
+        height: Int,
+        horizontalAlignment: HorizontalAlignment = .left,
+        verticalAlignment: VerticalAlignment = .top
+    ) -> ViewOutput {
+        transformContent {
+            $0.enforceWidth(width, alignment: horizontalAlignment)
+              .enforceHeight(height, alignment: verticalAlignment)
+        }
+    }
+
     /// Truncate each line to at most `max` display columns.
     ///
     /// - Parameter max: The maximum column width.

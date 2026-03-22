@@ -228,6 +228,14 @@ actor Renderer {
         if contentChanged {
             // Move cursor back to the start of the previously rendered content.
             if altScreenActive {
+                // When lastBuffer is 0×0 (post-repaint), the screen may contain
+                // stale content from a previous render at different dimensions.
+                // Empty padding rows diff as "unchanged" (both sides are .empty),
+                // so they would be skipped and the old content would ghost through.
+                // Erasing the screen here guarantees a clean slate before repaint.
+                if lastBuffer.width == 0 && lastBuffer.height == 0 {
+                    out += ANSI.eraseEntireScreen
+                }
                 out += ANSI.cursorHome
             } else {
                 if cursorParkedRow > 0 {

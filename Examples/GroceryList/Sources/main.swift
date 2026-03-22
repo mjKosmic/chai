@@ -27,10 +27,14 @@ struct GroceryList: Model {
 
     var picker: SelectableList
     var help: Help
+    var height: Int
+    var width: Int
 
     // MARK: Init
 
-    init() {
+    init(width: Int, height: Int) {
+        self.width = width
+        self.height = height
         let items: [any ListItem] = [
             Item(stringLiteral: "Carrots"),
             Item(stringLiteral: "Celery"),
@@ -77,11 +81,16 @@ struct GroceryList: Model {
             return .quit
         }
 
+        if let sizeMsg = msg as? WindowSizeMsg {
+            self.height = sizeMsg.height
+            self.width = sizeMsg.width
+        }
+
         return nil
     }
 
     func view() -> ViewOutput {
-        var view = picker.view().bordered(.rounded)
+        var view = picker.view().bordered(.rounded).frame(width: width, height: height, horizontalAlignment: .center, verticalAlignment: .middle)
         view.windowTitle = "Grocery List"
         view.altScreen = true
 
@@ -96,7 +105,7 @@ struct App {
     static func main() async {
         let finalModel: GroceryList
         do {
-            finalModel = try await Program(GroceryList()).run()
+            finalModel = try await Program(GroceryList(width: 10, height: 20)).run()
         } catch {
             print("Error: \(error)")
             return
