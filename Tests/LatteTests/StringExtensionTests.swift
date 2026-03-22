@@ -121,23 +121,6 @@ struct StringExtensionTests {
         #expect(text.clamped(maxWidth: 8, maxHeight: 2) == clamp(text, maxWidth: 8, maxHeight: 2))
     }
 
-    // MARK: - Placement extensions
-
-    @Test func placedInCanvas() {
-        #expect(
-            "Hi".placed(width: 10, height: 3, horizontal: .center, vertical: .middle)
-            == place(width: 10, height: 3, horizontal: .center, vertical: .middle, "Hi")
-        )
-    }
-
-    @Test func placedHorizontally() {
-        #expect("Hi".placedHorizontally(width: 10, .right) == placeHorizontal(width: 10, .right, "Hi"))
-    }
-
-    @Test func placedVertically() {
-        #expect("Hi".placedVertically(height: 5, .bottom) == placeVertical(height: 5, .bottom, "Hi"))
-    }
-
     // MARK: - Truncation extension
 
     @Test func truncatedToVisibleWidth() {

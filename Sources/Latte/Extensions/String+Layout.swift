@@ -180,40 +180,6 @@ extension String {
         clamp(self, maxWidth: maxWidth, maxHeight: maxHeight)
     }
 
-    // MARK: - Placement
-
-    /// Places this text block within a fixed-size canvas.
-    ///
-    /// Wraps ``place(width:height:horizontal:vertical:_:)``.
-    public func placed(
-        width: Int,
-        height: Int,
-        horizontal: HorizontalAlignment,
-        vertical: VerticalAlignment
-    ) -> String {
-        place(width: width, height: height, horizontal: horizontal, vertical: vertical, self)
-    }
-
-    /// Places this text block within a fixed-width horizontal canvas.
-    ///
-    /// Wraps ``placeHorizontal(width:_:_:)``.
-    public func placedHorizontally(
-        width: Int,
-        _ alignment: HorizontalAlignment
-    ) -> String {
-        placeHorizontal(width: width, alignment, self)
-    }
-
-    /// Places this text block within a fixed-height vertical canvas.
-    ///
-    /// Wraps ``placeVertical(height:_:_:)``.
-    public func placedVertically(
-        height: Int,
-        _ alignment: VerticalAlignment
-    ) -> String {
-        placeVertical(height: height, alignment, self)
-    }
-
     // MARK: - Truncation
 
     /// Truncates this string to at most `maxWidth` visible terminal columns.

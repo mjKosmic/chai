@@ -81,11 +81,11 @@ struct GroceryList: Model {
     }
 
     func view() -> ViewOutput {
-        var view = picker.view()
+        var view = picker.view().bordered(.rounded)
         view.windowTitle = "Grocery List"
         view.altScreen = true
 
-        return ViewOutput(place(width: view.content.columnWidth, height: view.content.lineCount(), horizontal: .center, vertical: .middle, view.content.plainText))
+        return view
     }
 }
 
