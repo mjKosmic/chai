@@ -337,7 +337,7 @@ public struct List: Sendable {
             if _showSpinner {
                 titleLine += StyledText(" ") + _spinner.view().content
             }
-            sections.append(titleLine.styled(styles.titleBar.cellStyle))
+            sections.append(titleLine.styled(styles.titleBar.textAttributes))
         }
 
         // Filter input — use .content directly to preserve structured styling.
@@ -381,13 +381,13 @@ public struct List: Sendable {
 
         // Pagination — use paginator's StyledText content directly, then apply style.
         if showPagination && paginator.totalPages > 1 {
-            sections.append(paginator.view().content.styled(styles.paginationStyle.cellStyle))
+            sections.append(paginator.view().content.styled(styles.paginationStyle.textAttributes))
         }
 
         // Help — help.view() already returns StyledText with per-key styling;
         // apply the list's helpStyle as a base style over all segments.
         if showHelp {
-            sections.append(help.view(keyMap: keyMap).styled(styles.helpStyle.cellStyle))
+            sections.append(help.view(keyMap: keyMap).styled(styles.helpStyle.textAttributes))
         }
 
         return ViewOutput(sections.joined())

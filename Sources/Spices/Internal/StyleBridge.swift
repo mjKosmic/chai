@@ -40,15 +40,15 @@ extension Color {
     }
 }
 
-// MARK: - Style → CellStyle / StyledText
+// MARK: - Style → TextAttributes / StyledText
 
 extension Style {
-    /// Convert this ``Style`` to an equivalent ``CellStyle`` for use with ``StyledText``.
+    /// Convert this ``Style`` to an equivalent ``TextAttributes`` for use with ``StyledText``.
     ///
     /// Only `.on` ``StyleFlag`` values emit attribute bits; `.off` and `.unset`
     /// produce no output (they do not emit disable codes).
-    public var cellStyle: CellStyle {
-        var attrs: CellAttributes = []
+    public var textAttributes: TextAttributes {
+        var attrs: Cell.Attributes = []
         if isBold          == .on { attrs.insert(.bold) }
         if isDim           == .on { attrs.insert(.dim) }
         if isItalic        == .on { attrs.insert(.italic) }
@@ -56,7 +56,7 @@ extension Style {
         if isBlink         == .on { attrs.insert(.blink) }
         if isReverse       == .on { attrs.insert(.reverse) }
         if isStrikethrough == .on { attrs.insert(.strikethrough) }
-        return CellStyle(
+        return TextAttributes(
             foreground: foreground?.cellColor,
             background: background?.cellColor,
             attributes: attrs,
@@ -68,8 +68,8 @@ extension Style {
     ///
     /// Use this instead of ``render(_:)`` when composing views for the
     /// cell-based renderer. Unlike `render`, no raw ANSI bytes are embedded
-    /// in the string — styling is carried as structured ``CellStyle`` metadata.
+    /// in the string — styling is carried as structured ``TextAttributes`` metadata.
     public func styledText(_ text: String) -> StyledText {
-        StyledText(text, style: cellStyle)
+        StyledText(text, style: textAttributes)
     }
 }

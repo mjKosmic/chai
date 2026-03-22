@@ -33,28 +33,28 @@ struct CellColorTests {
     }
 }
 
-// MARK: - CellAttributes Tests
+// MARK: - Cell.Attributes Tests
 
-@Suite("CellAttributes")
+@Suite("Cell.Attributes")
 struct CellAttributesTests {
     @Test func singleAttribute() {
-        #expect(CellAttributes.bold.sgrCodes == [1])
-        #expect(CellAttributes.italic.sgrCodes == [3])
-        #expect(CellAttributes.strikethrough.sgrCodes == [9])
+        #expect(Cell.Attributes.bold.sgrCodes == [1])
+        #expect(Cell.Attributes.italic.sgrCodes == [3])
+        #expect(Cell.Attributes.strikethrough.sgrCodes == [9])
     }
 
     @Test func combinedAttributes() {
-        let attrs: CellAttributes = [.bold, .italic, .underline]
+        let attrs: Cell.Attributes = [.bold, .italic, .underline]
         #expect(attrs.sgrCodes == [1, 3, 4])
     }
 
     @Test func emptyAttributes() {
-        let attrs: CellAttributes = []
+        let attrs: Cell.Attributes = []
         #expect(attrs.sgrCodes.isEmpty)
     }
 
     @Test func optionSetOperations() {
-        var attrs: CellAttributes = [.bold]
+        var attrs: Cell.Attributes = [.bold]
         attrs.formUnion([.italic])
         #expect(attrs.contains(.bold))
         #expect(attrs.contains(.italic))
@@ -62,12 +62,12 @@ struct CellAttributesTests {
     }
 }
 
-// MARK: - CellStyle Tests
+// MARK: - TextAttributes Tests
 
-@Suite("CellStyle")
-struct CellStyleTests {
+@Suite("TextAttributes")
+struct TextAttributesTests {
     @Test func defaultStyle() {
-        let style = CellStyle.default
+        let style = TextAttributes.default
         #expect(style.foreground == nil)
         #expect(style.background == nil)
         #expect(style.attributes == [])
@@ -75,14 +75,14 @@ struct CellStyleTests {
     }
 
     @Test func styleEquality() {
-        let a = CellStyle(foreground: .red, attributes: [.bold])
-        let b = CellStyle(foreground: .red, attributes: [.bold])
+        let a = TextAttributes(foreground: .red, attributes: [.bold])
+        let b = TextAttributes(foreground: .red, attributes: [.bold])
         #expect(a == b)
     }
 
     @Test func styleInequality() {
-        let a = CellStyle(foreground: .red)
-        let b = CellStyle(foreground: .blue)
+        let a = TextAttributes(foreground: .red)
+        let b = TextAttributes(foreground: .blue)
         #expect(a != b)
     }
 }

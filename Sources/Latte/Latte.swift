@@ -87,6 +87,7 @@
 /// | **Size** | ``enforceWidth(_:_:alignment:)``, ``enforceHeight(_:_:alignment:)``, ``clampWidth(_:_:)``, ``clampHeight(_:_:)``, ``clamp(_:maxWidth:maxHeight:)`` |
 /// | **Borders** | ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``, ``Border`` |
 /// | **Utilities** | ``expandTabs(_:tabWidth:)``, ``inline(_:)``, ``wrap(_:width:breakCharacter:)`` |
-/// | **Composition** | ``joinHorizontal(_:_:)-5h7fk``, ``joinVertical(_:_:)-3zco8``, ``place(width:height:horizontal:vertical:_:)``, ``placeHorizontal(width:_:_:)``, ``placeVertical(height:_:_:)`` |
-/// | **String Extensions** | Chainable versions of all the above: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.placed()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |
+/// | **Composition** | ``joinHorizontal(_:_:)-5h7fk``, ``joinVertical(_:_:)-3zco8`` |
+/// | **String Extensions** | Chainable versions of all the above: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |
+/// | **ViewOutput Extensions** | Fluent layout API: `.width()`, `.height()`, `.size()`, `.clampedWidth()`, `.clampedHeight()`, `.padded()`, `.margined()`, `.bordered()`, `.beside()`, `.above()` |
 public enum Latte {}

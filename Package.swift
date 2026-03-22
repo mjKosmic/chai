@@ -30,6 +30,7 @@ let package = Package(
         ),
         .target(
             name: "Latte",
+            dependencies: ["Chai"],
             path: "Sources/Latte"
         ),
         .target(
