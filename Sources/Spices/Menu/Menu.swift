@@ -17,6 +17,11 @@ private let _menuIDGenerator = IDGenerator()
 public struct MenuSelectionMsg: Message, Sendable {
     public let menuID: Int
     public let item: any ListItem
+
+    public init(menuID: Int, item: any ListItem) {
+        self.menuID = menuID
+        self.item = item
+    }
 }
 
 /// Posted when the user cancels the menu (Escape or q).
