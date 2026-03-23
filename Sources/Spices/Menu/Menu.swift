@@ -1,6 +1,36 @@
 import Chai
 import Latte
 
+// MARK: - Menu ID Generator
+
+private let _menuIDGenerator = IDGenerator()
+
+// MARK: - Menu Messages
+
+/// Posted when the user confirms a selection (Enter).
+///
+/// ```swift
+/// if let msg = msg as? MenuSelectionMsg, msg.menuID == myMenu.id {
+///     currentView = .detail(msg.item)
+/// }
+/// ```
+public struct MenuSelectionMsg: Message, Sendable {
+    public let menuID: Int
+    public let item: any ListItem
+}
+
+/// Posted when the user cancels the menu (Escape or q).
+///
+/// ```swift
+/// if let msg = msg as? MenuCancellationMsg, msg.menuID == myMenu.id {
+///     currentView = .main
+/// }
+/// ```
+public struct MenuCancellationMsg: Message, Sendable {
+    public let menuID: Int
+    public init(menuID: Int) { self.menuID = menuID }
+}
+
 // MARK: - MenuStyles
 
 /// Visual styles and rune configuration for the ``Menu`` component.
@@ -160,6 +190,7 @@ public struct Menu: Sendable {
 
     // MARK: - Private state
 
+    private let _id: Int
     private var _items: [any ListItem]
     private var _cursor: Int
     private var _offset: Int
@@ -180,6 +211,7 @@ public struct Menu: Sendable {
         width: Int = 40,
         height: Int = 10
     ) {
+        self._id = _menuIDGenerator.next()
         self.styles = MenuStyles()
         self.keyMap = MenuKeyMap()
         self.infiniteScrolling = false
@@ -203,7 +235,8 @@ public struct Menu: Sendable {
     /// the ``KeyBinding/isEnabled`` state of other bindings.
     ///
     /// - Parameter msg: A message from the Chai event loop.
-    /// - Returns: `.quit` when the user activates a quit or confirm binding, `nil` otherwise.
+    /// - Returns: A ``Command`` posting a ``MenuSelectionMsg`` on confirm,
+    ///   a ``MenuCancellationMsg`` on cancel/quit, `.quit` on force-quit, or `nil` otherwise.
     public mutating func update(_ msg: any Message) -> Command? {
         if let size = msg as? WindowSizeMsg {
             setSize(width: size.width, height: size.height)
@@ -218,13 +251,17 @@ public struct Menu: Sendable {
             moveCursorUp()
         } else if keyMap.cursorDown.matches(key) {
             moveCursorDown()
-        } else if keyMap.confirm.matches(key) {
+        } else if keyMap.confirm.matches(key), !_items.isEmpty {
             _confirmed = true
-            return .quit
+            let id = _id
+            let item = _items[_cursor]
+            return .perform { MenuSelectionMsg(menuID: id, item: item) }
         } else if keyMap.cancel.matches(key) {
-            return .quit
+            let id = _id
+            return .perform { MenuCancellationMsg(menuID: id) }
         } else if keyMap.quit.matches(key) {
-            return .quit
+            let id = _id
+            return .perform { MenuCancellationMsg(menuID: id) }
         }
 
         return nil
@@ -279,6 +316,9 @@ public struct Menu: Sendable {
     }
 
     // MARK: - Public API
+
+    /// Unique identifier for this menu instance, useful for routing messages.
+    public var id: Int { _id }
 
     /// All items in the menu.
     public var items: [any ListItem] { _items }

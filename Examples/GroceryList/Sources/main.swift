@@ -89,6 +89,12 @@ struct GroceryList: Model {
             self.width = sizeMsg.width
         }
 
+        if let menuMsg = msg as? MenuSelectionMsg {
+            if menuMsg.menuID == self.menu.id {
+                return .quit
+            }
+        }
+
         return nil
     }
 

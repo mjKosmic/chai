@@ -608,13 +608,18 @@ struct MenuTests {
 
     // MARK: 6.3 Confirmation
 
-    @Test func enterReturnsQuitAndSetsConfirmed() {
+    @Test func enterSetsConfirmedAndPostsSelectionMsg() async throws {
         var menu = Menu(items: makeItems("A", "B"))
+        let menuID = menu.id
         let cmd = menu.update(KeyMsg(type: .enter))
         #expect(menu.isConfirmed)
-        if case .quit = cmd! { } else {
-            #expect(Bool(false), "Expected .quit command")
+        guard case .perform(let work) = cmd else {
+            #expect(Bool(false), "Expected .perform command"); return
         }
+        let msg = await work()
+        let selection = try #require(msg as? MenuSelectionMsg)
+        #expect(selection.menuID == menuID)
+        #expect(selection.item.filterValue() == "A")
     }
 
     @Test func selectedItemIsNilBeforeConfirm() {
@@ -631,22 +636,36 @@ struct MenuTests {
 
     // MARK: 6.4 Cancellation
 
-    @Test func escapeReturnsQuitNotConfirmed() {
+    @Test func escapePostsCancellationMsg() async throws {
         var menu = Menu(items: makeItems("A"))
+        let menuID = menu.id
         let cmd = menu.update(KeyMsg(type: .escape))
         #expect(!menu.isConfirmed)
-        if case .quit = cmd! { } else {
-            #expect(Bool(false), "Expected .quit command")
+        guard case .perform(let work) = cmd else {
+            #expect(Bool(false), "Expected .perform command"); return
         }
+        let msg = await work()
+        let cancellation = try #require(msg as? MenuCancellationMsg)
+        #expect(cancellation.menuID == menuID)
     }
 
-    @Test func quitReturnsQuitNotConfirmed() {
+    @Test func quitPostsCancellationMsg() async throws {
         var menu = Menu(items: makeItems("A"))
+        let menuID = menu.id
         let cmd = menu.update(KeyMsg(type: .runes, runes: ["q"]))
         #expect(!menu.isConfirmed)
-        if case .quit = cmd! { } else {
-            #expect(Bool(false), "Expected .quit command")
+        guard case .perform(let work) = cmd else {
+            #expect(Bool(false), "Expected .perform command"); return
         }
+        let msg = await work()
+        let cancellation = try #require(msg as? MenuCancellationMsg)
+        #expect(cancellation.menuID == menuID)
+    }
+
+    @Test func twoMenusHaveDistinctIDs() {
+        let a = Menu(items: makeItems("X"))
+        let b = Menu(items: makeItems("Y"))
+        #expect(a.id != b.id)
     }
 
     @Test func ctrlCReturnsQuitNotConfirmed() {
