@@ -26,6 +26,7 @@ struct GroceryList: Model {
     // MARK: State
 
     var picker: SelectableList
+    var menu: Menu
     var help: Help
     var height: Int
     var width: Int
@@ -47,6 +48,7 @@ struct GroceryList: Model {
         ]
 
         picker = SelectableList(items: items, width: 36, height: items.count)
+        menu = Menu(items: items) 
 
         // Style the selected state in green so ticked items stand out.
         picker.styles.selectedRune           = "●"
@@ -74,6 +76,7 @@ struct GroceryList: Model {
     mutating func update(_ msg: any Message) -> Command? {
         // Let the list handle navigation, toggling, and ctrl+c.
         if let cmd = picker.update(msg) { return cmd }
+        if let cmd = menu.update(msg) { return cmd }
 
         // `q` — show a summary then quit.
         if let key = msg as? KeyMsg,
@@ -86,15 +89,22 @@ struct GroceryList: Model {
             self.width = sizeMsg.width
         }
 
+        if let menuMsg = msg as? MenuSelectionMsg {
+            if menuMsg.menuID == self.menu.id {
+                return .quit
+            }
+        }
+
         return nil
     }
 
     func view() -> ViewOutput {
-        var view = picker.view().bordered(.rounded).frame(width: width, height: height, horizontalAlignment: .center, verticalAlignment: .middle)
-        view.windowTitle = "Grocery List"
-        view.altScreen = true
-
-        return view
+        // var view = picker.view().bordered(.rounded).frame(width: width, height: height, horizontalAlignment: .center, verticalAlignment: .middle)
+        // view.windowTitle = "Grocery List"
+        // view.altScreen = true
+        //
+        // return view.beside(menu.view())
+        return menu.view()
     }
 }
 

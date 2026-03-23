@@ -18,6 +18,7 @@
 /// | ``Table`` | Interactive data table |
 /// | ``List`` | Browsable list with filtering |
 /// | ``SelectableList`` | Multi-select list with configurable runes |
+/// | ``Menu`` | Single-selection menu with confirm/cancel |
 /// | ``Help`` | Keybinding help renderer |
 /// | ``Timer`` | Countdown timer |
 /// | ``Stopwatch`` | Elapsed-time counter |

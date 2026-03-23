@@ -518,6 +518,264 @@ struct SelectableListTests {
     }
 }
 
+@Suite("Menu")
+struct MenuTests {
+    struct Option: ListItem {
+        let name: String
+        func filterValue() -> String { name }
+    }
+
+    private func makeItems(_ names: String...) -> [any ListItem] {
+        names.map { Option(name: $0) }
+    }
+
+    // MARK: 6.1 Initialization
+
+    @Test func emptyMenuHasNoCursorItem() {
+        let menu = Menu()
+        #expect(menu.cursorItem == nil)
+    }
+
+    @Test func itemsStoredInOrder() {
+        let menu = Menu(items: makeItems("A", "B", "C"))
+        #expect(menu.items.count == 3)
+        #expect(menu.items[1].filterValue() == "B")
+    }
+
+    @Test func defaultCursorRune() {
+        let styles = MenuStyles()
+        #expect(styles.cursorRune == ">")
+    }
+
+    // MARK: 6.2 Navigation
+
+    @Test func cursorStartsAtZero() {
+        let menu = Menu(items: makeItems("A", "B", "C"))
+        #expect(menu.cursorIndex == 0)
+        #expect(menu.cursorItem?.filterValue() == "A")
+    }
+
+    @Test func cursorDownAdvancesOne() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        _ = menu.update(KeyMsg(type: .down))
+        #expect(menu.cursorIndex == 1)
+    }
+
+    @Test func cursorUpDecrements() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        _ = menu.update(KeyMsg(type: .down))
+        _ = menu.update(KeyMsg(type: .up))
+        #expect(menu.cursorIndex == 0)
+    }
+
+    @Test func cursorDoesNotGoBelowZero() {
+        var menu = Menu(items: makeItems("A", "B"))
+        _ = menu.update(KeyMsg(type: .up))
+        #expect(menu.cursorIndex == 0)
+    }
+
+    @Test func cursorDoesNotExceedLastItem() {
+        var menu = Menu(items: makeItems("A", "B"))
+        _ = menu.update(KeyMsg(type: .down))
+        _ = menu.update(KeyMsg(type: .down))
+        _ = menu.update(KeyMsg(type: .down))
+        #expect(menu.cursorIndex == 1)
+    }
+
+    @Test func viBindingsWork() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        _ = menu.update(KeyMsg(type: .runes, runes: ["j"]))
+        #expect(menu.cursorIndex == 1)
+        _ = menu.update(KeyMsg(type: .runes, runes: ["k"]))
+        #expect(menu.cursorIndex == 0)
+    }
+
+    @Test func infiniteScrollingWrapsDown() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        menu.infiniteScrolling = true
+        _ = menu.update(KeyMsg(type: .down))
+        _ = menu.update(KeyMsg(type: .down))
+        _ = menu.update(KeyMsg(type: .down)) // wraps back to 0
+        #expect(menu.cursorIndex == 0)
+    }
+
+    @Test func infiniteScrollingWrapsUp() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        menu.infiniteScrolling = true
+        _ = menu.update(KeyMsg(type: .up)) // wraps to last
+        #expect(menu.cursorIndex == 2)
+    }
+
+    // MARK: 6.3 Confirmation
+
+    @Test func enterSetsConfirmedAndPostsSelectionMsg() async throws {
+        var menu = Menu(items: makeItems("A", "B"))
+        let menuID = menu.id
+        let cmd = menu.update(KeyMsg(type: .enter))
+        #expect(menu.isConfirmed)
+        guard case .perform(let work) = cmd else {
+            #expect(Bool(false), "Expected .perform command"); return
+        }
+        let msg = await work()
+        let selection = try #require(msg as? MenuSelectionMsg)
+        #expect(selection.menuID == menuID)
+        #expect(selection.item.filterValue() == "A")
+    }
+
+    @Test func selectedItemIsNilBeforeConfirm() {
+        let menu = Menu(items: makeItems("A", "B"))
+        #expect(menu.selectedItem == nil)
+    }
+
+    @Test func selectedItemMatchesCursorAfterConfirm() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        _ = menu.update(KeyMsg(type: .down)) // cursor at 1
+        _ = menu.update(KeyMsg(type: .enter))
+        #expect(menu.selectedItem?.filterValue() == "B")
+    }
+
+    // MARK: 6.4 Cancellation
+
+    @Test func escapePostsCancellationMsg() async throws {
+        var menu = Menu(items: makeItems("A"))
+        let menuID = menu.id
+        let cmd = menu.update(KeyMsg(type: .escape))
+        #expect(!menu.isConfirmed)
+        guard case .perform(let work) = cmd else {
+            #expect(Bool(false), "Expected .perform command"); return
+        }
+        let msg = await work()
+        let cancellation = try #require(msg as? MenuCancellationMsg)
+        #expect(cancellation.menuID == menuID)
+    }
+
+    @Test func quitPostsCancellationMsg() async throws {
+        var menu = Menu(items: makeItems("A"))
+        let menuID = menu.id
+        let cmd = menu.update(KeyMsg(type: .runes, runes: ["q"]))
+        #expect(!menu.isConfirmed)
+        guard case .perform(let work) = cmd else {
+            #expect(Bool(false), "Expected .perform command"); return
+        }
+        let msg = await work()
+        let cancellation = try #require(msg as? MenuCancellationMsg)
+        #expect(cancellation.menuID == menuID)
+    }
+
+    @Test func twoMenusHaveDistinctIDs() {
+        let a = Menu(items: makeItems("X"))
+        let b = Menu(items: makeItems("Y"))
+        #expect(a.id != b.id)
+    }
+
+    @Test func ctrlCReturnsQuitNotConfirmed() {
+        var menu = Menu(items: makeItems("A"))
+        let cmd = menu.update(KeyMsg(type: .ctrl("c")))
+        #expect(!menu.isConfirmed)
+        if case .quit = cmd! { } else {
+            #expect(Bool(false), "Expected .quit command")
+        }
+    }
+
+    // MARK: 6.5 Scrolling
+
+    @Test func viewportScrollsDownWithCursor() {
+        var menu = Menu(items: makeItems("A", "B", "C", "D", "E"), height: 2)
+        for _ in 0..<3 { _ = menu.update(KeyMsg(type: .down)) }
+        let output = menu.view().content.plainText
+        #expect(output.contains("D"))
+        #expect(!output.contains("A"))
+    }
+
+    @Test func viewportScrollsBackUp() {
+        var menu = Menu(items: makeItems("A", "B", "C", "D", "E"), height: 2)
+        for _ in 0..<4 { _ = menu.update(KeyMsg(type: .down)) }
+        for _ in 0..<4 { _ = menu.update(KeyMsg(type: .up)) }
+        let output = menu.view().content.plainText
+        #expect(output.contains("A"))
+    }
+
+    @Test func windowSizeMsgUpdatesDimensions() {
+        var menu = Menu(items: makeItems("A", "B", "C", "D", "E"), height: 2)
+        _ = menu.update(WindowSizeMsg(width: 80, height: 20))
+        let output = menu.view().content.plainText
+        #expect(output.contains("E"))
+    }
+
+    // MARK: 6.6 View rendering
+
+    @Test func cursorRuneAppearsOnFocusedRow() {
+        let menu = Menu(items: makeItems("Alpha", "Beta"))
+        let output = menu.view().content.plainText
+        #expect(output.contains(">"))
+    }
+
+    @Test func onlyOneCursorRuneForThreeItems() {
+        let menu = Menu(items: makeItems("A", "B", "C"))
+        let output = menu.view().content.plainText
+        let count = output.filter { $0 == ">" }.count
+        #expect(count == 1)
+    }
+
+    @Test func viewShowsNoItemsWhenEmpty() {
+        let menu = Menu()
+        let output = menu.view().content.plainText
+        #expect(output.contains("No items."))
+    }
+
+    @Test func viewRendersAllVisibleItems() {
+        let menu = Menu(items: makeItems("Apple", "Banana", "Cherry"), height: 10)
+        let output = menu.view().content.plainText
+        #expect(output.contains("Apple"))
+        #expect(output.contains("Banana"))
+        #expect(output.contains("Cherry"))
+    }
+
+    @Test func customCursorRuneAppearsInView() {
+        var menu = Menu(items: makeItems("Item"))
+        menu.styles.cursorRune = "▶"
+        let output = menu.view().content.plainText
+        #expect(output.contains("▶"))
+    }
+
+    @Test func longItemTextIsTruncated() {
+        let longName = String(repeating: "x", count: 100)
+        let menu = Menu(items: makeItems(longName), width: 10)
+        let output = menu.view().content.plainText
+        #expect(!output.contains(longName))
+        #expect(output.contains("…"))
+    }
+
+    @Test func initializeReturnsNil() {
+        let menu = Menu()
+        #expect(menu.initialize() == nil)
+    }
+
+    // MARK: 6.7 Mutation helpers
+
+    @Test func setCursorClampsHigh() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        menu.setCursor(100)
+        #expect(menu.cursorIndex == 2)
+    }
+
+    @Test func setCursorClampsLow() {
+        var menu = Menu(items: makeItems("A", "B", "C"))
+        menu.setCursor(-5)
+        #expect(menu.cursorIndex == 0)
+    }
+
+    @Test func setItemsResetsCursorAndConfirmed() {
+        var menu = Menu(items: makeItems("A", "B"))
+        _ = menu.update(KeyMsg(type: .down))
+        _ = menu.update(KeyMsg(type: .enter)) // confirms
+        menu.setItems(makeItems("X", "Y", "Z"))
+        #expect(menu.cursorIndex == 0)
+        #expect(!menu.isConfirmed)
+        #expect(menu.items.count == 3)
+    }
+}
+
 // MARK: - Milestone 7 additions
 
 @Suite("Progress — Gradient Fill")
