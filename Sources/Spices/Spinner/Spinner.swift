@@ -130,7 +130,7 @@ private let _spinnerIDGenerator = IDGenerator()
 /// // In view():
 /// spinner.view() + " Loading..."
 /// ```
-public struct Spinner: Sendable {
+public struct Spinner: View {
     /// The spinner type (frames and interval).
     public var type: SpinnerType {
         didSet { _tag += 1 }
@@ -183,7 +183,7 @@ public struct Spinner: Sendable {
     }
 
     /// Renders the current spinner frame with the configured style.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         let frameCount = type.frames.count
         guard frameCount > 0 else { return "" }
         return ViewOutput(style.styledText(type.frames[_frame]))

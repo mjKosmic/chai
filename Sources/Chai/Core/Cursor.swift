@@ -2,18 +2,19 @@
 
 /// Describes the terminal cursor's position, shape, and blink state.
 ///
-/// When a ``Cursor`` is set on ``ViewOutput``, the renderer shows the terminal
-/// cursor at the specified position with the given shape. When ``ViewOutput/cursor``
-/// is `nil`, the cursor is hidden.
+/// When a ``Cursor`` is returned from ``Model/cursor``, the renderer shows
+/// the terminal cursor at the specified position with the given shape. When
+/// ``Model/cursor`` is `nil`, the cursor is hidden.
 ///
 /// ## Example
 ///
 /// ```swift
-/// func view() -> ViewOutput {
-///     ViewOutput(
-///         "Enter name: \(name)",
-///         cursor: Cursor(position: .init(col: cursorCol, row: 0))
-///     )
+/// struct MyModel: Model {
+///     var cursorCol: Int = 0
+///
+///     var cursor: Cursor? {
+///         Cursor(position: .init(col: cursorCol, row: 0))
+///     }
 /// }
 /// ```
 public struct Cursor: Sendable, Equatable {

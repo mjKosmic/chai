@@ -163,7 +163,7 @@ public struct ListKeyMap: Sendable, HelpKeyMap {
 /// // In view():
 /// list.view()
 /// ```
-public struct List: Sendable {
+public struct List: View {
     /// The list title.
     public var title: String
 
@@ -327,7 +327,7 @@ public struct List: Sendable {
     }
 
     /// Renders the complete list view.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         var sections: [StyledText] = []
         let visibleItems = currentVisibleItems
 
@@ -335,14 +335,14 @@ public struct List: Sendable {
         if showTitle && !title.isEmpty {
             var titleLine = styles.title.styledText(title)
             if _showSpinner {
-                titleLine += StyledText(" ") + _spinner.view().content
+                titleLine += StyledText(" ") + _spinner.body.content
             }
             sections.append(titleLine.styled(styles.titleBar.textAttributes))
         }
 
         // Filter input — use .content directly to preserve structured styling.
         if _filterState == .filtering {
-            sections.append(filterInput.view().content)
+            sections.append(filterInput.body.content)
         }
 
         // Items
@@ -381,7 +381,7 @@ public struct List: Sendable {
 
         // Pagination — use paginator's StyledText content directly, then apply style.
         if showPagination && paginator.totalPages > 1 {
-            sections.append(paginator.view().content.styled(styles.paginationStyle.textAttributes))
+            sections.append(paginator.body.content.styled(styles.paginationStyle.textAttributes))
         }
 
         // Help — help.view() already returns StyledText with per-key styling;

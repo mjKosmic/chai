@@ -28,7 +28,7 @@ private let _progressIDGenerator = IDGenerator()
 /// // In view():
 /// progress.view()  // e.g. "████████████████████░░░░░░░░░░░░░░░░░░░░  50%"
 /// ```
-public struct Progress: Sendable {
+public struct Progress: View {
     /// The total width of the progress bar in characters.
     public var width: Int
 
@@ -160,7 +160,7 @@ public struct Progress: Sendable {
     }
 
     /// Renders the progress bar at the current animated position.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         ViewOutput(viewAsStyledText(_percent))
     }
 

@@ -83,7 +83,7 @@ public struct ViewportKeyMap: Sendable {
 /// // In view():
 /// viewport.view()
 /// ```
-public struct Viewport: Sendable {
+public struct Viewport: View {
     /// The width of the viewport in columns.
     public var width: Int
 
@@ -145,7 +145,7 @@ public struct Viewport: Sendable {
     }
 
     /// Renders the visible portion of the content.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         guard height > 0, width > 0 else { return "" }
 
         var visibleLines: [String] = []

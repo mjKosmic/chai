@@ -108,7 +108,7 @@ public struct TableKeyMap: Sendable, HelpKeyMap {
 /// // In view():
 /// table.view()
 /// ```
-public struct Table: Sendable {
+public struct Table: View {
     /// Keybindings for navigation.
     public var keyMap: TableKeyMap
 
@@ -183,7 +183,7 @@ public struct Table: Sendable {
     }
 
     /// Renders the table.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         guard !_columns.isEmpty else { return "" }
         return ViewOutput(headerView() + StyledText("\n") + bodyView())
     }

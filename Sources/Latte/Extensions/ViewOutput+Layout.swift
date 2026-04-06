@@ -54,7 +54,6 @@ extension ViewOutput {
     ///         horizontalAlignment: .center,
     ///         verticalAlignment: .middle
     ///     )
-    ///     .altScreen(true)
     /// ```
     ///
     /// Lines already wider than `width` or content already taller than `height`
@@ -197,9 +196,6 @@ extension ViewOutput {
 
     /// Place another view to the right of this one.
     ///
-    /// Terminal state (altScreen, windowTitle, cursor) from the receiver
-    /// takes precedence.
-    ///
     /// - Parameters:
     ///   - other: The view to place on the right.
     ///   - align: Vertical alignment when views have different heights.
@@ -208,9 +204,6 @@ extension ViewOutput {
     }
 
     /// Place another view below this one.
-    ///
-    /// Terminal state (altScreen, windowTitle, cursor) from the receiver
-    /// takes precedence.
     ///
     /// - Parameters:
     ///   - other: The view to place below.
@@ -224,13 +217,8 @@ extension ViewOutput {
 
 extension ViewOutput {
 
-    /// Transform the content while preserving all terminal state.
+    /// Transform the content, returning a new ViewOutput.
     private func transformContent(_ transform: (StyledText) -> StyledText) -> ViewOutput {
-        ViewOutput(
-            transform(content),
-            altScreen: altScreen,
-            windowTitle: windowTitle,
-            cursor: cursor
-        )
+        ViewOutput(transform(content))
     }
 }

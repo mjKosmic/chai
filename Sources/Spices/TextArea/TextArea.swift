@@ -144,7 +144,7 @@ public struct LineInfo: Sendable {
 /// // Access the value:
 /// let text = textarea.value
 /// ```
-public struct TextArea: Sendable {
+public struct TextArea: View {
     /// The prompt displayed at the start of each line.
     public var prompt: String
 
@@ -293,7 +293,7 @@ public struct TextArea: Sendable {
     }
 
     /// Renders the text area.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         let activeStyle = _focused ? focusedStyle : blurredStyle
 
         // Show placeholder if empty and unfocused
@@ -340,7 +340,7 @@ public struct TextArea: Sendable {
                 renderedLine += activeStyle.text.styledText(preCursor)
                 var cursorCopy = cursor
                 cursorCopy.setChar(cursorChar)
-                renderedLine += cursorCopy.view().content
+                renderedLine += cursorCopy.body.content
                 if !postCursor.isEmpty {
                     renderedLine += activeStyle.text.styledText(postCursor)
                 }

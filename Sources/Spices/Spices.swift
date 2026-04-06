@@ -87,8 +87,8 @@
 ///         spinner.update(msg)
 ///     }
 ///
-///     func view() -> ViewOutput {
-///         ViewOutput(spinner.view().content + " Loading…")
+///     var body: ViewOutput {
+///         ViewOutput(spinner.body.content + " Loading…")
 ///     }
 /// }
 /// ```

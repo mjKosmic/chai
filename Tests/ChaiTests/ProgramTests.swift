@@ -11,7 +11,7 @@ struct ProgramSendTests {
         struct DummyModel: Model {
             func initialize() -> Command? { nil }
             mutating func update(_ msg: any Message) -> Command? { nil }
-            func view() -> ViewOutput { "test" }
+            var body: ViewOutput { "test" }
         }
 
         let program = Program(DummyModel())
@@ -26,7 +26,7 @@ struct ProgramSendTests {
         struct DummyModel: Model {
             func initialize() -> Command? { nil }
             mutating func update(_ msg: any Message) -> Command? { nil }
-            func view() -> ViewOutput { "" }
+            var body: ViewOutput { "" }
         }
         let program = Program(DummyModel())
         // This line verifies the API exists and compiles.

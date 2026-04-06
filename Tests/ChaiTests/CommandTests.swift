@@ -132,17 +132,17 @@ struct CommandTests {
                 return nil
             }
 
-            func view() -> ViewOutput { ponged ? "Ponged!" : "Waiting..." }
+            var body: ViewOutput { ponged ? "Ponged!" : "Waiting..." }
         }
 
         var m = PingPong()
         let cmd = m.update(PingMsg())
         #expect(cmd != nil)
-        #expect(m.view().content == "Waiting...") // ponged not yet set
+        #expect(m.body.content == "Waiting...") // ponged not yet set
 
         // Simulate the runtime delivering the PongMsg.
         _ = m.update(PongMsg())
-        #expect(m.view().content == "Ponged!")
+        #expect(m.body.content == "Ponged!")
     }
 
     // MARK: - .clearScreen
@@ -235,7 +235,7 @@ struct NewCommandCaseTests {
                 }
                 return nil
             }
-            func view() -> ViewOutput { "Press Ctrl+L to clear" }
+            var body: ViewOutput { "Press Ctrl+L to clear" }
         }
 
         var model = ClearModel()
@@ -247,7 +247,7 @@ struct NewCommandCaseTests {
         struct SizeModel: Model {
             func initialize() -> Command? { .requestWindowSize }
             mutating func update(_ msg: any Message) -> Command? { nil }
-            func view() -> ViewOutput { "Waiting for size..." }
+            var body: ViewOutput { "Waiting for size..." }
         }
 
         let model = SizeModel()
