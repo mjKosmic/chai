@@ -11,7 +11,7 @@ struct EventFilteringTests {
         struct DummyModel: Model {
             func initialize() -> Command? { nil }
             mutating func update(_ msg: any Message) -> Command? { nil }
-            func view() -> ViewOutput { "" }
+            var body: ViewOutput { "" }
         }
 
         // Filter that passes everything through.
@@ -36,7 +36,7 @@ struct EventFilteringTests {
                 if msg is Transformed { receivedTransformed = true }
                 return nil
             }
-            func view() -> ViewOutput { "" }
+            var body: ViewOutput { "" }
         }
 
         let filter: @Sendable (TestModel, any Message) -> (any Message)? = { _, msg in
@@ -66,7 +66,7 @@ struct EventFilteringTests {
                 updateCount += 1
                 return nil
             }
-            func view() -> ViewOutput { "" }
+            var body: ViewOutput { "" }
         }
 
         let filter: @Sendable (TestModel, any Message) -> (any Message)? = { _, msg in
@@ -93,7 +93,7 @@ struct EventFilteringTests {
         struct DummyModel: Model {
             func initialize() -> Command? { nil }
             mutating func update(_ msg: any Message) -> Command? { nil }
-            func view() -> ViewOutput { "" }
+            var body: ViewOutput { "" }
         }
 
         // Filter with explicit options array.

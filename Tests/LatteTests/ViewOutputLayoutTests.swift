@@ -88,11 +88,10 @@ struct ViewOutputLayoutTests {
         #expect(lines[0] == "Hello, World!")
     }
 
-    @Test func framePreservesTerminalState() {
-        let view = ViewOutput("Hi", altScreen: true, windowTitle: "Test")
+    @Test func framePreservesContent() {
+        let view = ViewOutput("Hi")
             .frame(width: 10, height: 5, horizontalAlignment: .center, verticalAlignment: .middle)
-        #expect(view.altScreen == true)
-        #expect(view.windowTitle == "Test")
+        #expect(view.content.plainText.contains("Hi"))
     }
 
     // MARK: - Clamping
@@ -217,14 +216,13 @@ struct ViewOutputLayoutTests {
         #expect(lines[1] == "World!")
     }
 
-    // MARK: - Terminal state preservation
+    // MARK: - Content preservation
 
-    @Test func transformPreservesTerminalState() {
-        let view = ViewOutput("Hi", altScreen: true, windowTitle: "Test")
+    @Test func transformPreservesContent() {
+        let view = ViewOutput("Hi")
             .width(10)
             .bordered(.rounded)
-        #expect(view.altScreen == true)
-        #expect(view.windowTitle == "Test")
+        #expect(view.content.plainText.contains("Hi"))
     }
 
     // MARK: - Chaining

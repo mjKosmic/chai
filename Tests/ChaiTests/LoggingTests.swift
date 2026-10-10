@@ -92,7 +92,7 @@ struct LoggingTests {
         struct DummyModel: Model {
             func initialize() -> Command? { nil }
             mutating func update(_ msg: any Message) -> Command? { nil }
-            func view() -> ViewOutput { "" }
+            var body: ViewOutput { "" }
         }
 
         struct DummyLogger: ChaiLogger {

@@ -25,10 +25,10 @@ private let _progressIDGenerator = IDGenerator()
 /// // Set the target (animates smoothly):
 /// let cmd = progress.setPercent(0.50)
 ///
-/// // In view():
-/// progress.view()  // e.g. "████████████████████░░░░░░░░░░░░░░░░░░░░  50%"
+/// // In body:
+/// progress.body    // e.g. "████████████████████░░░░░░░░░░░░░░░░░░░░  50%"
 /// ```
-public struct Progress: Sendable {
+public struct Progress: View {
     /// The total width of the progress bar in characters.
     public var width: Int
 
@@ -160,7 +160,7 @@ public struct Progress: Sendable {
     }
 
     /// Renders the progress bar at the current animated position.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         ViewOutput(viewAsStyledText(_percent))
     }
 
@@ -170,8 +170,9 @@ public struct Progress: Sendable {
     ///
     /// - Parameter percent: A value from 0.0 to 1.0.
     /// - Returns: The rendered progress bar as an ANSI-encoded string suitable for
-    ///   **direct terminal printing only**. Do **not** pass this value to ``ViewOutput/init(_:altScreen:windowTitle:cursor:)-swift.init``
-    ///   — the embedded ANSI escape sequences will corrupt the cell-buffer renderer.
+    ///   **direct terminal printing only**. Do **not** embed this value in
+    ///   ``ViewOutput`` content — the embedded ANSI escape sequences will corrupt
+    ///   the cell-buffer renderer.
     ///   Use ``viewAsStyledText(_:)`` instead when composing ``ViewOutput``.
     @available(*, deprecated, renamed: "viewAsStyledText(_:)", message: "Returns an ANSI-encoded String that is unsafe to use with ViewOutput. Use viewAsStyledText(_:) instead.")
     public func viewAs(_ percent: Double) -> String {

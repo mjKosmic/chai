@@ -33,6 +33,9 @@ actor Renderer {
     /// The view output queued for the next flush.
     private var pendingViewOutput = ViewOutput("")
 
+    /// The cursor queued for the next flush (set separately from content).
+    private var pendingCursor: Cursor?
+
     /// The cell buffer from the last rendered frame (used for diffing).
     private var lastBuffer = CellBuffer(width: 0, height: 0)
 
@@ -114,11 +117,29 @@ actor Renderer {
 
     /// Queue a new ``ViewOutput`` for rendering on the next tick.
     ///
-    /// The renderer will diff the terminal state (alt screen, window title,
-    /// cursor visibility) and content against the previous frame on the next
-    /// ``flush()``.
+    /// The renderer will diff the content against the previous frame on the
+    /// next ``flush()``.
     func write(_ view: ViewOutput) {
         pendingViewOutput = view
+    }
+
+    /// Queue any ``View`` for rendering on the next tick.
+    ///
+    /// The view tree is resolved to a ``ViewOutput`` and queued for the next
+    /// ``flush()``. This enables the renderer to accept the model's ``body``
+    /// directly, regardless of its concrete type.
+    func write<V: View>(_ view: V) {
+        pendingViewOutput = view._resolveToViewOutput()
+    }
+
+    /// Set the cursor to display on the next flush.
+    ///
+    /// When non-`nil`, the terminal cursor is shown at the specified position
+    /// with the given shape. When `nil`, the cursor is hidden automatically
+    /// in alternate-screen mode; in normal (inline) mode the cursor state is
+    /// left unchanged.
+    func setCursor(_ cursor: Cursor?) {
+        pendingCursor = cursor
     }
 
     /// Force a full repaint on the next flush by clearing the last-render cache.
@@ -130,47 +151,19 @@ actor Renderer {
 
     /// Write the pending view to the terminal, diffing against the last frame.
     ///
-    /// Terminal state transitions (alt screen, window title, cursor visibility)
-    /// are handled first, then content is laid out into a cell buffer, diffed
-    /// against the previous frame, and changed rows are written. Finally the
-    /// cursor is positioned.
+    /// Cursor visibility is handled first, then content is laid out into a
+    /// cell buffer, diffed against the previous frame, and changed rows are
+    /// written. Finally the cursor is positioned.
     func flush() {
         let viewOutput = pendingViewOutput
+        let cursor = pendingCursor
 
-        // ── Handle terminal state transitions ───────────────────────────────
+        // ── Cursor visibility ──────────────────────────────────────────────
 
-        // Alt screen: enter or exit if the model changed its declaration.
-        if let wantAltScreen = viewOutput.altScreen {
-            if wantAltScreen && !altScreenActive {
-                altScreenActive = true
-                terminal.write(ANSI.enterAltScreen)
-                terminal.write(ANSI.eraseEntireScreen)
-                terminal.write(ANSI.cursorHome)
-                // Cursor is hidden by default in alt screen mode.
-                cursorHidden = true
-                terminal.write(ANSI.hideCursor)
-                lastBuffer = CellBuffer(width: 0, height: 0)
-                queuedLines = []
-                cursorParkedRow = 0
-            } else if !wantAltScreen && altScreenActive {
-                altScreenActive = false
-                terminal.write(ANSI.exitAltScreen)
-                lastBuffer = CellBuffer(width: 0, height: 0)
-                queuedLines = []
-                cursorParkedRow = 0
-            }
-        }
-
-        // Window title: update if changed.
-        if let title = viewOutput.windowTitle, title != lastWindowTitle {
-            terminal.write(ANSI.setWindowTitle(title))
-            lastWindowTitle = title
-        }
-
-        // Cursor visibility: when a cursor is specified the cursor must be
-        // visible. In alt-screen mode with no cursor, the cursor is hidden
+        // When a cursor is specified the cursor must be visible.
+        // In alt-screen mode with no cursor, the cursor is hidden
         // automatically. In normal mode with no cursor the state is unchanged.
-        if viewOutput.cursor != nil {
+        if cursor != nil {
             if cursorHidden {
                 cursorHidden = false
                 terminal.write(ANSI.showCursor)
@@ -217,7 +210,7 @@ actor Renderer {
 
         let diff = newBuffer.diff(against: lastBuffer)
         let contentChanged = !diff.changes.isEmpty || diff.eraseBelow
-        let cursorChanged = viewOutput.cursor != lastCursor
+        let cursorChanged = cursor != lastCursor
 
         guard contentChanged || cursorChanged else { return }
 
@@ -288,7 +281,7 @@ actor Renderer {
 
         // ── Cursor shape ────────────────────────────────────────────────────
 
-        if let cursor = viewOutput.cursor {
+        if let cursor = cursor {
             if cursor.shape != lastCursor?.shape || cursor.blink != lastCursor?.blink {
                 out += ANSI.setCursorShape(cursor.shape, blink: cursor.blink)
             }
@@ -305,7 +298,7 @@ actor Renderer {
             currentRow = cursorParkedRow
         }
 
-        if let cursor = viewOutput.cursor {
+        if let cursor = cursor {
             let targetRow = cursor.position.row
             if altScreenActive {
                 out += ANSI.cursorPosition(row: targetRow + 1, col: cursor.position.col + 1)
@@ -334,7 +327,7 @@ actor Renderer {
             cursorParkedRow = targetRow
         }
 
-        lastCursor = viewOutput.cursor
+        lastCursor = cursor
 
         terminal.write(ANSI.beginSyncUpdate + out + ANSI.endSyncUpdate)
     }

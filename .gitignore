@@ -4,3 +4,6 @@
 DerivedData/
 .swiftpm/
 Package.resolved
+
+# opencode session artifacts
+.opencode/

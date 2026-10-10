@@ -2,12 +2,13 @@
 ///
 /// Chai is built around the Elm Architecture (Model-Update-View):
 ///
-/// - **Model** — your application state, conforming to ``Model``.
+/// - **Model** — your application state, conforming to ``Model`` (which extends ``View``).
 /// - **Update** — a `mutating func update(_ msg:) -> Command?` method that
 ///   handles incoming ``Message`` values and optionally returns a ``Command``
 ///   to trigger async work.
-/// - **View** — a `func view() -> String` method that renders the current
-///   state as a plain string (ANSI escape codes are supported).
+/// - **View** — a `var body` property that renders the current state as a
+///   view tree, composed declaratively with `@ViewBuilder` and resolved to
+///   styled text.
 ///
 /// ## Quick Start
 ///
@@ -30,7 +31,7 @@
 ///         return nil
 ///     }
 ///
-///     func view() -> String {
+///     var body: ViewOutput {
 ///         "Count: \(count)\n\nPress ↑/↓ to change, Ctrl+C to quit.\n"
 ///     }
 /// }
@@ -46,14 +47,14 @@
 ///
 /// | Type | Description |
 /// |------|-------------|
-/// | ``Model`` | Protocol your app model conforms to |
+/// | ``View`` | Protocol for visual components |
+/// | ``Model`` | Protocol your app model conforms to (extends View) |
 /// | ``Message`` | Protocol for all event types |
 /// | ``Command`` | Async side-effects returned from `update` |
 /// | ``Program`` | The runtime that drives the event loop |
 /// | ``KeyMsg`` | Keyboard event message |
 /// | ``WindowSizeMsg`` | Terminal resize event |
 /// | ``QuitMsg`` | Signals program exit |
-/// | ``ProgramOption`` | Configuration options for ``Program`` |
 
 // All public types are defined in their respective files.
 // This file serves as the module documentation entry point.

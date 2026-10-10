@@ -114,13 +114,13 @@ public struct TextInputKeyMap: Sendable {
 /// // In update():
 /// input.update(msg)
 ///
-/// // In view():
-/// input.view()
+/// // In body:
+/// input.body
 ///
 /// // Access the value:
 /// let name = input.value
 /// ```
-public struct TextInput: Sendable {
+public struct TextInput: View {
     /// The prompt displayed before the input text.
     public var prompt: String
 
@@ -280,7 +280,7 @@ public struct TextInput: Sendable {
     }
 
     /// Renders the text input field.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         var output = promptStyle.styledText(prompt)
 
         if _value.isEmpty && !_focused {
@@ -326,7 +326,7 @@ public struct TextInput: Sendable {
                 }
                 var cursorCopy = cursor
                 cursorCopy.setChar(cursorChar)
-                output += cursorCopy.view().content
+                output += cursorCopy.body.content
             }
 
             // Render text after cursor
@@ -338,7 +338,7 @@ public struct TextInput: Sendable {
             }
         } else if _focused {
             // Empty value, show cursor — use .content directly.
-            output += cursor.view().content
+            output += cursor.body.content
         }
 
         // Suggestion ghost text

@@ -57,7 +57,7 @@ struct InternalMessageFilteringTests {
                 updateCount += 1
                 return nil
             }
-            func view() -> ViewOutput { "Count: \(updateCount)" }
+            var body: ViewOutput { "Count: \(updateCount)" }
         }
 
         var model = Counter()

@@ -61,7 +61,7 @@ struct SpinnerTests {
 
     @Test func viewReturnsFrame() {
         let spinner = Spinner(type: .line)
-        let view = spinner.view().content.plainText
+        let view = spinner.body.content.plainText
         #expect(view == "|") // first frame of line spinner
     }
 }
@@ -70,7 +70,7 @@ struct SpinnerTests {
 struct TimerTests {
     @Test func viewFormatsTime() {
         let timer = SpiceTimer(timeout: .seconds(90))
-        #expect(timer.view().content.plainText == "1m30s")
+        #expect(timer.body.content.plainText == "1m30s")
     }
 
     @Test func startSetsRunning() {
@@ -96,7 +96,7 @@ struct StopwatchTests {
 
     @Test func viewFormatsZero() {
         let sw = Stopwatch()
-        #expect(sw.view().content.plainText == "0s")
+        #expect(sw.body.content.plainText == "0s")
     }
 }
 
@@ -131,14 +131,14 @@ struct ProgressTests {
 struct PaginatorTests {
     @Test func dotView() {
         let pag = Paginator(type: .dots, perPage: 5, totalItems: 20)
-        let view = pag.view().content.plainText
+        let view = pag.body.content.plainText
         #expect(view == "● ○ ○ ○")
     }
 
     @Test func arabicView() {
         var pag = Paginator(type: .arabic, perPage: 5, totalItems: 20)
         pag.nextPage()
-        let view = pag.view().content.plainText
+        let view = pag.body.content.plainText
         #expect(view == "2/4")
     }
 
@@ -166,7 +166,7 @@ struct ViewportTests {
     @Test func setContentAndView() {
         var vp = Viewport(width: 10, height: 3)
         vp.setContent("line1\nline2\nline3\nline4\nline5")
-        let view = vp.view().content.plainText
+        let view = vp.body.content.plainText
         #expect(view.contains("line1"))
         #expect(view.contains("line3"))
         #expect(!view.contains("line4"))
@@ -176,7 +176,7 @@ struct ViewportTests {
         var vp = Viewport(width: 10, height: 2)
         vp.setContent("a\nb\nc\nd")
         vp.scrollDown()
-        let view = vp.view().content.plainText
+        let view = vp.body.content.plainText
         #expect(view.contains("b"))
         #expect(!view.contains("a"))
     }
@@ -221,7 +221,7 @@ struct TableTests {
         let rows: [TableRow] = [["Alice"], ["Bob"]]
         var table = Table(columns: cols, rows: rows, height: 5)
         table.focus()
-        let view = table.view().content.plainText
+        let view = table.body.content.plainText
         #expect(view.contains("Name"))
         #expect(view.contains("Alice"))
         #expect(view.contains("Bob"))
@@ -420,7 +420,7 @@ struct SelectableListTests {
         var list = SelectableList(items: makeItems("A", "B", "C", "D", "E"), height: 2)
         // Move cursor to index 3
         for _ in 0..<3 { _ = list.update(KeyMsg(type: .down)) }
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("D"))
         #expect(!output.contains("A"))
     }
@@ -429,7 +429,7 @@ struct SelectableListTests {
         var list = SelectableList(items: makeItems("A", "B", "C", "D", "E"), height: 2)
         for _ in 0..<4 { _ = list.update(KeyMsg(type: .down)) }
         for _ in 0..<4 { _ = list.update(KeyMsg(type: .up)) }
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("A"))
     }
 
@@ -437,26 +437,26 @@ struct SelectableListTests {
 
     @Test func viewContainsUnselectedRuneByDefault() {
         let list = SelectableList(items: makeItems("Alpha"))
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("○"))
     }
 
     @Test func viewContainsSelectedRuneWhenSelected() {
         var list = SelectableList(items: makeItems("Alpha"))
         _ = list.update(KeyMsg(type: .space))
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("●"))
     }
 
     @Test func viewShowsNoItemsWhenEmpty() {
         let list = SelectableList()
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("No items."))
     }
 
     @Test func viewRendersAllVisibleItems() {
         let list = SelectableList(items: makeItems("Apple", "Banana", "Cherry"), height: 10)
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("Apple"))
         #expect(output.contains("Banana"))
         #expect(output.contains("Cherry"))
@@ -467,14 +467,14 @@ struct SelectableListTests {
         list.styles.selectedRune = "✓"
         list.styles.unselectedRune = "✗"
         _ = list.update(KeyMsg(type: .space))
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("✓"))
     }
 
     @Test func longItemTextIsTruncated() {
         let longName = String(repeating: "x", count: 100)
         let list = SelectableList(items: makeItems(longName), width: 10)
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         // Output must be truncated — raw name should not appear verbatim
         #expect(!output.contains(longName))
         #expect(output.contains("…"))
@@ -506,7 +506,7 @@ struct SelectableListTests {
         var list = SelectableList(items: makeItems("A", "B", "C", "D", "E"), height: 2)
         _ = list.update(WindowSizeMsg(width: 80, height: 20))
         // After resize to height 20 all items should be visible
-        let output = list.view().content.plainText
+        let output = list.body.content.plainText
         #expect(output.contains("E"))
     }
 
@@ -682,7 +682,7 @@ struct MenuTests {
     @Test func viewportScrollsDownWithCursor() {
         var menu = Menu(items: makeItems("A", "B", "C", "D", "E"), height: 2)
         for _ in 0..<3 { _ = menu.update(KeyMsg(type: .down)) }
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains("D"))
         #expect(!output.contains("A"))
     }
@@ -691,14 +691,14 @@ struct MenuTests {
         var menu = Menu(items: makeItems("A", "B", "C", "D", "E"), height: 2)
         for _ in 0..<4 { _ = menu.update(KeyMsg(type: .down)) }
         for _ in 0..<4 { _ = menu.update(KeyMsg(type: .up)) }
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains("A"))
     }
 
     @Test func windowSizeMsgUpdatesDimensions() {
         var menu = Menu(items: makeItems("A", "B", "C", "D", "E"), height: 2)
         _ = menu.update(WindowSizeMsg(width: 80, height: 20))
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains("E"))
     }
 
@@ -706,26 +706,26 @@ struct MenuTests {
 
     @Test func cursorRuneAppearsOnFocusedRow() {
         let menu = Menu(items: makeItems("Alpha", "Beta"))
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains(">"))
     }
 
     @Test func onlyOneCursorRuneForThreeItems() {
         let menu = Menu(items: makeItems("A", "B", "C"))
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         let count = output.filter { $0 == ">" }.count
         #expect(count == 1)
     }
 
     @Test func viewShowsNoItemsWhenEmpty() {
         let menu = Menu()
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains("No items."))
     }
 
     @Test func viewRendersAllVisibleItems() {
         let menu = Menu(items: makeItems("Apple", "Banana", "Cherry"), height: 10)
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains("Apple"))
         #expect(output.contains("Banana"))
         #expect(output.contains("Cherry"))
@@ -734,14 +734,14 @@ struct MenuTests {
     @Test func customCursorRuneAppearsInView() {
         var menu = Menu(items: makeItems("Item"))
         menu.styles.cursorRune = "▶"
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(output.contains("▶"))
     }
 
     @Test func longItemTextIsTruncated() {
         let longName = String(repeating: "x", count: 100)
         let menu = Menu(items: makeItems(longName), width: 10)
-        let output = menu.view().content.plainText
+        let output = menu.body.content.plainText
         #expect(!output.contains(longName))
         #expect(output.contains("…"))
     }
@@ -876,7 +876,7 @@ struct TextInputScrollingTests {
         for c: Character in "ABCDEFGHIJ" {
             _ = input.update(KeyMsg(type: .runes, runes: [c]))
         }
-        let view = input.view().content.plainText
+        let view = input.body.content.plainText
         // The last typed character ('J') must be visible in the rendered output
         #expect(view.contains("J"))
     }
@@ -890,7 +890,7 @@ struct TextInputScrollingTests {
         }
         // Jump to line start
         _ = input.update(KeyMsg(type: .home))
-        let view = input.view().content.plainText
+        let view = input.body.content.plainText
         #expect(view.contains("A"))
     }
 
@@ -899,7 +899,7 @@ struct TextInputScrollingTests {
         var input = TextInput(width: 5)
         _ = input.focus()
         input.setValue("Hello World")   // longer than the visible width
-        let view = input.view().content.plainText
+        let view = input.body.content.plainText
         // Cursor is at the end → last character 'd' must be visible
         #expect(view.contains("d"))
     }
@@ -920,9 +920,9 @@ struct ViewportLineStabilityTests {
         var vp = Viewport(width: 10, height: 3)
         vp.setContent("line1\nline2\nline3\nline4\nline5")
 
-        let before = vp.view().content.plainText.components(separatedBy: "\n")
+        let before = vp.body.content.plainText.components(separatedBy: "\n")
         vp.scrollDown()
-        let after = vp.view().content.plainText.components(separatedBy: "\n")
+        let after = vp.body.content.plainText.components(separatedBy: "\n")
 
         #expect(before.count == 3)
         #expect(after.count == 3)
@@ -957,7 +957,7 @@ struct SpinnerPresetTests {
         let custom = SpinnerType(frames: ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"],
                                  interval: .milliseconds(100))
         var spinner = Spinner(type: custom)
-        #expect(spinner.view().content.plainText == "→")   // first frame
+        #expect(spinner.body.content.plainText == "→")   // first frame
         _ = spinner.update(SpinnerTickMsg(id: 0, tag: 0))  // won't advance (wrong id/tag)
         // Still first frame — but the type's frames are intact
         #expect(custom.frames.count == 8)
@@ -993,7 +993,7 @@ struct HelpTests {
     @Test func shortHelpRenders() {
         let help = Help(width: 80)
         let view = help.view(keyMap: TestKeyMap())
-        // help.view() returns StyledText; check via plainText.
+        // help.body returns StyledText; check via plainText.
         #expect(view.plainText.contains("up"))
         #expect(view.plainText.contains("down"))
     }

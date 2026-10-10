@@ -235,7 +235,8 @@ private final class ProgramRunner<M: Model>: Sendable {
         }
 
         // ── Initial render ──────────────────────────────────────────────────
-        await renderer.write(model.view())
+        await renderer.write(model.body)
+        await renderer.setCursor(model.cursor)
         await renderer.flush()
 
         await logger?.log(.debug, "Event loop started")
@@ -247,7 +248,7 @@ private final class ProgramRunner<M: Model>: Sendable {
 
             // Internal messages (RepaintMsg, PrintLineMsg, WindowResizeSignalMsg,
             // etc.) are handled above and should not reach the model or trigger
-            // unnecessary view() calls.
+            // unnecessary body reads.
             if msg is InternalMessage { continue }
 
             // Apply event filter if one was provided.
@@ -264,7 +265,8 @@ private final class ProgramRunner<M: Model>: Sendable {
             let cmd = model.update(deliveredMsg)
 
             // Render updated view.
-            await renderer.write(model.view())
+            await renderer.write(model.body)
+            await renderer.setCursor(model.cursor)
 
             // Execute any returned command.
             if let cmd = cmd {
@@ -292,8 +294,7 @@ private final class ProgramRunner<M: Model>: Sendable {
 
         await renderer.stop()
 
-        // Exit alt screen if it was active (whether set via program option
-        // or declaratively via ViewOutput).
+        // Exit alt screen if it was active.
         if await renderer.altScreenActive {
             await renderer.exitAltScreen()
         }

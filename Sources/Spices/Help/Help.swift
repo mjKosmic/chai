@@ -77,8 +77,8 @@ public struct HelpStyles: Sendable {
 /// ```swift
 /// var help = Help()
 ///
-/// // In view():
-/// help.view(keyMap: myKeyMap)
+/// // Compose into a view body (returns StyledText):
+/// Text(help.view(keyMap: myKeyMap))
 /// ```
 public struct Help: Sendable {
     /// The maximum width of the help view.

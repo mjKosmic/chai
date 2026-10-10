@@ -38,9 +38,9 @@ private let _cursorIDGenerator = IDGenerator()
 /// ```swift
 /// var cursor = Cursor()
 /// cursor.focus()  // returns a Command to start blinking
-/// cursor.view()   // renders the cursor character with appropriate style
+/// cursor.body      // renders the cursor character with appropriate style
 /// ```
-public struct Cursor: Sendable {
+public struct Cursor: View {
     /// The character displayed at the cursor position.
     public var char: String
 
@@ -140,7 +140,7 @@ public struct Cursor: Sendable {
     ///
     /// - When visible: renders with ``style`` (typically reverse video).
     /// - When hidden or blinked off: renders with ``textStyle``.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         if _visible && mode != .hidden {
             return ViewOutput(style.styledText(char))
         } else {

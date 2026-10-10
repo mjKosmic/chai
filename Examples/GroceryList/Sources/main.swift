@@ -27,7 +27,6 @@ struct GroceryList: Model {
 
     var picker: SelectableList
     var menu: Menu
-    var help: Help
     var height: Int
     var width: Int
 
@@ -63,8 +62,6 @@ struct GroceryList: Model {
         // Disable the built-in quit bindings so we can handle exit ourselves
         // and print a farewell summary. Re-enable forceQuit to keep ctrl+c.
         picker.keyMap.quit.isEnabled = false
-
-        help = Help(width: 36)
     }
 
     // MARK: ELM interface
@@ -74,10 +71,6 @@ struct GroceryList: Model {
     }
 
     mutating func update(_ msg: any Message) -> Command? {
-        // Let the list handle navigation, toggling, and ctrl+c.
-        if let cmd = picker.update(msg) { return cmd }
-        if let cmd = menu.update(msg) { return cmd }
-
         // `q` — show a summary then quit.
         if let key = msg as? KeyMsg,
            case .runes = key.type, key.runes.first == "q" {
@@ -95,16 +88,18 @@ struct GroceryList: Model {
             }
         }
 
+        // Let the list handle navigation, toggling, and ctrl+c.
+        if let cmd = picker.update(msg) { return cmd }
+        if let cmd = menu.update(msg) { return cmd }
+
         return nil
     }
 
-    func view() -> ViewOutput {
-        // var view = picker.view().bordered(.rounded).frame(width: width, height: height, horizontalAlignment: .center, verticalAlignment: .middle)
-        // view.windowTitle = "Grocery List"
-        // view.altScreen = true
-        //
-        // return view.beside(menu.view())
-        return menu.view()
+    var body: some View {
+        HStack {
+            picker
+            menu
+        }
     }
 }
 
@@ -115,7 +110,7 @@ struct App {
     static func main() async {
         let finalModel: GroceryList
         do {
-            finalModel = try await Program(GroceryList(width: 10, height: 20)).run()
+            finalModel = try await Program(GroceryList(width: 10, height: 20), options: .withAltScreen).run()
         } catch {
             print("Error: \(error)")
             return

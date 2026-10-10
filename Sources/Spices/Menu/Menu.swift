@@ -173,15 +173,15 @@ public struct MenuKeyMap: Sendable, HelpKeyMap {
 ///
 /// var menu = Menu(items: options, height: 5)
 ///
-/// // In view():
-/// menu.view()
+/// // In body:
+/// menu.body
 ///
 /// // After the program exits:
 /// if menu.isConfirmed, let picked = menu.selectedItem {
 ///     print("User picked: \(picked.filterValue())")
 /// }
 /// ```
-public struct Menu: Sendable {
+public struct Menu: View {
     // MARK: - Public configuration
 
     /// Visual styles and cursor rune character.
@@ -281,7 +281,7 @@ public struct Menu: Sendable {
     /// ```
     ///
     /// - Returns: A ``Chai/ViewOutput`` whose content is the rendered menu.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         guard !_items.isEmpty else {
             return ViewOutput(styles.normalStyle.styledText("No items."))
         }

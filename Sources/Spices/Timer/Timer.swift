@@ -44,7 +44,7 @@ private let _timerIDGenerator = IDGenerator()
 ///     // Timer finished!
 /// }
 /// ```
-public struct SpiceTimer: Sendable {
+public struct SpiceTimer: View {
     /// The remaining duration. Decreases on each tick.
     public private(set) var timeout: Duration
 
@@ -108,7 +108,7 @@ public struct SpiceTimer: Sendable {
     }
 
     /// Renders the remaining time as a human-readable string.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         ViewOutput(formatDuration(timeout))
     }
 

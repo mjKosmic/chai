@@ -139,10 +139,10 @@ private let _filePickerIDGenerator = IDGenerator()
 /// // Check for selection:
 /// if let path = picker.selectedPath { ... }
 ///
-/// // In view():
-/// picker.view()
+/// // In body:
+/// picker.body
 /// ```
-public struct FilePicker: Sendable {
+public struct FilePicker: View {
     /// The path of the selected file, if any.
     public private(set) var selectedPath: String?
 
@@ -277,7 +277,7 @@ public struct FilePicker: Sendable {
     }
 
     /// Renders the file picker.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         if let error = _error {
             return ViewOutput(styles.emptyDirectory.styledText("Error: \(error)"))
         }

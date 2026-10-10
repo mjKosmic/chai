@@ -175,13 +175,13 @@ public struct SelectableListKeyMap: Sendable, HelpKeyMap {
 ///
 /// var picker = SelectableList(items: fruits, height: 10)
 ///
-/// // In view():
-/// picker.view()
+/// // In body:
+/// picker.body
 ///
 /// // After the user confirms, retrieve selected items:
 /// let chosen = picker.selectedItems
 /// ```
-public struct SelectableList: Sendable {
+public struct SelectableList: View {
     // MARK: - Public configuration
 
     /// Visual styles and rune characters.
@@ -277,7 +277,7 @@ public struct SelectableList: Sendable {
     /// whether the row is focused (cursor) and/or selected.
     ///
     /// - Returns: A ``Chai/ViewOutput`` whose content is the rendered list.
-    public func view() -> ViewOutput {
+    public var body: ViewOutput {
         guard !_items.isEmpty else {
             return ViewOutput(styles.normalStyle.styledText("No items."))
         }
