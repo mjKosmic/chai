@@ -1,13 +1,13 @@
 // MARK: - ViewBuilder
 
-/// A result builder that composes multiple ``View`` values into a single
-/// ``ViewOutput`` by stacking them vertically.
+/// A result builder that composes multiple ``View`` values into a
+/// structural view tree.
 ///
 /// Use `@ViewBuilder` on closures or computed properties to enable
 /// declarative, multi-expression view composition:
 ///
 /// ```swift
-/// var body: ViewOutput {
+/// @ViewBuilder var body: some View {
 ///     VStack {
 ///         Text("Title").bold()
 ///         list
@@ -22,74 +22,57 @@ public struct ViewBuilder {
 
     // MARK: - Expression
 
-    /// Accept any ``View``-conforming value.
-    public static func buildExpression(_ view: any View) -> ViewOutput {
-        view.body
-    }
-
-    /// Accept a ``ViewOutput`` directly.
-    public static func buildExpression(_ output: ViewOutput) -> ViewOutput {
-        output
+    /// Accept any ``View``-conforming value and pass it through.
+    public static func buildExpression<V: View>(_ view: V) -> V {
+        view
     }
 
     // MARK: - Block
 
-    /// Combine a single component.
-    public static func buildBlock(_ component: ViewOutput) -> ViewOutput {
+    /// Combine a single component (pass-through).
+    public static func buildBlock<V: View>(_ component: V) -> V {
         component
     }
 
-    /// Combine multiple components by stacking them vertically.
-    public static func buildBlock(_ components: ViewOutput...) -> ViewOutput {
-        joinVertically(components)
+    /// Combine multiple components into a ``TupleView``.
+    public static func buildBlock<each V: View>(
+        _ views: repeat each V
+    ) -> TupleView<repeat each V> {
+        TupleView(repeat each views)
     }
 
     // MARK: - Conditionals
 
     /// Support `if` without `else`.
-    public static func buildOptional(_ component: ViewOutput?) -> ViewOutput {
-        component ?? ViewOutput("")
+    public static func buildOptional<V: View>(_ component: V?) -> OptionalView<V> {
+        OptionalView(component)
     }
 
     /// Support the `if` branch of `if/else`.
-    public static func buildEither(first component: ViewOutput) -> ViewOutput {
-        component
+    public static func buildEither<T: View, F: View>(
+        first component: T
+    ) -> ConditionalContent<T, F> {
+        .first(component)
     }
 
     /// Support the `else` branch of `if/else`.
-    public static func buildEither(second component: ViewOutput) -> ViewOutput {
-        component
+    public static func buildEither<T: View, F: View>(
+        second component: F
+    ) -> ConditionalContent<T, F> {
+        .second(component)
     }
 
     // MARK: - Loops
 
     /// Support `for...in` loops.
-    public static func buildArray(_ components: [ViewOutput]) -> ViewOutput {
-        joinVertically(components)
+    public static func buildArray<V: View>(_ components: [V]) -> ForEachView<V> {
+        ForEachView(components)
     }
 
     // MARK: - Limited availability
 
     /// Support `#available` checks.
-    public static func buildLimitedAvailability(_ component: ViewOutput) -> ViewOutput {
+    public static func buildLimitedAvailability<V: View>(_ component: V) -> V {
         component
-    }
-
-    // MARK: - Join strategy
-
-    private static func joinVertically(_ components: [ViewOutput]) -> ViewOutput {
-        guard !components.isEmpty else { return ViewOutput("") }
-        guard components.count > 1 else { return components[0] }
-
-        var result = components[0].content
-        for component in components.dropFirst() {
-            if !component.content.isEmpty {
-                if !result.isEmpty {
-                    result.append("\n")
-                }
-                result += component.content
-            }
-        }
-        return ViewOutput(result)
     }
 }

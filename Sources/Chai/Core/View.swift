@@ -3,7 +3,7 @@
 /// A type that produces visual content for terminal rendering.
 ///
 /// Conform to `View` to create reusable visual components. The ``body``
-/// property returns a ``ViewOutput`` describing the component's appearance.
+/// property returns the component's content as another ``View``.
 ///
 /// For interactive applications that handle input and maintain state, see
 /// ``Model`` which extends `View` with the Elm Architecture lifecycle.
@@ -14,22 +14,57 @@
 /// struct Header: View {
 ///     let title: String
 ///
-///     var body: ViewOutput {
-///         ViewOutput(title.bold())
+///     var body: some View {
+///         Text(title.bold())
 ///     }
 /// }
 /// ```
 public protocol View: Sendable {
+    /// The type of view returned by ``body``.
+    associatedtype Body: View
+
     /// The visual content of this view.
-    var body: ViewOutput { get }
+    var body: Body { get }
+
+    /// Collect the resolved ``ViewOutput`` for each direct child.
+    ///
+    /// The default returns a single-element array containing this view's
+    /// fully-resolved output. Structural views (``TupleView``,
+    /// ``ForEachView``) override this to return one element per child,
+    /// enabling containers such as `HStack` to enumerate children for
+    /// layout.
+    func _collectChildOutputs() -> [ViewOutput]
 }
 
 // MARK: - ViewOutput: View
 
 extension ViewOutput: View {
-    /// A ``ViewOutput`` is its own body — this is the leaf type that
-    /// terminates the view hierarchy.
+    /// `ViewOutput` is the terminal leaf of the view hierarchy.
+    /// Resolution stops here and its ``StyledText`` content is rendered.
+    public typealias Body = ViewOutput
     public var body: ViewOutput { self }
+}
+
+// MARK: - View resolution
+
+extension View {
+    /// Resolve this view tree to a ``ViewOutput`` by recursively calling
+    /// ``body`` until a ``ViewOutput`` leaf is reached.
+    ///
+    /// This is the bridge between the declarative view tree and the eager
+    /// styled-text renderer. A future layout engine will resolve the tree
+    /// through measurement and incremental rendering instead; see
+    /// `UPGRADE.md`.
+    public func _resolveToViewOutput() -> ViewOutput {
+        if let output = self as? ViewOutput {
+            return output
+        }
+        return body._resolveToViewOutput()
+    }
+
+    public func _collectChildOutputs() -> [ViewOutput] {
+        [_resolveToViewOutput()]
+    }
 }
 
 // MARK: - Text

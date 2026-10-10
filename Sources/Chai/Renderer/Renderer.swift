@@ -123,6 +123,15 @@ actor Renderer {
         pendingViewOutput = view
     }
 
+    /// Queue any ``View`` for rendering on the next tick.
+    ///
+    /// The view tree is resolved to a ``ViewOutput`` and queued for the next
+    /// ``flush()``. This enables the renderer to accept the model's ``body``
+    /// directly, regardless of its concrete type.
+    func write<V: View>(_ view: V) {
+        pendingViewOutput = view._resolveToViewOutput()
+    }
+
     /// Set the cursor to display on the next flush.
     ///
     /// When non-`nil`, the terminal cursor is shown at the specified position

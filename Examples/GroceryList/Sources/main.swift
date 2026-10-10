@@ -98,11 +98,11 @@ struct GroceryList: Model {
         return nil
     }
 
-    var body: ViewOutput {
+    var body: some View {
         HStack {
-            picker.body
-            menu.body
-        }.body
+            picker
+            menu
+        }
     }
 }
 

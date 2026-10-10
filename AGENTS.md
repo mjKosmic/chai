@@ -28,10 +28,12 @@ There are no external dependencies — do not add any.
 ```
 Sources/Chai/
   Core/        Model.swift  Message.swift  Command.swift  Program.swift
+               View.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
-  Renderer/    Renderer.swift
-Tests/ChaiTests/
-  InputParserTests.swift   RendererTests.swift   CommandTests.swift
+  Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift
+Sources/Latte/    Layout, styling, borders, composition (Stacks.swift, ViewOutput+Layout.swift)
+Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
+Tests/ChaiTests/  LatteTests/  SpicesTests/
 Examples/GroceryList/Sources/main.swift
 ```
 
@@ -44,7 +46,7 @@ Examples/GroceryList/Sources/main.swift
 - **No force-unwraps, no `try!`, no `fatalError` in library code.**
 - **Value semantics for state.** Application models are `struct`s. Do not introduce classes into the public API without a strong reason.
 - **Internal types stay internal.** Do not make implementation details `public` unless they are genuinely part of the user-facing API.
-- **Tests are required.** Every new feature or bug fix must include tests. Use Swift Testing (`@Test`, `#expect`). All 67 existing tests must continue to pass.
+- **Tests are required.** Every new feature or bug fix must include tests. Use Swift Testing (`@Test`, `#expect`). All existing tests must continue to pass.
 
 ---
 

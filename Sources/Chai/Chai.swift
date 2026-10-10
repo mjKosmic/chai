@@ -6,8 +6,9 @@
 /// - **Update** — a `mutating func update(_ msg:) -> Command?` method that
 ///   handles incoming ``Message`` values and optionally returns a ``Command``
 ///   to trigger async work.
-/// - **View** — a `var body: ViewOutput` property that renders the current
-///   state as styled text.
+/// - **View** — a `var body` property that renders the current state as a
+///   view tree, composed declaratively with `@ViewBuilder` and resolved to
+///   styled text.
 ///
 /// ## Quick Start
 ///
