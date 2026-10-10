@@ -80,8 +80,8 @@ public struct ViewportKeyMap: Sendable {
 /// // In update():
 /// viewport.update(msg)
 ///
-/// // In view():
-/// viewport.view()
+/// // In body:
+/// viewport.body
 /// ```
 public struct Viewport: View {
     /// The width of the viewport in columns.

@@ -27,7 +27,6 @@ struct GroceryList: Model {
 
     var picker: SelectableList
     var menu: Menu
-    var help: Help
     var height: Int
     var width: Int
 
@@ -63,8 +62,6 @@ struct GroceryList: Model {
         // Disable the built-in quit bindings so we can handle exit ourselves
         // and print a farewell summary. Re-enable forceQuit to keep ctrl+c.
         picker.keyMap.quit.isEnabled = false
-
-        help = Help(width: 36)
     }
 
     // MARK: ELM interface

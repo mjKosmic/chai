@@ -98,6 +98,70 @@ struct StackTests {
         #expect(lines(stack) == ["on"])
     }
 
+    @Test func vstackAcceptsStringLiteralExpressions() {
+        let stack = VStack {
+            Text("header")
+            "a literal row"
+        }
+        #expect(lines(stack) == ["header", "a literal row"])
+    }
+
+    @Test func hstackToleratesLeadingEmptyChild() {
+        let stack = HStack {
+            Empty()
+            Text("a")
+        }
+        #expect(lines(stack) == ["a"])
+    }
+
+    @Test func hstackToleratesEmptyForLoop() {
+        let stack = HStack {
+            Text("x")
+            for item in [String]() {
+                Text(item)
+            }
+            Text("y")
+        }
+        #expect(lines(stack) == ["xy"])
+    }
+
+    @Test func styledContentSurvivesVStackAlignment() {
+        let stack = VStack(alignment: .center) {
+            Text("err".fg(.red))
+            Text("ok")
+        }
+        let content = stack._resolveToViewOutput().content
+        // Center alignment pads every line to the stack's max width (3).
+        #expect(content.plainText == "err\nok ")
+        #expect(content.segments.contains { $0.text == "err" && $0.style != .default })
+    }
+
+    @Test func styledContentSurvivesHStack() {
+        let stack = HStack {
+            Text("a".fg(.red))
+            Text("b")
+        }
+        let content = stack._resolveToViewOutput().content
+        #expect(content.plainText == "ab")
+        #expect(content.segments.first?.style != .default)
+    }
+
+    @Test func threeLevelNesting() {
+        let stack = VStack {
+            HStack {
+                Text("a")
+                Text("b")
+            }
+            HStack {
+                Text("c")
+                for item in ["d", "e"] {
+                    Text(item)
+                }
+            }
+        }
+        #expect(lines(stack) == ["ab", "cde"])
+    }
+
     // MARK: - HStack
 
     @Test func hstackPlacesChildrenSideBySide() {

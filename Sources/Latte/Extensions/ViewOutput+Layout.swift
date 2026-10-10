@@ -2,8 +2,10 @@ import Chai
 
 /// Fluent layout extensions for ``ViewOutput``.
 ///
-/// Each method transforms the view's content while preserving terminal state
-/// (``ViewOutput/altScreen``, ``ViewOutput/windowTitle``, ``ViewOutput/cursor``).
+/// Each method transforms the view's content. Terminal state is managed
+/// separately from views: alt screen via ``Program/Option/withAltScreen``,
+/// window title via ``Command/setWindowTitle(_:)``, and cursor via
+/// ``Model/cursor``.
 
 // MARK: - Sizing
 

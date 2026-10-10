@@ -160,8 +160,8 @@ public struct ListKeyMap: Sendable, HelpKeyMap {
 /// // In update():
 /// list.update(msg)
 ///
-/// // In view():
-/// list.view()
+/// // In body:
+/// list.body
 /// ```
 public struct List: View {
     /// The list title.
@@ -384,7 +384,7 @@ public struct List: View {
             sections.append(paginator.body.content.styled(styles.paginationStyle.textAttributes))
         }
 
-        // Help — help.view() already returns StyledText with per-key styling;
+        // Help — help.view(keyMap:) already returns StyledText with per-key styling;
         // apply the list's helpStyle as a base style over all segments.
         if showHelp {
             sections.append(help.view(keyMap: keyMap).styled(styles.helpStyle.textAttributes))

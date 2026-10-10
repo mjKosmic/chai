@@ -100,6 +100,10 @@ public struct Text: View {
 /// In a vertical context, produces blank lines. In a horizontal context,
 /// produces space characters.
 ///
+/// - Note: Inside an `HStack`, use `Spacer(columns:)` — a line-based spacer
+///   produces newline characters, which have no horizontal width and are
+///   ignored during horizontal joins.
+///
 /// ```swift
 /// VStack {
 ///     Text("Top")

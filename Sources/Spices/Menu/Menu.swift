@@ -173,8 +173,8 @@ public struct MenuKeyMap: Sendable, HelpKeyMap {
 ///
 /// var menu = Menu(items: options, height: 5)
 ///
-/// // In view():
-/// menu.view()
+/// // In body:
+/// menu.body
 ///
 /// // After the program exits:
 /// if menu.isConfirmed, let picked = menu.selectedItem {

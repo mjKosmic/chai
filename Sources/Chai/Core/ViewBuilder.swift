@@ -27,6 +27,15 @@ public struct ViewBuilder {
         view
     }
 
+    /// Accept a ``ViewOutput`` directly.
+    ///
+    /// This overload also enables string literals and interpolations as
+    /// builder expressions — `"Count: \(count)"` builds a ``ViewOutput``
+    /// through `ExpressibleByStringInterpolation`.
+    public static func buildExpression(_ output: ViewOutput) -> ViewOutput {
+        output
+    }
+
     // MARK: - Block
 
     /// Combine a single component (pass-through).

@@ -127,8 +127,11 @@ private let _spinnerIDGenerator = IDGenerator()
 /// // In update():
 /// spinner.update(msg)   // advances frames on tick
 ///
-/// // In view():
-/// spinner.view() + " Loading..."
+/// // In body:
+/// HStack {
+///     spinner
+///     Text(" Loading...")
+/// }
 /// ```
 public struct Spinner: View {
     /// The spinner type (frames and interval).

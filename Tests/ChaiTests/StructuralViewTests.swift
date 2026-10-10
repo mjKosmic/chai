@@ -106,6 +106,28 @@ struct StructuralViewTests {
         #expect(resolve(Mixed()) == "raw\nstyled")
     }
 
+    @Test func viewBuilderAcceptsStringLiteral() {
+        struct Literal: View {
+            let count: Int
+
+            @ViewBuilder var body: some View {
+                "Count: \(count)"
+            }
+        }
+        #expect(resolve(Literal(count: 3)) == "Count: 3")
+    }
+
+    @Test func viewBuilderMixesLiteralAndView() {
+        struct Mixed: View {
+            @ViewBuilder var body: some View {
+                Text("header")
+                "a literal row"
+                Text("footer")
+            }
+        }
+        #expect(resolve(Mixed()) == "header\na literal row\nfooter")
+    }
+
     @Test func tupleViewCollectsOneOutputPerChild() {
         let tuple = TupleView(Text("a"), Text("b"))
         #expect(tuple._collectChildOutputs().map(\.content.plainText) == ["a", "b"])

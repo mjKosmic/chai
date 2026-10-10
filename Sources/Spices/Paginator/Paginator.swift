@@ -52,7 +52,7 @@ public struct PaginatorKeyMap: Sendable {
 /// let pageItems = Array(items[bounds])
 ///
 /// // Render the page indicator:
-/// paginator.view()  // "● ○ ○ ○ ○" or "1/5"
+/// paginator.body   // "● ○ ○ ○ ○" or "1/5"
 /// ```
 public struct Paginator: View {
     /// The visual style — dots or arabic numbers.

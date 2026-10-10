@@ -175,8 +175,8 @@ public struct SelectableListKeyMap: Sendable, HelpKeyMap {
 ///
 /// var picker = SelectableList(items: fruits, height: 10)
 ///
-/// // In view():
-/// picker.view()
+/// // In body:
+/// picker.body
 ///
 /// // After the user confirms, retrieve selected items:
 /// let chosen = picker.selectedItems

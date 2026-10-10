@@ -139,8 +139,8 @@ private let _filePickerIDGenerator = IDGenerator()
 /// // Check for selection:
 /// if let path = picker.selectedPath { ... }
 ///
-/// // In view():
-/// picker.view()
+/// // In body:
+/// picker.body
 /// ```
 public struct FilePicker: View {
     /// The path of the selected file, if any.

@@ -213,7 +213,7 @@ public struct QuitMsg: Message {
 /// should never be delivered to the user's ``Model/update(_:)``.
 ///
 /// The event loop intercepts these messages after ``ProgramRunner/handleRendererMessage``
-/// and skips the `model.update` → `view()` → render cycle for them.
+/// and skips the `model.update` → ``Model/body`` read → render cycle for them.
 protocol InternalMessage: Message {}
 
 // MARK: - Internal batch/sequence messages

@@ -138,8 +138,8 @@ public struct LineInfo: Sendable {
 /// // In update():
 /// textarea.update(msg)
 ///
-/// // In view():
-/// textarea.view()
+/// // In body:
+/// textarea.body
 ///
 /// // Access the value:
 /// let text = textarea.value

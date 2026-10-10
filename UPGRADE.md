@@ -110,3 +110,44 @@ Design constraints learned along the way (a first attempt was reverted):
 Additional API gaps to fill: `AnyView` (type erasure for heterogeneous,
 runtime-built children) and modifier wrappers that stay in the tree
 (`ModifiedContent`-style) instead of resolving to `ViewOutput`.
+
+Other phase-2 considerations discovered during review:
+
+- `_collectChildOutputs()` is an output-based public SPI. The engine needs a
+  child-**view** enumeration seam (`[any View]`); plan for both seams
+  coexisting briefly rather than removing the output seam without a
+  deprecation path.
+- `HStack`'s `beside()` pads each column to **its own** max width before
+  concatenation, not to a shared width — the engine's horizontal layout must
+  reproduce this, or the required `_render` vs. `body` equivalence tests will
+  diverge.
+- Only `TupleView` can enumerate its parameter-pack children generically; an
+  internal `_children: [any View]` SPI on the structural views would give the
+  engine one uniform enumeration path.
+- Dynamic alt-screen mid-run has no mechanism today (alt screen is a
+  program-level option); if per-state fullscreen layouts are wanted, that
+  needs an explicit design decision.
+
+---
+
+## Breaking changes (vs. `main`)
+
+- `func view() -> ViewOutput` became `var body` (any `View`). All ready-made
+  components in **Spices** were renamed accordingly; user conformers must
+  rename too.
+- Call sites like `picker.view()` become the view value itself inside
+  `@ViewBuilder` contexts, or `picker.body` when a `ViewOutput` is needed
+  explicitly.
+- `ViewOutput` no longer carries `altScreen` / `windowTitle` / `cursor` — its
+  initializer lost those parameters. Set them via
+  `ProgramOption.withAltScreen`, `Command.setWindowTitle(_:)`, and
+  `Model.cursor`.
+- String literals and interpolations work as `@ViewBuilder` expressions
+  (`buildExpression(_:)` accepts `ViewOutput`, which is
+  `ExpressibleByStringInterpolation`).
+- Each `Spices` component's doc examples now show the new `body` usage; copy
+  them when migrating.
+- Minor behavior note from the migration: in the GroceryList example, the
+  `q`-key check moved *before* the `picker`/`menu` updates so the key can't
+  be consumed by a child first. In your own models, handle global quit keys
+  before delegating to component `update`s.

@@ -105,8 +105,8 @@ public struct TableKeyMap: Sendable, HelpKeyMap {
 /// // Get selected row:
 /// if let row = table.selectedRow { ... }
 ///
-/// // In view():
-/// table.view()
+/// // In body:
+/// table.body
 /// ```
 public struct Table: View {
     /// Keybindings for navigation.

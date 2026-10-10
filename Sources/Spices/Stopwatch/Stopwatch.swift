@@ -24,8 +24,11 @@ private let _stopwatchIDGenerator = IDGenerator()
 /// // In initialize():
 /// stopwatch.initialize()  // starts counting
 ///
-/// // In view():
-/// "Elapsed: " + stopwatch.view()  // e.g. "1m23s"
+/// // In body:
+/// HStack {
+///     Text("Elapsed: ")
+///     stopwatch  // e.g. "1m23s"
+/// }
 /// ```
 public struct Stopwatch: View {
     /// The interval between ticks.

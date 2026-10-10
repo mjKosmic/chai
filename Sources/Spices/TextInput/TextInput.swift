@@ -114,8 +114,8 @@ public struct TextInputKeyMap: Sendable {
 /// // In update():
 /// input.update(msg)
 ///
-/// // In view():
-/// input.view()
+/// // In body:
+/// input.body
 ///
 /// // Access the value:
 /// let name = input.value
