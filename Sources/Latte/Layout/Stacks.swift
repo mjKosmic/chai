@@ -78,7 +78,7 @@ public struct HStack<Content: View>: View {
     }
 
     public var body: ViewOutput {
-        let parts = content._collectChildOutputs()
+        let parts = content._childViews().map { $0._resolveToViewOutput() }
         return Self.joinHorizontally(parts, align: alignment)
     }
 

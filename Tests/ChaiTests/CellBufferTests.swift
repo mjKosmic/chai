@@ -196,6 +196,30 @@ struct CellBufferTests {
         #expect(buf[0, 0] == .empty)
     }
 
+    @Test func writeAtColumnOffsetKeepsLinesAligned() {
+        // Regression: `\n` must reset to the write's start column, not 0, so
+        // multi-line content at a column offset stays aligned on every row.
+        var buf = CellBuffer(width: 6, height: 2)
+        buf.write(StyledText("a\nb"), at: 2, row: 0, wrapping: false)
+        #expect(buf[2, 0].character == "a")
+        #expect(buf[2, 1].character == "b")
+        #expect(buf[0, 0] == .empty)
+        #expect(buf[0, 1] == .empty)
+        #expect(buf[1, 0] == .empty)
+        #expect(buf[1, 1] == .empty)
+    }
+
+    @Test func writeAtColumnOffsetKeepsWideCharsAligned() {
+        var buf = CellBuffer(width: 8, height: 2)
+        buf.write(StyledText("你\n好"), at: 2, row: 0, wrapping: false)
+        #expect(buf[2, 0].character == "你")
+        #expect(buf[2, 0].width == 2)
+        #expect(buf[3, 0].width == 0)  // continuation
+        #expect(buf[2, 1].character == "好")
+        #expect(buf[2, 1].width == 2)
+        #expect(buf[3, 1].width == 0)  // continuation
+    }
+
     // MARK: - Resize and clear
 
     @Test func resize() {

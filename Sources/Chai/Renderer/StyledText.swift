@@ -73,6 +73,27 @@ public struct StyledText: Sendable, Equatable {
         return width
     }
 
+    /// The maximum display-column width across all lines.
+    ///
+    /// Lines are delimited by `\n`. Each line's width is the sum of its
+    /// characters' display widths, so CJK / emoji / wide characters count as
+    /// 2 columns and zero-width characters as 0. Empty content measures 0.
+    internal var maxLineWidth: Int {
+        var maxWidth = 0
+        var currentWidth = 0
+        for segment in segments {
+            for char in segment.text {
+                if char == "\n" {
+                    maxWidth = max(maxWidth, currentWidth)
+                    currentWidth = 0
+                } else {
+                    currentWidth += displayWidth(of: char)
+                }
+            }
+        }
+        return max(maxWidth, currentWidth)
+    }
+
     /// Concatenate two StyledText values.
     public static func + (lhs: StyledText, rhs: StyledText) -> StyledText {
         var result = lhs

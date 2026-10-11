@@ -142,11 +142,6 @@ extension StyledText.Line {
 
 extension StyledText {
 
-    /// The maximum display-column width across all lines.
-    var maxLineWidth: Int {
-        splitLines().map(\.columnWidth).max() ?? 0
-    }
-
     /// Enforce a minimum width: pad each line to `targetWidth` columns.
     func enforceWidth(_ targetWidth: Int, alignment: HorizontalAlignment = .left) -> StyledText {
         let lines = splitLines().map { $0.aligned(toWidth: targetWidth, alignment) }

@@ -130,7 +130,12 @@ public struct CellBuffer: Sendable, Equatable {
             let style = segment.style
             for char in segment.text {
                 if char == "\n" {
-                    col = 0
+                    // Reset to the column this write began at, so multi-line
+                    // content rendered at a column offset keeps every line
+                    // aligned. (Previously reset to 0, which silently
+                    // misaligned lines after the first for any non-zero
+                    // `startCol` caller.)
+                    col = startCol
                     row += 1
                     if row >= height { return }
                     continue

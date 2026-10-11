@@ -128,16 +128,16 @@ struct StructuralViewTests {
         #expect(resolve(Mixed()) == "header\na literal row\nfooter")
     }
 
-    @Test func tupleViewCollectsOneOutputPerChild() {
+    @Test func tupleViewCollectsOneViewPerChild() {
         let tuple = TupleView(Text("a"), Text("b"))
-        #expect(tuple._collectChildOutputs().map(\.content.plainText) == ["a", "b"])
+        #expect(tuple._childViews().map { $0._resolveToViewOutput().content.plainText } == ["a", "b"])
     }
 
     @Test func tupleViewFlattensStructuralChildren() {
         // A `ForEachView` nested inside a `TupleView` is transparent: the
         // tuple enumerates the loop's elements, not the loop itself.
         let tuple = TupleView(Text("x"), ForEachView([Text("a"), Text("b")]))
-        #expect(tuple._collectChildOutputs().map(\.content.plainText) == ["x", "a", "b"])
+        #expect(tuple._childViews().map { $0._resolveToViewOutput().content.plainText } == ["x", "a", "b"])
     }
 
     // MARK: - View resolution
@@ -147,8 +147,8 @@ struct StructuralViewTests {
         #expect(output._resolveToViewOutput().content.plainText == "leaf")
     }
 
-    @Test func defaultChildCollectionReturnsResolvedOutput() {
-        #expect(Label(text: "z")._collectChildOutputs().map(\.content.plainText) == ["z"])
+    @Test func defaultChildViewsReturnsSelf() {
+        #expect(Label(text: "z")._childViews().map { $0._resolveToViewOutput().content.plainText } == ["z"])
     }
 
     @Test func resolutionRecursesThroughCustomViews() {
@@ -182,9 +182,9 @@ struct StructuralViewTests {
         #expect(resolve(LoopTree(items: [])) == "")
     }
 
-    @Test func forEachViewCollectsOneOutputPerElement() {
+    @Test func forEachViewCollectsOneViewPerElement() {
         let forEach = ForEachView([Text("a"), Text("b")])
-        #expect(forEach._collectChildOutputs().map(\.content.plainText) == ["a", "b"])
+        #expect(forEach._childViews().map { $0._resolveToViewOutput().content.plainText } == ["a", "b"])
     }
 
     // MARK: - Primitives

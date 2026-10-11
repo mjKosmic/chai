@@ -66,8 +66,8 @@ renderer-agnostic abstraction for alternative renderers.
 - Generic containers `VStack<Content>` / `HStack<Content>` in
   `Latte/Layout/Stacks.swift`. The old `@HStackBuilder` was removed — join
   strategy now lives in the container, not the builder.
-- Structural views are **transparent to containers**: `_collectChildOutputs()`
-  on the `View` protocol lets `TupleView`/`ForEachView` expose one output per
+- Structural views are **transparent to containers**: `_childViews()`
+  on the `View` protocol lets `TupleView`/`ForEachView` expose one view per
   child, so a `for` loop inside an `HStack` lays out horizontally.
 - Primitives: `Text`, `Spacer`, `Empty`.
 - `Renderer.write(_:)` accepts any `View` and resolves it.
@@ -194,9 +194,9 @@ dimensions are fixed.
 | # | Deliverable | Exit criteria |
 |---|---|---|
 | M0 | Parity harness + tree corpus | utilities + corpus committed; no production changes |
-| M1 | Types + seam: `LayoutTypes.swift`, `_childViews()` clean break, engine protocol with body-resolving defaults, leaf impls, `maxLineWidth` move | measurement/render unit tests pass (incl. CJK widths, empty → 0×0); nothing consumes the engine yet; all 68 suites green |
+| M1 | Types + seam: `LayoutTypes.swift`, `_childViews()` clean break, engine protocol with body-resolving defaults, leaf impls, `maxLineWidth` move | measurement/render unit tests pass (incl. CJK widths, empty → 0×0); nothing consumes the engine yet; all suites green |
 | M2 | Container engine: `VStack`/`HStack`/structural overrides honoring alignment + size | full corpus parity green (minus allowed divergences); fraction-math and skip-empty tests |
-| M3 | Renderer flip: buffer policy, `pendingView: any View`, engine-built buffers | **all 68 suites green unmodified** — the phase's proof point |
+| M3 | Renderer flip: buffer policy, `pendingView: any View`, engine-built buffers | **all suites green unmodified** — the phase's proof point |
 | M4 | `frame()`: `FrameView` + modifier | frame unit tests (fixed/one-dim/ideal/alignment/nesting); GroceryList centers via `.frame(...)` — the migration's motivating scenario |
 | M5 | Docs & cleanup: ARCHITECTURE.md engine section, status flip, AGENTS.md pitfalls | review-ready |
 
