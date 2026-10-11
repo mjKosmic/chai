@@ -229,7 +229,7 @@ and proposes that fixed size downward.
 | M2 | Container engine: `VStack`/`HStack`/structural overrides honoring alignment + size | full corpus parity green (minus allowed divergences); fraction-math and skip-empty tests | ✅ `edb7517` |
 | M3 | Renderer flip: buffer policy, `pendingView: any View`, engine-built buffers | **all suites green unmodified** — the phase's proof point | ✅ `3eb19e7` |
 | M4 | `frame()`: `FrameView` + modifier | frame unit tests (fixed/one-dim/ideal/alignment/nesting); GroceryList centers via `.frame(...)` — the migration's motivating scenario | ✅ `1120006` |
-| M5 | Docs & cleanup: ARCHITECTURE.md engine section, status flip, AGENTS.md pitfalls | review-ready | 🔨 in progress (this change) |
+| M5 | Docs & cleanup: ARCHITECTURE.md engine section, status flip, AGENTS.md pitfalls | review-ready | ✅ `4cf6076` |
 
 ### Risks & mitigations
 
@@ -256,7 +256,13 @@ wrapping `Text`) inside a flexible-axis frame would measure differently
 between the fit pass (which proposed the offer) and the render pass. If
 that class of child lands, `_render(into:at:size:proposal:)` (or similar)
 is the SPI extension point; `FrameView`'s doc comment records the same
-limitation.
+limitation. Note the value-level gap already exists at the renderer's
+root: `flush()` fits with the terminal width but renders at the measured
+size, so a root stack proposes `termWidth` at fit and its own width at
+render — inert while leaves ignore proposals. The parity harness never
+exercises assigned ≠ proposed (`engineBuffer` renders at the measured
+size with the same proposal); add a renderer-level parity case when
+proposal-consuming children land.
 
 ---
 
