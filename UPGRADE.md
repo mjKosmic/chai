@@ -188,6 +188,12 @@ dimensions are fixed.
      doubling quirk) — unpinned by tests, considered a bug.
   2. `.empty` vs space cells in alignment padding — invisible by
      construction.
+  3. Multi-line children under a non-left `VStack` alignment: the engine
+     aligns each child as a block (one layout unit), whereas the eager
+     path aligned each line individually (an artifact of text joining).
+     SwiftUI-consistent; unpinned by pre-existing tests (`StackTests`
+     alignment cases use single-line children). Corpus cases are marked
+     `isKnownDivergent` with explicit engine-side expectations.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 

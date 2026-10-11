@@ -28,6 +28,11 @@ struct ParityCase {
     /// Whether the M2 engine's output is expected to legitimately diverge
     /// from these pinned rows (see UPGRADE.md "Allowed divergences").
     let isKnownDivergent: Bool
+    /// Pinned expected visible rows for the M2 engine path. `nil` means the
+    /// engine must reproduce ``expectedRows`` (every non-divergent case).
+    /// Every `isKnownDivergent` case carries an explicit engine expectation
+    /// here so no case is ever skipped by the engine parity suite.
+    let expectedEngineRows: [String]?
 
     init(
         name: String,
@@ -35,7 +40,8 @@ struct ParityCase {
         width: Int,
         explicitHeight: Int? = nil,
         expectedRows: [String],
-        isKnownDivergent: Bool = false
+        isKnownDivergent: Bool = false,
+        expectedEngineRows: [String]? = nil
     ) {
         self.name = name
         self.view = view
@@ -43,6 +49,7 @@ struct ParityCase {
         self.explicitHeight = explicitHeight
         self.expectedRows = expectedRows
         self.isKnownDivergent = isKnownDivergent
+        self.expectedEngineRows = expectedEngineRows
     }
 }
 
@@ -349,7 +356,108 @@ extension ParityCase {
             // TODAY's eager output: "a\n\n\n\nb" → 3 blank rows between "a"
             // and "b". The M2 engine must produce exactly 2.
             expectedRows: ["a", "", "", "", "b"],
-            isKnownDivergent: true
+            isKnownDivergent: true,
+            // Engine: exactly 2 blank rows — "a\n\n\nb" → ["a", "", "", "b"].
+            expectedEngineRows: ["a", "", "", "b"]
+        ),
+
+        // ── M2 additions ─────────────────────────────────────────────────────
+        //
+        // Pinned by running the code (see the M2 report); expected rows below
+        // are not hand-computed.
+
+        // !!! ALLOWED DIVERGENCE #3 (UPGRADE.md) — DO NOT "FIX" THESE CASES !!!
+        //
+        // Multi-line children under a non-left `VStack` alignment: today's
+        // eager `body` aligns every LINE of the joined text, while the engine
+        // aligns each CHILD as a block (a child is one layout unit; per-line
+        // alignment is an artifact of text joining). Child `Text("a\nbb")`
+        // measures 2×2; under `.center` the shortage 1 yields
+        // `Int(1 × 0.5)` = 0 → the block stays at col 0, so the engine rows
+        // are unpadded. SwiftUI-consistent; unpinned by pre-existing tests
+        // (StackTests alignment cases use single-line children).
+
+        ParityCase(
+            name: "DIVERGENT: vstack center aligns multiline child as block",
+            view: VStack(alignment: .center) {
+                Text("a\nbb")
+                Text("ccc")
+            },
+            width: 8,
+            // TODAY's eager output: every line aligned to width 3 →
+            // " a \nbb \nccc" → [" a", "bb", "ccc"].
+            expectedRows: [" a", "bb", "ccc"],
+            isKnownDivergent: true,
+            // Engine: the 2×2 child block stays at col 0 (shortage 1,
+            // Int(1 × 0.5) = 0) → ["a", "bb", "ccc"].
+            expectedEngineRows: ["a", "bb", "ccc"]
+        ),
+
+        ParityCase(
+            name: "DIVERGENT: vstack right aligns multiline child as block",
+            view: VStack(alignment: .right) {
+                Text("a\nbb")
+                Text("ccc")
+            },
+            width: 8,
+            // TODAY's eager output: every line aligned to width 3 →
+            // "  a\n bb\nccc" → ["  a", " bb", "ccc"].
+            expectedRows: ["  a", " bb", "ccc"],
+            isKnownDivergent: true,
+            // Engine: the 2×2 child block sits at col 1 (shortage 1,
+            // Int(1 × 1.0) = 1). Row 0 is "a" at col 1 → visible " a": the
+            // block's own right edge is flush, not the per-line "  a" padding.
+            expectedEngineRows: [" a", " bb", "ccc"]
+        ),
+
+        // ── Cross-container nesting (parity — engine must match eager) ───────
+
+        ParityCase(
+            name: "hstack bottom nests vstack inside",
+            view: HStack(alignment: .bottom) {
+                Text("top\nmid")
+                VStack {
+                    Text("a")
+                    Text("b")
+                }
+            },
+            width: 8,
+            expectedRows: ["topa", "midb"]
+        ),
+
+        ParityCase(
+            name: "three level hstack vstack hstack with for loop",
+            view: HStack {
+                VStack {
+                    HStack {
+                        Text("a")
+                        Text("b")
+                    }
+                    HStack {
+                        Text("c")
+                        for item in ["d", "e"] {
+                            Text(item)
+                        }
+                    }
+                }
+                Text("z")
+            },
+            width: 8,
+            // VStack = "ab\ncde"; "z" beside it at col 3 → "ab z", "cde".
+            expectedRows: ["ab z", "cde"]
+        ),
+
+        // ── All-empty children────────────────────────────────────────────────
+
+        ParityCase(
+            name: "hstack all empty children",
+            view: HStack {
+                Empty()
+                Empty()
+            },
+            width: 8,
+            // Both children measure 0×0; the stack is 0×0 → zero rows.
+            expectedRows: []
         ),
     ]
 }

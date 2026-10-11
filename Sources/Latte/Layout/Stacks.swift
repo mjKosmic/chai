@@ -95,3 +95,77 @@ public struct HStack<Content: View>: View {
         return ViewOutput(result)
     }
 }
+
+// MARK: - VStack engine implementation
+//
+// Phase-2 layout engine (UPGRADE.md): the container renders children instead
+// of joining their resolved outputs. Parity with the eager `body` above is
+// verified by the corpus in Tests/LatteTests/LayoutParity.
+//
+// Proposal semantics are identical between the fit and render passes — both
+// propose the stack's width and leave height ideal — so a child measures the
+// same in both passes. This consistency is a hard requirement: M4's `frame()`
+// will render a stack at an assigned size wider than its ideal and relies on
+// the child measuring identically in both passes.
+
+extension VStack {
+    /// Measure each child with the stack's proposal width (height ideal) and
+    /// size to (max child width, Σ child heights).
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        let sizes = content._childViews().map {
+            $0._sizeThatFits(ProposedSize(width: proposal.width, height: nil))
+        }
+        return ViewSize(
+            width: sizes.map(\.width).max() ?? 0,
+            height: sizes.reduce(0) { $0 + $1.height }
+        )
+    }
+
+    /// Place each child at the alignment fraction of the horizontal shortage —
+    /// mirroring `aligned(toWidth:_:)`'s `leftPad = Int(shortage * fraction)`
+    /// formula and `max(0, ...)` guard — then advance the row by the child's
+    /// height. Empty children measure 0×0 and advance nothing, carrying the
+    /// eager skip-empty semantics.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+        var row = origin.row
+        for child in content._childViews() {
+            let childSize = child._sizeThatFits(ProposedSize(width: size.width, height: nil))
+            let shortage = max(0, size.width - childSize.width)
+            let col = origin.col + Int(Double(shortage) * alignment.fraction)
+            child._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize)
+            row += childSize.height
+        }
+    }
+}
+
+// MARK: - HStack engine implementation
+
+extension HStack {
+    /// Measure each child with the stack's proposal height (width ideal) and
+    /// size to (Σ child widths, max child height). Each column keeps its own
+    /// measured width — this reproduces `beside()`'s per-column (not shared)
+    /// width normalization naturally.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        let sizes = content._childViews().map {
+            $0._sizeThatFits(ProposedSize(width: nil, height: proposal.height))
+        }
+        return ViewSize(
+            width: sizes.reduce(0) { $0 + $1.width },
+            height: sizes.map(\.height).max() ?? 0
+        )
+    }
+
+    /// Place each child at the alignment fraction of the vertical shortage —
+    /// mirroring `extendLines`' `topPad = Int(shortage * fraction)` formula —
+    /// then advance the column by the child's width.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+        var col = origin.col
+        for child in content._childViews() {
+            let childSize = child._sizeThatFits(ProposedSize(width: nil, height: size.height))
+            let shortage = max(0, size.height - childSize.height)
+            let row = origin.row + Int(Double(shortage) * alignment.fraction)
+            child._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize)
+            col += childSize.width
+        }
+    }
+}

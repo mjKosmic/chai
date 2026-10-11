@@ -35,6 +35,22 @@ func eagerBuffer(
     return layout(output.content, width: width, height: h, wrapping: wrapping)
 }
 
+/// Rasterize a view through the *engine* path: measure with the proposal
+/// `(width, nil)`, render into a buffer at the measured size.
+///
+/// The buffer's width is only a truncation bound — the view's **measured**
+/// size drives placement (leaf writes use `wrapping: false` and clip at the
+/// buffer width, matching `eagerBuffer`). This is why eager VStack content
+/// sits at the left of a wide terminal rather than centering in it: the stack
+/// pads to its own max width. `frame()` (M4) is the view that lets users opt
+/// into terminal-width placement.
+func engineBuffer(_ view: some View, width: Int, height: Int? = nil) -> CellBuffer {
+    let size = view._sizeThatFits(ProposedSize(width: width, height: nil))
+    var buffer = CellBuffer(width: width, height: height ?? size.height)
+    view._render(into: &buffer, at: .zero, size: size)
+    return buffer
+}
+
 /// Extract per-row visible text from a buffer using the parity comparison
 /// semantics described above.
 ///
