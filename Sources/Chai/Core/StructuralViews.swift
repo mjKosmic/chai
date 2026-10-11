@@ -30,8 +30,8 @@ func joinVertically(_ components: [ViewOutput]) -> ViewOutput {
 ///
 /// The default ``body`` stacks children vertically (matching the legacy
 /// ``ViewBuilder`` behavior). Container views like `HStack` enumerate the
-/// children directly via ``_collectChildOutputs`` to apply their own layout
-/// strategy. Each child's own collected outputs are flattened into the
+/// children directly via ``_childViews()`` to apply their own layout
+/// strategy. Each child's own collected views are flattened into the
 /// tuple's children, so structural views (``ForEachView``, nested
 /// `TupleView`s) are transparent to containers — a `for` loop inside an
 /// `HStack` lays its elements out horizontally, as it does in SwiftUI.
@@ -42,16 +42,16 @@ public struct TupleView<each T: View>: View {
         self.children = (repeat each children)
     }
 
-    public func _collectChildOutputs() -> [ViewOutput] {
-        var parts: [ViewOutput] = []
+    public func _childViews() -> [any View] {
+        var parts: [any View] = []
         for child in repeat each children {
-            parts.append(contentsOf: child._collectChildOutputs())
+            parts.append(contentsOf: child._childViews())
         }
         return parts
     }
 
     public var body: ViewOutput {
-        joinVertically(_collectChildOutputs())
+        joinVertically(_childViews().map { $0._resolveToViewOutput() })
     }
 }
 
@@ -86,6 +86,18 @@ public struct ConditionalContent<TrueContent: View, FalseContent: View>: View {
             content._resolveToViewOutput()
         }
     }
+
+    /// Only the active branch contributes children. A multi-expression
+    /// branch body is itself a ``TupleView``, so flattening the branch keeps
+    /// per-child enumeration.
+    public func _childViews() -> [any View] {
+        switch storage {
+        case .first(let content):
+            content._childViews()
+        case .second(let content):
+            content._childViews()
+        }
+    }
 }
 
 // MARK: - OptionalView
@@ -103,6 +115,11 @@ public struct OptionalView<Wrapped: View>: View {
     public var body: ViewOutput {
         content?._resolveToViewOutput() ?? ViewOutput("")
     }
+
+    /// The wrapped content's children when present, none when `nil`.
+    public func _childViews() -> [any View] {
+        content?._childViews() ?? []
+    }
 }
 
 // MARK: - ForEachView
@@ -110,9 +127,9 @@ public struct OptionalView<Wrapped: View>: View {
 /// A structural view produced by `for...in` loops in a ``ViewBuilder``.
 ///
 /// The default ``body`` stacks children vertically. Like ``TupleView``,
-/// it is transparent to containers: ``_collectChildOutputs`` returns one
-/// output per element, so a `for` loop inside an `HStack` lays its
-/// elements out horizontally.
+/// it is transparent to containers: ``_childViews()`` returns one view per
+/// element, so a `for` loop inside an `HStack` lays its elements out
+/// horizontally.
 public struct ForEachView<Content: View>: View {
     let children: [Content]
 
@@ -120,15 +137,15 @@ public struct ForEachView<Content: View>: View {
         self.children = children
     }
 
-    public func _collectChildOutputs() -> [ViewOutput] {
-        var parts: [ViewOutput] = []
+    public func _childViews() -> [any View] {
+        var parts: [any View] = []
         for child in children {
-            parts.append(contentsOf: child._collectChildOutputs())
+            parts.append(contentsOf: child._childViews())
         }
         return parts
     }
 
     public var body: ViewOutput {
-        joinVertically(_collectChildOutputs())
+        joinVertically(_childViews().map { $0._resolveToViewOutput() })
     }
 }

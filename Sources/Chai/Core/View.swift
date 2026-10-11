@@ -26,14 +26,38 @@ public protocol View: Sendable {
     /// The visual content of this view.
     var body: Body { get }
 
-    /// Collect the resolved ``ViewOutput`` for each direct child.
+    /// Measure this view's size for the given proposal.
     ///
-    /// The default returns a single-element array containing this view's
-    /// fully-resolved output. Structural views (``TupleView``,
-    /// ``ForEachView``) override this to return one element per child,
-    /// enabling containers such as `HStack` to enumerate children for
-    /// layout.
-    func _collectChildOutputs() -> [ViewOutput]
+    /// The default resolves through ``body``, so a view whose `body` is a
+    /// ``ViewOutput`` leaf (or another view with its own engine overrides)
+    /// measures correctly without any extra code.
+    ///
+    /// - Parameter proposal: The size a parent is offering; see
+    ///   ``ProposedSize`` for the meaning of `nil` dimensions.
+    /// - Returns: The size this view would take under the proposal.
+    func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
+
+    /// Render this view into a cell buffer.
+    ///
+    /// The default resolves through ``body``. `size` is the concrete size
+    /// assigned by the parent after measurement; the view places its content
+    /// at `origin` honoring that assigned size.
+    ///
+    /// - Parameters:
+    ///   - buffer: The buffer to draw into.
+    ///   - origin: The top-left position to draw at.
+    ///   - size: The size assigned to this view by its parent.
+    func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize)
+
+    /// The views a container should treat as this view's children.
+    ///
+    /// The default returns `[self]`, so an ordinary composite view presents
+    /// itself as a single child. Structural views (``TupleView``,
+    /// ``ForEachView``, ``ConditionalContent``, ``OptionalView``) override
+    /// this and are **transparent** — they flatten their children's
+    /// `_childViews()`, enabling containers such as `HStack` to enumerate
+    /// individual children for layout.
+    func _childViews() -> [any View]
 }
 
 // MARK: - ViewOutput: View
@@ -43,6 +67,29 @@ extension ViewOutput: View {
     /// Resolution stops here and its ``StyledText`` content is rendered.
     public typealias Body = ViewOutput
     public var body: ViewOutput { self }
+
+    /// The ideal size of the output: `(maxLineWidth, lineCount())`.
+    ///
+    /// Empty content measures 0×0 because ``StyledText/lineCount()`` already
+    /// returns 0 for empty content — so an empty output occupies nothing,
+    /// which is what the eager join semantics assumed all along.
+    ///
+    /// Proposals are ignored: a `ViewOutput` is a fully-formed raster; the
+    /// layout engine measures it unwrapped (proposal-aware `Text` wrapping is
+    /// a phase-3 candidate). The ideal size is the unwrapped size.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        ViewSize(width: content.maxLineWidth, height: content.lineCount())
+    }
+
+    /// Rasterize the output's content into the buffer.
+    ///
+    /// The write follows the buffer's wrap-vs-truncate policy
+    /// (``CellBuffer/init(width:height:fill:wrapping:)``): inline-mode buffers
+    /// truncate at the right edge, alt-screen buffers wrap. The mode decision
+    /// stays renderer-level while the leaf SPI stays free of mode flags.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+        buffer.write(content, at: origin.col, row: origin.row)
+    }
 }
 
 // MARK: - View resolution
@@ -52,9 +99,8 @@ extension View {
     /// ``body`` until a ``ViewOutput`` leaf is reached.
     ///
     /// This is the bridge between the declarative view tree and the eager
-    /// styled-text renderer. A future layout engine will resolve the tree
-    /// through measurement and incremental rendering instead; see
-    /// `UPGRADE.md`.
+    /// styled-text renderer. The layout engine resolves the tree through
+    /// measurement and incremental rendering instead; see `UPGRADE.md`.
     public func _resolveToViewOutput() -> ViewOutput {
         if let output = self as? ViewOutput {
             return output
@@ -62,8 +108,19 @@ extension View {
         return body._resolveToViewOutput()
     }
 
-    public func _collectChildOutputs() -> [ViewOutput] {
-        [_resolveToViewOutput()]
+    /// The default engine implementation resolves through ``body``.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        body._sizeThatFits(proposal)
+    }
+
+    /// The default engine implementation resolves through ``body``.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+        body._render(into: &buffer, at: origin, size: size)
+    }
+
+    /// The default treats this view as its own single child.
+    public func _childViews() -> [any View] {
+        [self]
     }
 }
 
@@ -156,5 +213,32 @@ public struct Empty: View {
 
     public var body: ViewOutput {
         ViewOutput("")
+    }
+}
+
+// MARK: - Spacer engine implementation
+
+extension Spacer {
+    /// A spacer measures its requested blank space: `(columns, 1)` for a
+    /// horizontal spacer, `(0, lines)` for a vertical one, and `.zero` when
+    /// both dimensions are zero (e.g. `Spacer(columns: 0)`).
+    ///
+    /// This is the fix for the eager measurement quirk where `Spacer(lines: 2)`
+    /// resolves to a `"\n\n"` body that `lineCount()` miscounts as 3 lines.
+    /// The engine measures the requested count directly. Note `Spacer()` is
+    /// `Spacer(lines: 1)` — one blank line.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        if columns > 0 {
+            return ViewSize(width: columns, height: 1)
+        }
+        if lines > 0 {
+            return ViewSize(width: 0, height: lines)
+        }
+        return .zero
+    }
+
+    /// Rendering a spacer is a no-op: blank cells are the buffer default.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+        // Blank cells are the buffer's default fill; nothing to draw.
     }
 }

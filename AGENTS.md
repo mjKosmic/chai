@@ -29,13 +29,22 @@ There are no external dependencies — do not add any.
 Sources/Chai/
   Core/        Model.swift  Message.swift  Command.swift  Program.swift
                View.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
+               LayoutTypes.swift  Cursor.swift  Logger.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
-  Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift
-Sources/Latte/    Layout, styling, borders, composition (Stacks.swift, ViewOutput+Layout.swift)
+  Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift
+Sources/Latte/    Layout, styling, borders, composition
+                  (Layout/Stacks.swift  Layout/Frame.swift  Layout/Alignment.swift
+                   Extensions/ViewOutput+Layout.swift  ...)
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
 Tests/ChaiTests/  LatteTests/  SpicesTests/
-Examples/GroceryList/Sources/main.swift
+  LatteTests/LayoutParity/   parity harness + corpus + spec/engine suites (M0/M2 discipline)
+Examples/GroceryList/Sources/main.swift   the phase-2 acceptance example (centers via .frame(...))
 ```
+
+The layout engine lives across the seam: value types and the `View` SPI
+(`_sizeThatFits`/`_render`/`_childViews`) are in `Chai/Core/{LayoutTypes,View}.swift`,
+the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
+`Chai/Renderer/Renderer.swift`. See `ARCHITECTURE.md` → "The Layout Engine".
 
 ---
 
@@ -95,3 +104,10 @@ Do not attempt direct tuple indexing — it does not compile.
 
 ### `Program.run()` returns the final model state
 `run()` is `@discardableResult` and returns `M`. This is useful for testing and for programs that want to inspect state after exit. Preserve this return value when modifying `ProgramRunner.run()`.
+
+### Engine pitfalls (phase-2 hard-won rules)
+
+1. **Layout operates on child *views*, never on resolved outputs.** Containers must enumerate children via `_childViews()` and call `_sizeThatFits`/`_render` on the *views*. The first engine attempt resolved children to `ViewOutput` before measurement — that flattens the tree, bypasses every child's layout overrides, and makes proposals meaningless; it was reverted. Do not reintroduce output-based layout.
+2. **Containers must propose identically in the fit and render passes.** `_render` re-measures every child with the same `ProposedSize` *structure* the fit pass used — but the *values* match only when the assigned size equals the proposed size. That holds inside stacks (children are assigned their measured size) and inside `FrameView` (fixed dimensions force the same values in both passes), but **not at the renderer's root**: `flush()` fits the tree with the terminal width and renders it at the measured size, so a root stack narrower than the terminal proposes `termWidth` at fit but `measured.width` at render. This is inert today because every leaf ignores proposals; it bites the moment a proposal-*consuming* child (phase-3 wrapping `Text`) lands — carry the proposal into `_render` first (see UPGRADE.md "Deferred to phase 3"). (`FrameView`'s render-time ideal-on-flexible-axes is the documented exception to value consistency.)
+3. **The eager `body` join is the parity spec.** Engine output must match `body` → `_resolveToViewOutput()` → `layout()` for the corpus, except for the closed divergence list in UPGRADE.md ("Allowed divergences"). New divergences must be added there explicitly, with a corpus case carrying `isKnownDivergent` and explicit `expectedEngineRows` — no corpus case is ever skipped.
+4. **Test-target warnings count against the zero-warning rule.** `swift build` alone does not compile tests. The gate is `swift test` (or `swift build --build-tests`) and zero warnings includes test targets.

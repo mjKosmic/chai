@@ -100,6 +100,12 @@ struct GroceryList: Model {
             picker
             menu
         }
+        .frame(
+            width: width,
+            height: height,
+            horizontalAlignment: .center,
+            verticalAlignment: .middle
+        )
     }
 }
 

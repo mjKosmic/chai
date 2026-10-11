@@ -9,10 +9,11 @@ import Foundation
 ///
 /// ## How it works
 ///
-/// 1. ``write(_:)`` stores the latest ``ViewOutput`` in an internal buffer.
+/// 1. ``write(_:)`` stores the latest ``View`` tree in an internal buffer.
 /// 2. A background `Task` ticks at `1/fps` seconds and calls ``flush()``.
-/// 3. ``flush()`` builds a ``CellBuffer`` via ``layout(_:width:height:)``,
-///    diffs against ``lastBuffer``, and writes only the changed rows.
+/// 3. ``flush()`` measures the tree and renders it through the layout engine
+///    into a ``CellBuffer``, diffs against ``lastBuffer``, and writes only
+///    the changed rows.
 ///
 /// The renderer is an actor to serialise all state mutations.
 actor Renderer {
@@ -30,8 +31,13 @@ actor Renderer {
     private let terminal: any TerminalOutput
     private let fps: Int
 
-    /// The view output queued for the next flush.
-    private var pendingViewOutput = ViewOutput("")
+    /// The view tree queued for the next flush.
+    ///
+    /// Stored as an existential rather than resolved eagerly: ``flush()``
+    /// lays the tree out through the phase-2 engine
+    /// (``View/_sizeThatFits(_:)`` + ``View/_render(into:at:size:)``) into a
+    /// ``CellBuffer``. `nil` (nothing written yet) renders as an empty view.
+    private var pendingView: (any View)? = nil
 
     /// The cursor queued for the next flush (set separately from content).
     private var pendingCursor: Cursor?
@@ -120,16 +126,16 @@ actor Renderer {
     /// The renderer will diff the content against the previous frame on the
     /// next ``flush()``.
     func write(_ view: ViewOutput) {
-        pendingViewOutput = view
+        pendingView = view
     }
 
     /// Queue any ``View`` for rendering on the next tick.
     ///
-    /// The view tree is resolved to a ``ViewOutput`` and queued for the next
-    /// ``flush()``. This enables the renderer to accept the model's ``body``
-    /// directly, regardless of its concrete type.
+    /// The view tree is stored as-is and laid out through the layout engine
+    /// on the next ``flush()``. This enables the renderer to accept the
+    /// model's ``body`` directly, regardless of its concrete type.
     func write<V: View>(_ view: V) {
-        pendingViewOutput = view._resolveToViewOutput()
+        pendingView = view
     }
 
     /// Set the cursor to display on the next flush.
@@ -155,7 +161,9 @@ actor Renderer {
     /// cell buffer, diffed against the previous frame, and changed rows are
     /// written. Finally the cursor is positioned.
     func flush() {
-        let viewOutput = pendingViewOutput
+        // nil pendingView means nothing was written yet — render as an empty
+        // view, matching the pre-M3 `ViewOutput("")` default.
+        let view = pendingView ?? ViewOutput("")
         let cursor = pendingCursor
 
         // ── Cursor visibility ──────────────────────────────────────────────
@@ -173,38 +181,56 @@ actor Renderer {
             terminal.write(ANSI.hideCursor)
         }
 
-        // ── Build cell buffer ─────────────────────────────────────────────
+        // ── Build cell buffer through the layout engine ────────────────────
 
-        let content = viewOutput.content
         let w = termWidth > 0 ? termWidth : Self.fallbackWidth
+        let altScreenHeight = termHeight > 0 ? termHeight : 24
 
-        var contentToLayout = content
-        var bufferHeight: Int
+        // Measure the tree under the terminal proposal. Inline mode proposes
+        // width only (height stays ideal — the buffer is content-sized,
+        // clamped below); alt-screen mode proposes the fixed terminal size.
+        let measured = view._sizeThatFits(
+            ProposedSize(width: w, height: altScreenActive ? altScreenHeight : nil)
+        )
 
-        if content.isEmpty {
-            // Empty content: use a single-row buffer with a space to maintain
-            // cursor position tracking. The space cell equals .empty so it
-            // won't produce visible output.
-            contentToLayout = " "
+        let bufferHeight: Int
+        if measured.height == 0 {
+            // Empty content: use a single-row buffer to maintain cursor
+            // position tracking. The unrendered 1-row buffer is cell-identical
+            // to the pre-M3 `" "` write because `Cell.empty` is a space cell,
+            // so it won't produce visible output.
             bufferHeight = 1
         } else if altScreenActive {
-            bufferHeight = termHeight > 0 ? termHeight : 24
+            bufferHeight = altScreenHeight
+        } else if termHeight > 0 {
+            // Clamp to terminal height, taking suffix lines.
+            bufferHeight = min(measured.height, termHeight)
         } else {
-            bufferHeight = content.lineCount()
-            // Clamp to terminal height if known, taking suffix lines.
-            if termHeight > 0 && bufferHeight > termHeight {
-                contentToLayout = content.suffix(lines: termHeight)
-                bufferHeight = termHeight
-            }
+            bufferHeight = measured.height
         }
 
-        // In inline mode the buffer height is derived from lineCount() (explicit
-        // newlines only). Wrapping must be disabled so that lines wider than the
-        // terminal width are truncated rather than spilling into rows that are
-        // allocated for subsequent logical lines, which would cause those lines
-        // to be dropped when the buffer fills.
-        let wrapping = altScreenActive
-        let newBuffer = layout(contentToLayout, width: w, height: bufferHeight, wrapping: wrapping)
+        // Inline mode truncates (buffer height is content-derived; wrapping
+        // would steal rows allocated for subsequent logical lines); alt-screen
+        // mode wraps. This is the renderer-level mode decision, expressed as
+        // the buffer's construction-time write policy.
+        var newBuffer = CellBuffer(width: w, height: bufferHeight, wrapping: altScreenActive)
+
+        // Inline suffix clamp: when the measured height exceeds the terminal
+        // height, today's `content.suffix(lines: termHeight)` is reproduced by
+        // rendering the tree at a negative row origin — `bufferHeight -
+        // measured.height` — with the full measured size. Early rows fall
+        // above the buffer and are skipped by `CellBuffer.set(col:row:_:)`'s
+        // bounds guards; the bottom `bufferHeight` rows land at buffer rows
+        // 0…, byte-identical to the eager suffix. Alt screen renders from the
+        // top (rows beyond the fixed height are dropped by the same guards).
+        let origin: ViewOrigin
+        if !altScreenActive && termHeight > 0 && measured.height > bufferHeight {
+            origin = ViewOrigin(col: 0, row: bufferHeight - measured.height)
+        } else {
+            origin = .zero
+        }
+
+        view._render(into: &newBuffer, at: origin, size: measured)
 
         // ── Determine what needs updating ─────────────────────────────────
 

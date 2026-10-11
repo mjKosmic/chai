@@ -73,6 +73,27 @@ public struct StyledText: Sendable, Equatable {
         return width
     }
 
+    /// The maximum display-column width across all lines.
+    ///
+    /// Lines are delimited by `\n`. Each line's width is the sum of its
+    /// characters' display widths, so CJK / emoji / wide characters count as
+    /// 2 columns and zero-width characters as 0. Empty content measures 0.
+    internal var maxLineWidth: Int {
+        var maxWidth = 0
+        var currentWidth = 0
+        for segment in segments {
+            for char in segment.text {
+                if char == "\n" {
+                    maxWidth = max(maxWidth, currentWidth)
+                    currentWidth = 0
+                } else {
+                    currentWidth += displayWidth(of: char)
+                }
+            }
+        }
+        return max(maxWidth, currentWidth)
+    }
+
     /// Concatenate two StyledText values.
     public static func + (lhs: StyledText, rhs: StyledText) -> StyledText {
         var result = lhs
@@ -236,42 +257,6 @@ extension StyledText {
     /// Apply strikethrough to all segments.
     public func strikethrough() -> StyledText {
         styled(TextAttributes(attributes: [.strikethrough]))
-    }
-}
-
-// MARK: - Line operations
-
-extension StyledText {
-    /// Return only the last `count` lines of this styled text.
-    ///
-    /// Lines are delimited by `\n`. If the text has fewer than or equal to
-    /// `count` lines, the original text is returned unchanged.
-    func suffix(lines count: Int) -> StyledText {
-        let total = lineCount()
-        guard total > count, count > 0 else { return self }
-        let skip = total - count
-
-        var newlinesToSkip = skip
-        var result = StyledText()
-
-        for segment in segments {
-            if newlinesToSkip > 0 {
-                // Walk through this segment skipping newlines. Segments with
-                // no newlines are dropped entirely (they belong to skipped lines).
-                var remaining = segment.text[...]
-                while newlinesToSkip > 0 {
-                    guard let nlIndex = remaining.firstIndex(of: "\n") else { break }
-                    remaining = remaining[remaining.index(after: nlIndex)...]
-                    newlinesToSkip -= 1
-                }
-                if newlinesToSkip == 0 && !remaining.isEmpty {
-                    result.append(String(remaining), style: segment.style)
-                }
-            } else {
-                result.segments.append(Segment(segment.text, style: segment.style))
-            }
-        }
-        return result
     }
 }
 
