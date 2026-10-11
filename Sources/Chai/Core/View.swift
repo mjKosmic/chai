@@ -83,12 +83,12 @@ extension ViewOutput: View {
 
     /// Rasterize the output's content into the buffer.
     ///
-    /// `wrapping: false` matches today's eager/inline parity semantics
-    /// (truncate at the buffer's right edge instead of stealing rows). The
-    /// phase-2 renderer milestone (M3) introduces a buffer-level
-    /// wrap-vs-truncate write policy; this call will follow that policy then.
+    /// The write follows the buffer's wrap-vs-truncate policy
+    /// (``CellBuffer/init(width:height:fill:wrapping:)``): inline-mode buffers
+    /// truncate at the right edge, alt-screen buffers wrap. The mode decision
+    /// stays renderer-level while the leaf SPI stays free of mode flags.
     public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
-        buffer.write(content, at: origin.col, row: origin.row, wrapping: false)
+        buffer.write(content, at: origin.col, row: origin.row)
     }
 }
 

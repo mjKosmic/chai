@@ -23,14 +23,13 @@ struct ParityEngineTests {
     private func assertVisibleRows(
         _ parityCase: ParityCase,
         build: (ParityCase) -> CellBuffer
-    ) -> [String] {
+    ) {
         let rows = visibleRows(build(parityCase))
         let expected = parityCase.expectedEngineRows ?? parityCase.expectedRows
         #expect(
             rows == expected,
             "Case '\(parityCase.name)': expected \(expected), got \(rows)"
         )
-        return rows
     }
 
     /// The engine must reproduce every non-divergent case's pinned spec.

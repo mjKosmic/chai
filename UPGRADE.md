@@ -152,11 +152,16 @@ which reproduces `beside()`'s per-column normalization naturally. Empty
 children measure 0×0 and advance nothing.
 
 **Buffer write policy**: `CellBuffer` gains a wrap-vs-truncate policy set at
-construction (default wrap, matching `write(wrapping:)`'s default). The
+construction, **defaulting to truncate** — the safe choice for
+content-sized buffers (wrapping steals rows the constructor didn't
+allocate; the old `write` doc comment warned about exactly this). The
 `Renderer` sets truncate for inline mode, wrap for alt-screen — keeping the
 mode decision renderer-level exactly as today, so leaf SPI stays free of
 mode flags and today's truncation behavior is preserved (inline truncation
-is pinned by `RendererTests`).
+is pinned by `RendererTests`). `write`'s explicit `wrapping` parameter
+became `Bool?` — `nil` (the default) follows the buffer's policy; the free
+`layout(StyledText)` function passes its policy explicitly and is
+unchanged.
 
 **Renderer integration**: `Renderer.write` stores the tree
 (`pendingView: any View`) instead of resolving eagerly. `flush()` proposes

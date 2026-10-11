@@ -40,7 +40,9 @@ let package = Package(
         ),
         .testTarget(
             name: "ChaiTests",
-            dependencies: ["Chai"],
+            // LayoutEngineTests (M1) exercises the engine with Latte's
+            // VStack/HStack containers, so the target depends on Latte.
+            dependencies: ["Chai", "Latte"],
             path: "Tests/ChaiTests"
         ),
         .testTarget(

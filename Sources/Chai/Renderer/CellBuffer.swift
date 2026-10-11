@@ -44,11 +44,33 @@ public struct CellBuffer: Sendable, Equatable {
     /// Row-major storage: cells[row * width + col].
     private var cells: [Cell]
 
+    /// The wrap-vs-truncate write policy applied by ``write(_:at:row:wrapping:)``
+    /// when the caller passes no explicit `wrapping:` argument.
+    ///
+    /// `false` (the default) truncates characters that overflow the right
+    /// edge; `true` wraps them onto the next row. Truncate is the
+    /// behavior-preserving default: the engine's leaf rasterizer
+    /// (``ViewOutput/_render(into:at:size:)``) and the parity harness
+    /// construct buffers without an explicit policy and pin **truncation** on
+    /// them (inline-mode semantics). The renderer and the free
+    /// ``layout(_:width:height:wrapping:)`` function always pass an explicit
+    /// policy, so this default only affects direct `write(_:)` calls — which
+    /// previously truncated through the leaf's hard-coded flag.
+    private let wrapsOverflow: Bool
+
     /// Create a buffer filled with the given cell.
-    public init(width: Int, height: Int, fill: Cell = .empty) {
+    ///
+    /// - Parameters:
+    ///   - width: Buffer width in display columns.
+    ///   - height: Buffer height in rows.
+    ///   - fill: The cell every position starts as. Defaults to ``Cell/empty``.
+    ///   - wrapping: The buffer's wrap-vs-truncate write policy
+    ///     (see ``wrapsOverflow``). Defaults to `false` (truncate).
+    public init(width: Int, height: Int, fill: Cell = .empty, wrapping: Bool = false) {
         self.width = max(width, 0)
         self.height = max(height, 0)
         self.cells = Array(repeating: fill, count: self.width * self.height)
+        self.wrapsOverflow = wrapping
     }
 
     // MARK: - Access
@@ -111,18 +133,18 @@ public struct CellBuffer: Sendable, Equatable {
     ///   - text: The styled text to write.
     ///   - startCol: Starting column (default 0).
     ///   - startRow: Starting row (default 0).
-    ///   - wrapping: When `true` (default), characters that overflow the right
-    ///     edge are wrapped onto the next row. When `false`, overflow characters
-    ///     are **truncated** — skipped until the next explicit `\n`. Use `false`
-    ///     when the buffer height was sized by ``StyledText/lineCount()`` (i.e.
-    ///     inline-mode rendering) to prevent wrapped content from stealing rows
-    ///     that are allocated for subsequent logical lines.
+    ///   - wrapping: When `true`, characters that overflow the right edge are
+    ///     wrapped onto the next row. When `false`, overflow characters are
+    ///     **truncated** — skipped until the next explicit `\n`. When `nil`
+    ///     (default), the buffer's construction-time policy
+    ///     (``init(width:height:fill:wrapping:)``) is used.
     public mutating func write(
         _ text: StyledText,
         at startCol: Int = 0,
         row startRow: Int = 0,
-        wrapping: Bool = true
+        wrapping: Bool? = nil
     ) {
+        let shouldWrap = wrapping ?? wrapsOverflow
         var col = startCol
         var row = startRow
 
@@ -148,7 +170,7 @@ public struct CellBuffer: Sendable, Equatable {
 
                 // Check if character fits on current line.
                 if col + charWidth > width {
-                    if wrapping {
+                    if shouldWrap {
                         // Wrap to next line.
                         col = 0
                         row += 1
