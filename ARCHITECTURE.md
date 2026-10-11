@@ -1,14 +1,16 @@
 # Chai Architecture
 
-Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](https://github.com/charmbracelet/bubbletea). It implements the **Elm Architecture** (Model-Update-View) using modern Swift concurrency — `async`/`await`, actors, `AsyncStream`, and structured `Task`s — with zero external dependencies.
+Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](https://github.com/charmbracelet/bubbletea). It implements the **Elm Architecture** (Model-Update-View) using modern Swift concurrency — `async`/`await`, actors, `AsyncStream`, and structured `Task`s — with zero runtime dependencies outside the Swift standard library.
 
 The repository is a monorepo containing three libraries:
 
 | Library | Purpose | Dependencies |
 |---------|---------|--------------|
-| **Chai** | Core TUI framework (Elm Architecture runtime, input handling, rendering) | None |
-| **Latte** | Layout and styling library (borders, padding, alignment, wrapping, sizing, `Style`, `Color`, `ColorProfile`) | None |
+| **Chai** | Core TUI framework (Elm Architecture runtime, input handling, rendering, the layout engine's value types and SPI) | None |
+| **Latte** | Layout and styling library (borders, padding, alignment, wrapping, sizing, `Style`, `Color`, `ColorProfile`) plus the declarative containers (`HStack`/`VStack`, `FrameView`) | Chai |
 | **Spices** | Pre-built interactive components (text input, lists, tables, spinners, timers, etc.) | Chai, Latte |
+
+Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `FrameView` conform to Chai's ``View`` protocol and are laid out by its engine. Latte's string-level layout functions (`align`, `join`, `border`, ...) remain standalone and operate on plain `String`/`StyledText` values. The package also declares `swift-docc-plugin` (build-time only) for DocC documentation generation; no runtime dependency is introduced.
 
 ---
 
@@ -29,17 +31,23 @@ The repository is a monorepo containing three libraries:
    - [ANSICodes](#ansicodes)
    - [SignalHandler](#signalhandler)
 5. [Latte — Layout & Styling Library](#latte--layout--styling-library)
-6. [Spices — Component Library](#spices--component-library)
-7. [Data Flow](#data-flow)
-8. [Concurrency Model](#concurrency-model)
-9. [Input Pipeline](#input-pipeline)
-10. [Rendering Pipeline](#rendering-pipeline)
-11. [Command Execution](#command-execution)
-12. [Signal Handling](#signal-handling)
-13. [Lifecycle](#lifecycle)
-14. [Testing Strategy](#testing-strategy)
-15. [Package Layout](#package-layout)
-16. [Design Decisions & Trade-offs](#design-decisions--trade-offs)
+6. [The Layout Engine](#the-layout-engine)
+   - [The measure/render flow](#the-measurerender-flow)
+   - [Who the engine SPI is for](#who-the-engine-spi-is-for)
+   - [Proposal semantics](#proposal-semantics)
+   - [The parity discipline](#the-parity-discipline)
+   - [Two `frame()`s coexisting](#two-frames-coexisting)
+7. [Spices — Component Library](#spices--component-library)
+8. [Data Flow](#data-flow)
+9. [Concurrency Model](#concurrency-model)
+10. [Input Pipeline](#input-pipeline)
+11. [Rendering Pipeline](#rendering-pipeline)
+12. [Command Execution](#command-execution)
+13. [Signal Handling](#signal-handling)
+14. [Lifecycle](#lifecycle)
+15. [Testing Strategy](#testing-strategy)
+16. [Package Layout](#package-layout)
+17. [Design Decisions & Trade-offs](#design-decisions--trade-offs)
 
 ---
 
@@ -49,7 +57,7 @@ The repository is a monorepo containing three libraries:
 |-----------|-------------------|
 | **Value semantics for state** | `Model` is a `Sendable` value type (`struct`). `update` is `mutating`. No shared mutable state in user code. |
 | **Unidirectional data flow** | Messages flow in → model updates → view renders. No callbacks, no delegates. |
-| **Zero dependencies** | Only Swift stdlib, Foundation, and POSIX APIs (`termios`, `ioctl`, `select`). |
+| **Zero runtime dependencies** | Library code uses only Swift stdlib, Foundation, and POSIX APIs (`termios`, `ioctl`, `select`). The package declares `swift-docc-plugin` as build-time tooling only. |
 | **Testability** | I/O is behind protocols (`TerminalOutput`). The parser and renderer are independently testable without a real TTY. |
 | **Cross-platform** | Darwin and Linux are supported via conditional imports (`#if canImport(Darwin)`). |
 | **Swift 6 concurrency safety** | `StrictConcurrency` is enabled. All shared state is either actor-isolated, `Sendable`, or confined to a single thread. |
@@ -70,17 +78,19 @@ The repository is a monorepo containing three libraries:
 │  ┌──────────────┐    messages    │  model.update(msg)   │  │
 │  │SignalHandler │ ─────────────► │       │              │  │
 │  │(DispatchSrc) │                │       ▼              │  │
-│  └──────────────┘                │  model.view()        │  │
+│  └──────────────┘                │  model.body         │  │
+│                                  │  (view tree)        │  │
 │                                  │       │              │  │
 │  ┌──────────────┐    commands    │       ▼              │  │
 │  │   Command    │ ◄──────────────│  execute(cmd)        │  │
 │  │  execution   │                │                      │  │
 │  │  (Tasks)     │ ─── msgs ─────►│                      │  │
 │  └──────────────┘                └──────────┬───────────┘  │
-│                                             │ ViewOutput   │
+│                                             │  any View     │
 │                                             ▼              │
 │                                  ┌──────────────────────┐  │
 │                                  │   Renderer (actor)   │  │
+│                                  │  layout engine flush │  │
 │                                  │   60 FPS diff flush  │  │
 │                                  └──────────┬───────────┘  │
 │                                             │ ANSI bytes   │
@@ -106,24 +116,25 @@ initialize() ──► Command?
              └──────┬──────┘
                     │
                     ▼
-                 view() ──► ViewOutput ──► Renderer
+            body ──► view tree ──► Renderer (layout engine)
 ```
 
 ### The three model methods
 
 ```swift
-public protocol Model: Sendable {
+public protocol Model: View, Sendable {
     func initialize() -> Command?
     mutating func update(_ msg: any Message) -> Command?
-    func view() -> ViewOutput
+    var cursor: Cursor? { get }   // default nil
+    // `body` (and the layout engine SPI) come from `View`
 }
 ```
 
 - **`initialize()`** — called once at startup. Returns an optional `Command` for initial I/O (e.g. loading data, starting a timer).
 - **`update(_ msg:)`** — called for every incoming `Message`. Mutates state and optionally returns a `Command` for further async work.
-- **`view()`** — called after every `update`. Returns a `ViewOutput` containing the full UI as a string plus optional declarative terminal state (alt screen, window title, cursor visibility). ANSI escape codes are supported for colour and styling within the content string. Thanks to `ExpressibleByStringInterpolation` conformance, simple models can return a string literal directly.
+- **`body`** — the ``View`` tree rendered after every `update`. ``Model`` inherits from ``View``, so a model *is* a view: `body` may be any `View` — a ``ViewOutput`` leaf, a stack, a `frame()`, or a ``@ViewBuilder`` composition — and the renderer accepts it directly. `ViewOutput` still conforms to `ExpressibleByStringInterpolation`, so simple models can return a string literal from `body`.
 
-The model is a **value type**. `ProgramRunner` holds the single authoritative copy and mutates it in-place on the event loop. There is no diffing of the model itself — `view()` is always called after every message.
+The model is a **value type**. `ProgramRunner` holds the single authoritative copy and mutates it in-place on the event loop. There is no diffing of the model itself — `body` is always read after every message.
 
 ---
 
@@ -133,13 +144,14 @@ The model is a **value type**. `ProgramRunner` holds the single authoritative co
 
 **File:** `Sources/Chai/Core/Model.swift`
 
-The `Model` protocol is the only type users must implement. It carries three constraints:
+The `Model` protocol is the only type users must implement. It carries four constraints:
 
 - `Sendable` — the model must be safe to pass across concurrency boundaries (required because `Program` is generic over `M: Model` and `Program` itself is `Sendable`).
 - `mutating func update` — enforces value semantics; the compiler prevents accidental shared-state bugs.
-- No associated types — keeps the protocol simple and avoids type-erasure complexity at the call site.
+- Inherits `View` — a model *is* a view and supplies `var body: some View`, so no separate `view()` method exists. `body` may be any `View` (see [The Elm Architecture in Chai](#the-elm-architecture-in-chai)).
+- `var cursor: Cursor?` — the terminal cursor to display, with a default of `nil` (hidden in alt-screen mode, unchanged in normal mode). Previously a field on `ViewOutput`, cursor state became a model property in the phase-1 terminal-state split.
 
-`view()` returns a `ViewOutput`, which carries the rendered content string plus optional per-frame terminal state declarations (alt screen, window title, cursor visibility). `ViewOutput` conforms to `ExpressibleByStringInterpolation`, so simple models can return string literals directly. When terminal state fields are `nil`, the renderer preserves the current state — this maintains backward compatibility with program options like `.withAltScreen`.
+`body` typically composes child views with `@ViewBuilder` and returns them as an opaque `some View`. Terminal state is no longer declared per-frame inside the view tree: alt screen is a ``Program`` option, window title is a ``Command``, and the cursor is the model's ``cursor`` property.
 
 ---
 
@@ -239,6 +251,7 @@ public struct Program<M: Model>: Sendable {
 | `.withFPS(n)` | Sets the renderer frame rate (1–120). Default: 60. |
 | `.withWindowTitle(s)` | Sets the terminal window title on startup. |
 | `.withoutSignalHandler` | Disables the built-in SIGINT/SIGTERM/SIGWINCH handler. |
+| `.withLogger(logger)` | Attaches a ``ChaiLogger`` for internal diagnostics (e.g. ``FileLogger``; stdout is owned by the terminal). |
 
 **Event loop (simplified):**
 
@@ -246,7 +259,7 @@ public struct Program<M: Model>: Sendable {
 eventLoop: for await msg in messageStream {
     await handleRendererMessage(msg)   // resize, repaint, println
     let cmd = model.update(msg)        // update model
-    await renderer.write(model.view()) // queue new view
+    await renderer.write(model.body)   // queue view tree
     if let cmd {
         if case .quit = cmd { break eventLoop }
         execute(cmd)
@@ -366,15 +379,15 @@ select(stdin, cancelPipe)
 
 | Property | Purpose |
 |----------|---------|
-| `pendingViewOutput` | The `ViewOutput` queued for the next flush |
-| `lastContent` | The content string written in the previous flush |
-| `lastLines` | Lines of the previous frame (for line-level diffing) |
-| `linesRendered` | Line count of the last normal-screen render |
-| `altLinesRendered` | Line count of the last alt-screen render |
+| `pendingView` | The `View` tree queued for the next flush (stored as an existential, laid out lazily) |
+| `pendingCursor` | The `Cursor` queued for the next flush (set separately from content) |
+| `lastBuffer` | The `CellBuffer` from the last rendered frame (for cell-level diffing) |
 | `altScreenActive` | Whether the alt screen buffer is active |
 | `termWidth` / `termHeight` | Current terminal dimensions |
 | `queuedLines` | Lines waiting to be printed above the live view |
 | `cursorHidden` | Whether the cursor is currently hidden |
+| `lastCursor` | The cursor from the last frame (for diffing) |
+| `cursorParkedRow` | Row where the terminal cursor is parked (for movement deltas) |
 | `lastWindowTitle` | The last applied window title (for diffing) |
 | `flushTask` | The background `Task` driving the render loop |
 
@@ -384,20 +397,21 @@ select(stdin, cancelPipe)
 
 **`flush()` algorithm:**
 
-1. If `pendingView == lastView`, skip (no change).
-2. Split `pendingView` into lines. Clamp to `termHeight` if set.
-3. Move cursor back to the start of the previously rendered content:
-   - Alt screen: `ESC[H` (cursor home).
-   - Normal screen: `ESC[{n}A` (cursor up `linesRendered - 1` lines).
-4. Flush any queued `println` lines (normal screen only), each followed by `ESC[K` (erase to end of line) and `\r\n`.
-5. For each line in the new frame:
-   - If the line is identical to the corresponding line in `lastLines` and no `println` lines were flushed, emit only `\n` (skip the line).
-   - Otherwise, truncate to `termWidth` (prevents terminal wrapping), write the line, then `ESC[K` (erase remainder of line).
-6. If the previous frame had more lines than the new frame, emit `ESC[J` (erase screen below) to clear leftover content.
-7. Park the cursor:
-   - Alt screen: `ESC[{row};1H` (absolute position).
-   - Normal screen: `\r` (start of last line).
-8. Write the entire output string in one `terminal.write()` call.
+`flush()` builds the frame through the layout engine; see [The Layout Engine](#the-layout-engine) for the measure/render flow in detail.
+
+1. Handle cursor visibility: show the cursor when `pendingCursor` is set (and it was hidden), hide it in alt-screen mode when no cursor is set.
+2. Propose the terminal size: `view._sizeThatFits(ProposedSize(width: w, height: altScreenActive ? h : nil))` — inline mode proposes width only (the buffer is content-sized), alt-screen mode proposes the fixed terminal size.
+3. Decide the buffer height from the measured size:
+   - Empty content (`height == 0`) → a single-row buffer (keeps cursor-position tracking; `Cell.empty` is a space cell so the extra row renders invisibly).
+   - Alt screen → fixed `termHeight`.
+   - Inline → clamped to `termHeight` (suffix lines win, reproducing the old `content.suffix(lines:)` behavior).
+4. Allocate the buffer with the renderer's wrap-vs-truncate policy: **truncate** inline (the height is content-derived; wrapping would steal rows), **wrap** in alt screen. The mode decision stays renderer-level; the leaf SPI carries no mode flags.
+5. Inline suffix clamp: when the measured height exceeds `termHeight`, render at a negative row origin (`bufferHeight - measured.height`) so only the bottom `bufferHeight` rows land in the buffer — byte-identical to the eager suffix. Alt screen renders from the top; out-of-bounds rows are dropped by the buffer's bounds guards.
+6. `view._render(into: &newBuffer, at: origin, size: measured)` — the cascade places every view into the buffer.
+7. Diff `newBuffer` against `lastBuffer` (per-cell changes + `eraseBelow`).
+8. Move the cursor back to the top of the previous render, flush queued `println` lines (normal screen only), then paint each changed row (`row` + `ESC[K`), emitting `\n` for unchanged rows. On the first render (empty `lastBuffer`) force a full repaint so blank padding rows are not skipped and stale content cannot ghost through.
+9. If the previous frame had more rows than the new frame, emit `ESC[J` (erase screen below).
+10. Park the cursor, wrap the assembled output in synchronized-update markers (mode 2026), and write it in one `terminal.write()` call.
 
 **Alt screen:** `enterAltScreen()` writes `ESC[?1049h` (saves cursor, switches buffer, clears screen). `exitAltScreen()` writes `ESC[?1049l` (restores cursor, switches back).
 
@@ -445,19 +459,20 @@ The two-step design for `SIGWINCH` (sentinel → runner queries size) is necessa
 
 **Path:** `Sources/Latte/`
 
-Latte is a standalone library (no dependency on Chai or Spices) that provides both layout primitives and ANSI text styling for building terminal UIs. It operates on plain strings (with ANSI escape code awareness) and produces styled string output.
+Latte provides layout primitives, ANSI text styling, and (since phase 1) the declarative containers for building terminal UIs. The package target depends on **Chai** because `HStack`/`VStack`/`FrameView` conform to Chai's ``View`` protocol and participate in its layout engine; the string-level layout functions remain pure and operate on plain strings (with ANSI escape code awareness) and ``StyledText`` values.
 
 ### Modules
 
 | Module | Files | Purpose |
 |--------|-------|---------|
-| **Style** | `Style.swift`, `Color.swift`, `ColorProfile.swift`, `ColorPalette.swift` | ANSI text styling — composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and color downsampling). |
+| **Style** | `Style.swift`, `Color.swift`, `ColorProfile.swift`, `ColorPalette.swift`, `ColorUtilities.swift` | ANSI text styling — composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and color downsampling). |
 | **Borders** | `Border.swift`, `BorderRenderer.swift` | Render bordered boxes around text content. Supports rounded, normal, double, thick, ASCII, and hidden styles. Selective side rendering (top/bottom/left/right). `Style?` parameters (`borderStyle`, `topStyle`, `bottomStyle`, `leftStyle`, `rightStyle`) style border characters natively. Per-side styles override the shared `borderStyle`; corners inherit the style of their horizontal edge. Content inside the border is never styled. |
-| **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction. |
-| **Composition** | `Join.swift`, `Place.swift` | Compose multiple blocks — horizontal and vertical joins with alignment control, absolute placement within a canvas. |
+| **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift`, `Stacks.swift`, `Frame.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction — plus the declarative containers: `VStack`/`HStack` (`Stacks.swift`) and `FrameView` with the `frame(...)` modifier (`Frame.swift`). |
+| **Composition** | `Join.swift`, `Compositor.swift` | Compose multiple blocks — horizontal and vertical joins with alignment control (`Join.swift`), and z-ordered canvas placement of positioned `Layer` blocks (`Compositor.swift`, the successor to the old `Place.swift` module). |
 | **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
+| **Static** | `ListRenderer.swift`, `TreeRenderer.swift` | Static list and tree renderers for non-interactive output. |
 | **Utilities** | `TabExpansion.swift`, `StringLines.swift` | Tab-to-spaces expansion with configurable tab width, line splitting utilities. |
-| **Extensions** | `String+Layout.swift` | Chainable `String` extensions (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.placed()`, `.clamped()`, `.enforced()`, `.truncated()`, `.inlined()`, `.tabsExpanded()`). |
+| **Extensions** | `String+Layout.swift`, `StyledText+Layout.swift`, `ViewOutput+Layout.swift` | Chainable extensions: `String` (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.placed()`, `.clamped()`, `.enforced()`, `.truncated()`, `.inlined()`, `.tabsExpanded()`), `StyledText` layout, and the legacy eager ``ViewOutput`` modifiers (`.width()`, `.height()`, `.frame()`, `.beside()`, `.above()`, ...). |
 
 ### Design Notes
 
@@ -465,6 +480,116 @@ Latte is a standalone library (no dependency on Chai or Spices) that provides bo
 - **Pure functions:** Layout functions are stateless — they take a string and configuration, and return a new string. No side effects.
 - **Chainable API:** `String+Layout.swift` provides method-chaining extensions that mirror the free functions, enabling `"hello".padded(1).bordered().margined(1)`.
 - **Styling via `Style?`:** Border rendering accepts optional ``Style`` parameters for styling border characters. Because `Style` lives in Latte itself, no extra imports or closure adapters are needed at the call site.
+- **Two API generations:** the phase-1 declarative containers (`HStack`/`VStack`/`FrameView`) render through the layout engine; the eager ``ViewOutput`` modifiers resolve to styled text immediately and remain as the engine's parity spec (see [The Layout Engine](#the-layout-engine)).
+
+---
+
+## The Layout Engine
+
+**Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Latte/Layout/Stacks.swift`, `Sources/Latte/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
+
+The layout engine is the phase-2 rendering path (UPGRADE.md, "Phase 2"). Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — but *rendered* it by eagerly resolving the tree to a ``ViewOutput`` string (`View._resolveToViewOutput()`). The engine replaces that eager resolution for the renderer with a SwiftUI-style **proposal-driven layout**: measure first, then place, with containers inspecting the *views* their children expose rather than flattened output strings.
+
+### The measure/render flow
+
+```
+renderer.write(model.body)          stores the tree: pendingView: any View
+        │
+        ▼  (every 1/fps seconds)
+renderer.flush()
+        │
+        ├─ 1. propose the terminal size:
+        │       view._sizeThatFits(ProposedSize(width: w, height: altScreen ? h : nil))
+        │       (width only inline — the buffer is content-sized; fixed size in alt screen)
+        │
+        ├─ 2. the _sizeThatFits cascade: every view answers with a ViewSize,
+        │       delegating through `body` by default, overriding in containers/leaves
+        │
+        ├─ 3. allocate the CellBuffer with the renderer's policies:
+        │       empty content → 1-row buffer (invisible, keeps cursor tracking)
+        │       alt screen    → fixed terminal size, wrap policy
+        │       inline        → measured height clamped to termHeight, truncate policy;
+        │                       suffix clamp via a negative row origin
+        │
+        ├─ 4. view._render(into: &buffer, at: origin, size: measured)
+        │       the cascade places every view into the CellBuffer
+        │       (leaf write follows the buffer's wrap/truncate policy)
+        │
+        └─ 5. diff against lastBuffer (per-cell + eraseBelow) → paint changed rows
+```
+
+The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls `body` until a ``ViewOutput`` leaf is reached. It remains the rendering path for the legacy modifier family (`.bordered()`, `.padded()`, `.beside()`, ``ViewOutput.width(_:align:)``, ...) and for the structural views' own `body` implementations, and it is the **parity spec** the engine is verified against (see [The parity discipline](#the-parity-discipline) below). Phase 3 retires it.
+
+### Who the engine SPI is for
+
+The engine surface is three methods on ``View``:
+
+```swift
+func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
+func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize)
+func _childViews() -> [any View]
+```
+
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_render` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code) and `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child). Only structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout.
+
+### Proposal semantics
+
+Three properties of the proposal model are load-bearing. They were settled in design review; treat them as the engine's contract.
+
+**1. An offer, not a box.**
+
+"Hardness" lives at four distinct stages, and only the last one is actually hard:
+
+| Stage | Who decides | Nature |
+|-------|-------------|--------|
+| The proposal (`ProposedSize`) | the parent | **advice** — what the parent is offering |
+| The returned `ViewSize` | the child | the child's **truthful want** — may exceed the offer |
+| The assigned `size:` in `_render` | the parent | the parent's **decision** — where/how big the child is placed |
+| The `CellBuffer` bounds | the renderer | the **only hard wall** — writes outside are dropped |
+
+Nothing clamps measurement. A clamped answer destroys information a parent needs: a scroll viewport must know that its content extends past the visible area even though the visible area is all it can show. The buffer's bounds guards (`CellBuffer.set(col:row:_:)` returning for out-of-range positions) are what actually stop a view from painting outside the terminal.
+
+**2. An argument, not a limit.**
+
+The proposal is an *argument* to the child's layout function, not a limit on its answer. It earns its keep the moment a child's answer *depends* on the offer. Views fall into a taxonomy by how they treat the argument:
+
+- **Ignorers** — today's leaves (`ViewOutput`, ``Spacer``). They answer their ideal size regardless of the offer. A `ViewOutput` is a fully-formed raster; the engine measures it unwrapped.
+- **Passers** — the stacks (`VStack`/`HStack`). They propagate context down: each child gets the stack's proposal on the stacking axis, `nil` (ideal) on the cross axis, and the stack sizes itself from the answers.
+- **Generators** — `frame()` (`FrameView`). It answers fixed dimensions verbatim no matter what the child says, and forces those dimensions down as the child's proposal. `frame()` cannot be implemented without proposals — answering a size you were never offered requires the offer machinery.
+- **Consumers** — the phase-3 wrapping `Text` and fill views. Their answer is *undefined* without an offer: a wrapping paragraph has no ideal width, so it must be asked "how wide may you be?" before it can answer "how tall you get." No consumer views exist yet; the seam exists to add them.
+
+**3. Fit/render consistency.**
+
+A container must propose **identically in `_sizeThatFits` and `_render`**. A child asked different questions when measuring vs. when being placed will answer inconsistently — it may measure as one size and render as another, shifting content relative to the parent's alignment math. The stacks guarantee this by construction: `_render` re-measures every child with the same `ProposedSize(width: size.width, height: nil)` (VStack) or `ProposedSize(width: nil, height: size.height)` (HStack) that the fit pass used.
+
+Known limitation: `_render` receives only the *assigned size*, never the proposal, so a container cannot always reconstruct the offer. `FrameView` proposes *ideal* on flexible axes at render time (`ProposedSize(width: width, height: height)` where `nil` axes are ideal). With today's proposal-ignoring children this is observationally identical to proposing the offer; it is recorded as the phase-3 SPI extension point — carry the proposal into `_render` (e.g. `_render(into:at:size:proposal:)`) before proposal-responsive children (wrapping `Text` inside a flexible-axis frame) land.
+
+### The parity discipline
+
+The engine must reproduce the eager path, and the repo holds it to that with a harness rather than hope:
+
+- **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()` — each pinned with the *visible rows* its eager rendering produces. The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. The harness lands first (M0) so every subsequent engine change is verified against a mechanical spec, never against hand-waving.
+- **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: eager line alignment writes space cells where the engine leaves cells `.empty` — both render identically under `eraseLineRight`.
+- **The divergence list is closed.** Four divergences are documented and pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`); *no corpus case is skipped*:
+  1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubles them (a join quirk pinned as an eager-path bug).
+  2. `.empty` vs space cells in alignment padding — invisible by construction.
+  3. Multi-line children block-aligned under non-left `VStack` alignment: the engine aligns each child as one layout unit; the eager path aligned each line (an artifact of text joining). SwiftUI-consistent.
+  4. `frame()` flexible-fill exists only in the engine: a `nil` frame dimension fills a non-`nil` proposal, which the proposal-less eager `body` cannot express. Self-retires when the eager path is removed (phase 3).
+
+The parity suites run the corpus through both paths: `ParitySpecTests` (eager golden spec), `ParityEngineTests` (engine vs pinned spec, engine vs live eager, divergent cases vs documented engine rows), `ParityHarnessTests` (pins the comparison semantics themselves).
+
+### Two `frame()`s coexisting
+
+The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`` (in `Sources/Latte/Extensions/ViewOutput+Layout.swift`) and the phase-2 tree-based ``View.frame(width:height:horizontalAlignment:verticalAlignment:)`` (in `Sources/Latte/Layout/Frame.swift`) currently coexist:
+
+| | `ViewOutput.frame(...)` | `View.frame(...)` |
+|--|--------------------------|---------------------|
+| Receiver | `ViewOutput` | any `View` (incl. `ViewOutput`) |
+| Dimensions | non-optional `Int` | `Int?` (`nil` = flexible) |
+| Semantics | minimum-enforcing (`.enforceWidth`/`.enforceHeight` via `transformContent`) | proposal semantics (`FrameView`: fixed dims answered verbatim, `nil` fills the parent's offer) |
+| Returns | `ViewOutput` (eager styled text) | `FrameView<Content>` (stays in the tree) |
+
+Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 3 may retire the eager one once the engine is the only path.
 
 ---
 
@@ -472,7 +597,7 @@ Latte is a standalone library (no dependency on Chai or Spices) that provides bo
 
 **Path:** `Sources/Spices/`
 
-Spices provides pre-built, reusable interactive components built on top of Chai's Elm Architecture. Each component is a `struct` conforming to Chai's `Model` protocol (or designed to be embedded within a parent model).
+Spices provides pre-built, reusable interactive components built on top of Chai's Elm Architecture. Each component is a `struct` conforming to Chai's `Model` protocol (or designed to be embedded within a parent model); since phase 1 they expose their UI through `var body` (a `View` tree), not a `view()` method.
 
 ### Components
 
@@ -481,6 +606,8 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 | **TextInput** | `TextInput/TextInput.swift` | Single-line text input with cursor navigation, character limits, and focus/blur support. |
 | **TextArea** | `TextArea/TextArea.swift` | Multi-line text editing. |
 | **List** | `List/List.swift`, `List/FilterDelegate.swift` | Scrollable, selectable list with optional filtering/search. |
+| **SelectableList** | `SelectableList/SelectableList.swift` | Selectable list with rune-based selection state (used by the GroceryList example). |
+| **Menu** | `Menu/Menu.swift` | Interactive menu with keyboard navigation and selection messages. |
 | **Table** | `Table/Table.swift` | Tabular data display with column formatting. |
 | **Viewport** | `Viewport/Viewport.swift` | Scrollable content viewport with percentage-based scroll tracking. |
 | **Spinner** | `Spinner/Spinner.swift` | Animated loading spinner. |
@@ -499,6 +626,7 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 | File | Purpose |
 |------|---------|
 | `Internal/IDGenerator.swift` | Unique ID generation for component instances. |
+| `Internal/StyleBridge.swift` | `Style.styledText(_:)` — builds ``StyledText`` from styled strings without raw ANSI bytes (the safe path for `ViewOutput` content). |
 
 ### Design Notes
 
@@ -535,7 +663,7 @@ ProgramRunner.messageStream (AsyncStream)
     │
     ├─► model.update(msg) → Command?
     │
-    ├─► renderer.write(model.view())   [ViewOutput: content + terminal state]
+    ├─► renderer.write(model.body)   [view tree → layout engine]
     │
     └─► execute(cmd)
             │
@@ -614,33 +742,39 @@ Raw bytes from stdin
 ## Rendering Pipeline
 
 ```
-model.view() → ViewOutput
+model.body (view tree, stored as pendingView: any View)
         │
         ▼
-renderer.write(viewOutput)    stores in pendingViewOutput
+renderer.write(view)   stores the tree, defers layout
         │
         │  (every 1/fps seconds, on actor executor)
         ▼
 renderer.flush()
         │
-        ├─ diff terminal state (altScreen, windowTitle, cursorHidden)
-        │     altScreen changed?     →  enter/exit + clear render cache
-        │     windowTitle changed?   →  OSC 0 sequence
-        │     cursorHidden changed?  →  show/hide cursor
+        ├─ cursor visibility (show/hide)
         │
-        ├─ content == lastContent?   →  skip content flush
+        ├─ propose terminal size:
+        │     view._sizeThatFits(ProposedSize(width: w, height: altScreen ? h : nil))
         │
-        ├─ split content into lines
-        ├─ clamp to termHeight
+        ├─ allocate CellBuffer by policy:
+        │     empty content?   → 1-row buffer
+        │     alt screen?      → fixed terminal size, wrap policy
+        │     inline?          → measured height clamped to termHeight, truncate policy
+        │                      → suffix clamp via negative row origin
+        │
+        ├─ view._render(into: &buffer, at: origin, size: measured)
+        │
+        ├─ diff vs lastBuffer (per-cell changes + eraseBelow)
+        │     no changes?      →  skip content flush
         │
         ├─ move cursor to top of previous render
         ├─ flush queuedLines (println, normal screen only)
         │
-        ├─ for each line:
-        │     same as lastLines[i]?  →  skip (emit \n only)
-        │     changed?               →  write line + ESC[K
+        ├─ for each row:
+        │     unchanged cell?  →  skip (emit \n only)
+        │     changed?         →  write row + ESC[K
         │
-        ├─ prevCount > newCount?     →  ESC[J (erase below)
+        ├─ prevHeight > newHeight? →  ESC[J (erase below)
         │
         └─ park cursor
                 │
@@ -649,11 +783,11 @@ renderer.flush()
         terminal.write(assembled ANSI string)
 ```
 
-The content output is wrapped with synchronized update markers (`ANSI.beginSyncUpdate` / `ANSI.endSyncUpdate`, mode 2026) to prevent partial-frame tearing on supporting terminals. Terminals that do not support mode 2026 silently ignore these sequences. Terminal state transitions (alt screen, window title, cursor visibility) are written outside the sync markers since they are brief, non-visual operations that do not cause tearing.
+The content output is wrapped with synchronized update markers (`ANSI.beginSyncUpdate` / `ANSI.endSyncUpdate`, mode 2026) to prevent partial-frame tearing on supporting terminals. Terminals that do not support mode 2026 silently ignore these sequences. Terminal state transitions (alt screen enter/exit, window title, cursor visibility) are written outside the sync markers since they are brief, non-visual operations that do not cause tearing.
 
-The renderer diffs **both terminal state and content** between frames. Terminal state fields in `ViewOutput` that are `nil` are ignored (current state is preserved). Non-nil fields are compared against the last applied state and transitions are emitted only when values change.
+The renderer diffs **both rendered cells and terminal state** between frames. Terminal state is no longer carried inside the view tree (phase 1 split): alt screen is a ``Program`` option, window title is a ``Command``, and the cursor is the model's ``cursor`` property. Transitions are emitted only when values change — e.g. the cursor shape/blink is diffed against `lastCursor`, and `setWindowTitle` records `lastWindowTitle`.
 
-The key content optimisation is **line-level diffing**: only lines that changed since the last frame are rewritten. This minimises the number of bytes sent to the terminal, which matters for slow connections (SSH) and large UIs.
+The key content optimisation is **cell-level diffing via `CellBuffer`**: only rows containing changed cells are rewritten. This minimises the number of bytes sent to the terminal, which matters for slow connections (SSH) and large UIs. On the first frame (empty `lastBuffer`) every row is rewritten so blank rows left by vertical centering are not mistaken for "unchanged" and old content cannot ghost through.
 
 The entire content frame is assembled into a single `String` before calling `terminal.write()`. This reduces the number of `write(2)` syscalls to one per frame.
 
@@ -734,13 +868,13 @@ Program.run()
     ├─ signalHandler.start()
     ├─ inputReader.start()
     ├─ model.initialize() → execute(cmd)
-    ├─ renderer.write(model.view()) + renderer.flush()
+    ├─ renderer.write(model.body) + renderer.flush()
     │
     ├─ [event loop] ──────────────────────────────────────────┐
     │       for await msg in messageStream                     │
     │           handleRendererMessage(msg)                     │
     │           model.update(msg) → cmd                        │
-    │           renderer.write(model.view())  → ViewOutput     │
+    │           renderer.write(model.body)  → view tree        │
     │           execute(cmd)  or  break on .quit / QuitMsg     │
     └──────────────────────────────────────────────────────────┘
     │
@@ -759,88 +893,30 @@ The `defer { terminal.disableRawMode() }` at the top of `run()` ensures the term
 
 ## Testing Strategy
 
-Tests use Swift Testing (`@Test`, `#expect`) across three test targets.
+Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1108 tests in 87 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
 
-### InputParserTests (35 tests)
-
-`InputParser` is a pure function — no mocks needed. Tests cover:
-
-- All named keys (enter, tab, backspace, escape, space, delete)
-- Arrow keys (plain, Shift, Ctrl, Ctrl+Shift)
-- Home, End, Page Up/Down, Insert
-- Function keys F1–F20 (all encoding variants)
-- SS3 sequences
-- Ctrl+letter (A–Z), including the named-before-generic ordering
-- Alt modifier (Alt+letter, Alt+arrow)
-- Printable ASCII and multi-byte UTF-8
-- Rune batching (multiple printable characters in one read)
-- Incomplete sequence handling (`canHaveMoreData`)
-- Unknown/unrecognised sequences
-
-### RendererTests (31 tests)
-
-`Renderer` is tested via `MockTerminalOutput`, a `TerminalOutput` conformance that appends written strings to an array. Tests cover:
-
-- Initial render (cursor reset, line writing)
-- Line-level diffing (unchanged lines are skipped)
-- Alt screen enter/exit (direct and via `ViewOutput`)
-- Cursor hide/show (direct and via `ViewOutput`)
-- Window title (direct and via `ViewOutput`)
-- `println` (queued lines appear above live view)
-- `repaint` (forces full redraw)
-- Terminal size clamping (lines beyond `termHeight` are dropped)
-- Declarative `ViewOutput` terminal state transitions
-- Nil terminal state preserves current state (no transition)
-- Combined terminal state changes in a single `ViewOutput`
-- String literal `ViewOutput` passthrough (no terminal state changes)
-- Alt screen transition clears render cache
-- Synchronized output markers (present on content flush, absent when unchanged)
-- ANSI-aware width truncation (escape codes not counted, plain text clipped)
-
-### DisplayWidthTests (24 tests)
-
-**File:** `Tests/ChaiTests/RendererTests.swift`
-
-Tests cover:
-
-- Single character width calculation (ASCII → 1, CJK → 2, Hangul → 2, fullwidth → 2, control → 0)
-- Visible width measurement with ANSI sequences (CSI, OSC with BEL and ST terminators)
-- Visible width ignores SS3 (ESC O), SS2 (ESC N), and simple two-byte escape sequences
-- ANSI-aware truncation preserving escape sequences and handling wide character boundaries
-- Truncation of SS3/SS2 sequences (zero visual width, passed through)
-- OSC with ST terminator (ESC \\) correctly skipped in both measurement and truncation
-
-### ViewOutputTests (6 tests)
-
-Tests cover:
-
-- String literal creation (content set, terminal state nil)
-- String interpolation creation
-- Explicit init with all fields
-- Default `nil` values
-- `Equatable` conformance
-
-### CommandTests (10 tests)
-
-Tests cover:
-
-- `.perform` — async work executes and message is delivered
-- `.batch` — all commands run, all messages arrive
-- `.sequence` — messages arrive in order
-- `.quit` — `QuitMsg` is sent
-- `.tick` — fires after the specified duration
-- `.every` — fires at the next wall-clock boundary
-- `.println` — produces a `PrintLineMsg`
-- `.setWindowTitle` — produces the correct ANSI sequence
-- Integration: a `Model` that uses commands to update its state
-
-### LatteTests (Tests/LatteTests/)
-
-Tests cover all layout and styling modules:
+### ChaiTests (Tests/ChaiTests/)
 
 | Test file | Coverage |
 |-----------|----------|
-| `DisplayWidthTests.swift` | Character width calculation, ANSI-aware visible width, truncation |
+| `InputParserTests.swift` | All named keys, arrows (plain/Shift/Ctrl/Ctrl+Shift), F1–F20, SS3, Ctrl+letter (incl. named-before-generic ordering), Alt, printable UTF-8, rune batching, incomplete sequences (`canHaveMoreData`), unknown sequences |
+| `RendererTests.swift` | Renderer via `MockTerminalOutput` (a `TerminalOutput` conformance that captures written strings): initial render, cell-diff skipping, alt screen enter/exit, cursor hide/show, window title, `println`, `repaint`, terminal size clamping, synchronized output markers, ANSI-aware width truncation, cursor shape |
+| `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
+| `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
+| `LayoutEngineTests.swift` | M1/M2 engine units: `_sizeThatFits`/`_render`/`_childViews` on leaves and Latte containers, proposal handling, fraction math |
+| `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
+| `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
+| `StructuralViewTests.swift` | `TupleView`/`ForEachView`/`ConditionalContent`/`OptionalView` flattening and `_childViews()` transparency |
+| `CommandTests.swift` | `.perform`, `.batch`, `.sequence`, `.quit`, `.tick`, `.every`, `.println`, `.setWindowTitle`, integration |
+| `ANSIHyperlinkTests.swift`, `KeyTypeTests.swift`, `MessageFilterTests.swift`, `EventFilterTests.swift`, `LoggingTests.swift`, `ProgramTests.swift` | OSC 8 hyperlinks, key type equatable, internal message/event filtering, logging, program lifecycle |
+
+### LatteTests (Tests/LatteTests/)
+
+Covers the string-level layout/styling modules plus the phase-2 engine:
+
+| Test file | Coverage |
+|-----------|----------|
+| `DisplayWidthTests.swift` | Character width, ANSI-aware visible width, truncation |
 | `BorderTests.swift` | All border styles, selective sides, ANSI preservation, equatable |
 | `AlignmentTests.swift` | Left/center/right/fractional alignment, ANSI-aware padding, multi-line |
 | `PaddingTests.swift` | All-sides padding, shorthand constructors, custom fill characters, ANSI preservation |
@@ -848,15 +924,22 @@ Tests cover all layout and styling modules:
 | `WrapTests.swift` | Word wrapping at spaces/hyphens/commas, wide characters, ANSI carry-over |
 | `InlineTests.swift` | First-line extraction, ANSI preservation, composition with other functions |
 | `JoinTests.swift` | Horizontal/vertical joins, alignment options, ANSI preservation |
-| `PlaceTests.swift` | Canvas placement, horizontal/vertical alignment, bordered content |
+| `CompositorTests.swift` | Z-ordered `Layer` canvas placement |
 | `StringExtensionTests.swift` | Chainable string extensions, composition chains |
 | `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
+| `StackTests.swift` / `StacksEngineTests.swift` | The eager join behavior *and* the engine measure/render of `VStack`/`HStack`, alignment, skip-empty |
+| `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, overflow (no clipping), legacy body |
+| `LayoutParity/` | The M0–M2 parity discipline: `ParityHarness.swift` (eager/engine buffers + `visibleRows`), `ParityCorpus.swift` (the pinned corpus), `ParitySpecTests` (golden spec), `ParityEngineTests` (engine vs spec/eager + divergent cases), `ParityHarnessTests` (comparison semantics) |
+| `ViewOutputLayoutTests.swift` | The legacy eager `ViewOutput` modifiers (`.width()`, `.height()`, `.frame()`, `.beside()`, `.above()`, ...) |
+| `StyleTests.swift`, `StyleFlagTests.swift`, `UnderlineStyleTests.swift`, `ColorUtilitiesTests.swift`, `HyperlinkTests.swift`, `ListRendererTests.swift`, `TreeRendererTests.swift` | Styling, color utilities, hyperlinks, static renderers |
 
 ### SpicesTests (Tests/SpicesTests/)
 
 | Test file | Coverage |
 |-----------|----------|
-| `SpicesTests.swift` | Component initialization, state management, view rendering, key binding matching, style rendering |
+| `SpicesTests.swift` | Component initialization, state management, view rendering (via `body`), key binding matching, style rendering |
+
+> **Note:** `SpicesTests.swift` currently emits deprecation warnings for `Progress.viewAs(_:)` in its progress-bar cases — pre-existing, out of phase-2 scope; the suites still pass. Migrating them to `viewAsStyledText(_:)` is tracked separately.
 
 ---
 
@@ -864,26 +947,40 @@ Tests cover all layout and styling modules:
 
 ```
 chai/
-├── Package.swift                        # swift-tools-version: 6.1.2
+├── Package.swift                        # swift-tools-version: 6.1
 │                                        # macOS 14+, StrictConcurrency enabled
+│                                        # swift-docc-plugin (build-time only)
 │
 ├── Sources/
 │   ├── Chai/                            # Core TUI framework
 │   │   ├── Chai.swift                   # Module documentation entry point
 │   │   ├── Core/
-│   │   │   ├── Model.swift              # Model protocol
+│   │   │   ├── Model.swift              # Model protocol (inherits View)
 │   │   │   ├── Message.swift            # Message protocol + built-in messages
 │   │   │   ├── Command.swift            # Command enum + convenience factories
-│   │   │   └── Program.swift            # Program<M>, ProgramRunner, SignalHandler
+│   │   │   ├── Program.swift            # Program<M>, ProgramRunner, SignalHandler
+│   │   │   ├── Program+Options.swift    # Program.Option (withAltScreen, withLogger, ...)
+│   │   │   ├── View.swift               # View protocol + layout engine SPI + Text/Spacer/Empty
+│   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
+│   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
+│   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
+│   │   │   ├── LayoutTypes.swift        # ProposedSize / ViewSize / ViewOrigin
+│   │   │   ├── Cursor.swift             # Cursor position and shape
+│   │   │   ├── Logger.swift             # ChaiLogger / FileLogger diagnostics
+│   │   │   └── MessageChannel.swift     # AsyncStream wrapper for the message bus
 │   │   ├── Terminal/
 │   │   │   ├── ANSICodes.swift          # ANSI/VT100 escape sequence constants
 │   │   │   ├── Terminal.swift           # TerminalOutput protocol + Terminal class
 │   │   │   ├── InputReader.swift        # Async stdin reader (background Thread)
 │   │   │   └── InputParser.swift        # Pure byte-sequence parser → KeyMsg
 │   │   └── Renderer/
-│   │       └── Renderer.swift           # Actor-based framerate diff renderer
+│   │       ├── Renderer.swift           # Actor-based framerate diff renderer (engine flush)
+│   │       ├── Cell.swift               # Cell value (character, style, wide-width invariants)
+│   │       ├── CellBuffer.swift         # 2D cell grid + write policy + diff
+│   │       ├── StyledText.swift         # Structured styled text (maxLineWidth, lineCount)
+│   │       └── DisplayWidth.swift       # Unicode-aware visible width (Chai copy)
 │   │
-│   ├── Latte/                           # Layout & styling library (standalone)
+│   ├── Latte/                           # Layout, styling, and the declarative containers
 │   │   ├── Latte.swift                  # Module entry point
 │   │   ├── Borders/
 │   │   │   ├── Border.swift             # Border styles and configuration
@@ -894,25 +991,34 @@ chai/
 │   │   │   ├── Padding.swift            # Padding (inner spacing)
 │   │   │   ├── Size.swift               # Width/height enforcement and clamping
 │   │   │   ├── Wrap.swift               # ANSI-aware word wrapping
-│   │   │   └── Inline.swift             # First-line extraction
+│   │   │   ├── Inline.swift             # First-line extraction
+│   │   │   ├── Stacks.swift             # VStack/HStack (eager body + engine impl)
+│   │   │   └── Frame.swift              # FrameView + View.frame(...) modifier
 │   │   ├── Composition/
 │   │   │   ├── Join.swift               # Horizontal/vertical block joining
-│   │   │   └── Place.swift              # Absolute canvas placement
+│   │   │   └── Compositor.swift         # Z-ordered Layer canvas placement
 │   │   ├── Measurement/
-│   │   │   └── DisplayWidth.swift       # Unicode-aware visible width
+│   │   │   └── DisplayWidth.swift       # Unicode-aware visible width (Latte copy)
+│   │   ├── Static/
+│   │   │   ├── ListRenderer.swift       # Static list rendering
+│   │   │   └── TreeRenderer.swift       # Static tree rendering
 │   │   ├── Utilities/
 │   │   │   ├── TabExpansion.swift        # Tab-to-spaces expansion
 │   │   │   └── StringLines.swift        # Line splitting utilities
 │   │   └── Extensions/
-│   │       └── String+Layout.swift      # Chainable String extensions
+│   │       ├── String+Layout.swift      # Chainable String extensions
+│   │       ├── StyledText+Layout.swift  # StyledText layout extensions
+│   │       └── ViewOutput+Layout.swift  # Legacy eager ViewOutput modifiers (frame, beside, ...)
 │   │
-│   └── Spices/                          # Component library (depends on Chai)
+│   └── Spices/                          # Component library (depends on Chai, Latte)
 │       ├── Spices.swift                 # Module entry point
 │       ├── TextInput/TextInput.swift    # Single-line text input
 │       ├── TextArea/TextArea.swift      # Multi-line text editing
 │       ├── List/
 │       │   ├── List.swift               # Selectable list with filtering
 │       │   └── FilterDelegate.swift     # Filter behavior delegate
+│       ├── SelectableList/SelectableList.swift  # Rune-based selectable list
+│       ├── Menu/Menu.swift              # Interactive menu
 │       ├── Table/Table.swift            # Tabular data display
 │       ├── Viewport/Viewport.swift      # Scrollable content viewport
 │       ├── Spinner/Spinner.swift        # Animated loading spinner
@@ -928,45 +1034,40 @@ chai/
 │       │   ├── Style.swift              # ANSI text styling
 │       │   └── Color.swift              # Color definitions (hex, 256, true color)
 │       └── Internal/
-│           └── IDGenerator.swift        # Unique ID generation
+│           ├── IDGenerator.swift        # Unique ID generation
+│           └── StyleBridge.swift        # Style.styledText(_:) for safe ViewOutput content
 │
 ├── Tests/
-│   ├── ChaiTests/
-│   │   ├── InputParserTests.swift       # 35 tests
-│   │   ├── RendererTests.swift          # 61 tests (Renderer + DisplayWidth + ViewOutput)
-│   │   └── CommandTests.swift           # 10 tests
-│   ├── LatteTests/                      # 11 test files covering all layout modules
-│   │   ├── DisplayWidthTests.swift
-│   │   ├── BorderTests.swift
-│   │   ├── AlignmentTests.swift
-│   │   ├── PaddingTests.swift
-│   │   ├── SizeTests.swift
-│   │   ├── WrapTests.swift
-│   │   ├── InlineTests.swift
-│   │   ├── JoinTests.swift
-│   │   ├── PlaceTests.swift
-│   │   ├── StringExtensionTests.swift
-│   │   └── TabExpansionTests.swift
+│   ├── ChaiTests/                       # InputParser, Renderer (+engine path, structural),
+│   │   │                                # LayoutEngine, CellBuffer/Cell, StyledText,
+│   │   │                                # StructuralView, Command, ANSIHyperlink, KeyType,
+│   │   │                                # MessageFilter, EventFilter, Logging, Program
+│   │   └── ...
+│   ├── LatteTests/                      # all string layout modules + StackTests,
+│   │   │                                # StacksEngineTests, FrameTests,
+│   │   │                                # LayoutParity/ (harness + corpus + spec + engine),
+│   │   │                                # ViewOutputLayoutTests, style/color/static suites
+│   │   └── ...
 │   └── SpicesTests/
 │       └── SpicesTests.swift            # Component tests
 │
 └── Examples/
     └── GroceryList/
         └── Sources/
-            └── main.swift               # Grocery list example app
+            └── main.swift               # Grocery list example app (centers via .frame(...))
 ```
 
 **Package targets:**
 
 | Target | Type | Dependencies | Description |
 |--------|------|-------------|-------------|
-| `Chai` | library | — | Core TUI framework |
-| `Latte` | library | — | Layout, styling, and measurement |
+| `Chai` | library | — | Core TUI framework (runtime, rendering, layout engine types + SPI) |
+| `Latte` | library | Chai | Layout, styling, measurement, and the declarative containers |
 | `Spices` | library | Chai, Latte | Pre-built interactive components |
-| `ChaiTests` | test | Chai | Core framework tests |
-| `LatteTests` | test | Latte | Layout, styling, and measurement tests |
+| `ChaiTests` | test | Chai, Latte | Core framework + engine tests (exercise Latte containers) |
+| `LatteTests` | test | Latte | Layout, styling, measurement, engine, and parity tests |
 | `SpicesTests` | test | Spices | Component tests |
-| `GroceryList` | executable | Chai, Latte, Spices | Example app |
+| `GroceryList` | executable | Chai, Latte, Spices | Example app (phase-2 acceptance feature) |
 
 ---
 
@@ -988,9 +1089,21 @@ Using an existential allows the message stream (`AsyncStream<any Message>`) to c
 
 Value semantics make state mutations explicit (`mutating func`) and prevent accidental aliasing bugs. The compiler enforces that the model is not shared across concurrency boundaries. The single authoritative copy lives in `ProgramRunner` and is mutated only on the event loop.
 
-### Why line-level diffing in the renderer?
+### Why cell-level diffing in the renderer?
 
-Full-screen redraws on every frame would send a large number of bytes to the terminal, causing visible flicker on slow connections (SSH) and wasting CPU on ANSI parsing in the terminal emulator. Line-level diffing typically reduces output by 90%+ for UIs that change only a few lines per frame.
+Full-screen redraws on every frame would send a large number of bytes to the terminal, causing visible flicker on slow connections (SSH) and wasting CPU on ANSI parsing in the terminal emulator. Since M3 the diff operates on the `CellBuffer` instead of parsed strings — the renderer rebuilds the frame through the layout engine, diffs per cell, and only rewrites rows that contain changed cells. This typically reduces output by 90%+ for UIs that change only a few lines per frame.
+
+### Why a child-*view* layout seam instead of a child-*output* seam?
+
+The phase-1 renderer resolved children to `ViewOutput` strings before composing them (`_collectChildOutputs()`). The first phase-2 engine attempt kept that habit — layout operated on resolved outputs — and failed: resolving flattens the tree, bypasses every child's layout overrides, and makes proposals meaningless. The reverted attempt was the reason the M0 parity harness landed first, so the redesign could be verified against a mechanical spec. The engine's `_childViews()` seam exposes child *views* instead, letting containers measure and place them with full SPI fidelity.
+
+### Why is the engine SPI underscored-but-public?
+
+`_sizeThatFits(_:)`, `_render(into:at:size:)`, and `_childViews()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children) keep every other view working with zero engine code.
+
+### Why proposal *arguments* rather than clamped constraints?
+
+A proposal is advice, not a wall: the child answers its truthful size, the parent decides the assigned size, and only the ``CellBuffer`` enforces anything. Clamping at measurement is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. The cost is that proposal-*responsive* children (wrapping `Text`) cannot exist until phase 3, when the render pass also receives the proposal; the seam and the documented SPI extension point are already in place.
 
 ### Why assemble the entire frame into one `String` before writing?
 

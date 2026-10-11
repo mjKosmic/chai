@@ -5,8 +5,10 @@ This document tracks the migration from imperative view composition
 declarative approach built on Swift `@resultBuilder`.
 
 **Phase status:** phase 1 (declarative view tree) merged via PR #19.
-Phase 2 (proposal-driven layout engine) is planned below and in progress
-on `declarative-phase-2`.
+Phase 2 (proposal-driven layout engine) **has landed** on
+`declarative-phase-2` (M0–M4; M5 is the docs/cleanup milestone — this
+change). **Phase 3 is the next phase;** its seed is the "Deferred to
+phase 3" list below.
 
 ---
 
@@ -85,7 +87,7 @@ A `.frame()` modifier does not exist yet.
 
 ---
 
-## Phase 2 — Proposal-driven layout engine (in progress, branch `declarative-phase-2`)
+## Phase 2 — Proposal-driven layout engine (landed on `declarative-phase-2`)
 
 **Scope (decided):** the engine plus `frame()` as its acceptance feature.
 **Not** in phase 2: `AnyView`, modifier wrappers that stay in the tree,
@@ -220,14 +222,14 @@ and proposes that fixed size downward.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 
-| # | Deliverable | Exit criteria |
-|---|---|---|
-| M0 | Parity harness + tree corpus | utilities + corpus committed; no production changes |
-| M1 | Types + seam: `LayoutTypes.swift`, `_childViews()` clean break, engine protocol with body-resolving defaults, leaf impls, `maxLineWidth` move | measurement/render unit tests pass (incl. CJK widths, empty → 0×0); nothing consumes the engine yet; all suites green |
-| M2 | Container engine: `VStack`/`HStack`/structural overrides honoring alignment + size | full corpus parity green (minus allowed divergences); fraction-math and skip-empty tests |
-| M3 | Renderer flip: buffer policy, `pendingView: any View`, engine-built buffers | **all suites green unmodified** — the phase's proof point |
-| M4 | `frame()`: `FrameView` + modifier | frame unit tests (fixed/one-dim/ideal/alignment/nesting); GroceryList centers via `.frame(...)` — the migration's motivating scenario |
-| M5 | Docs & cleanup: ARCHITECTURE.md engine section, status flip, AGENTS.md pitfalls | review-ready |
+| # | Deliverable | Exit criteria | Status |
+|---|---|---|---|
+| M0 | Parity harness + tree corpus | utilities + corpus committed; no production changes | ✅ `f838b54` |
+| M1 | Types + seam: `LayoutTypes.swift`, `_childViews()` clean break, engine protocol with body-resolving defaults, leaf impls, `maxLineWidth` move | measurement/render unit tests pass (incl. CJK widths, empty → 0×0); nothing consumes the engine yet; all suites green | ✅ `a093465` |
+| M2 | Container engine: `VStack`/`HStack`/structural overrides honoring alignment + size | full corpus parity green (minus allowed divergences); fraction-math and skip-empty tests | ✅ `edb7517` |
+| M3 | Renderer flip: buffer policy, `pendingView: any View`, engine-built buffers | **all suites green unmodified** — the phase's proof point | ✅ `3eb19e7` |
+| M4 | `frame()`: `FrameView` + modifier | frame unit tests (fixed/one-dim/ideal/alignment/nesting); GroceryList centers via `.frame(...)` — the migration's motivating scenario | ✅ `1120006` |
+| M5 | Docs & cleanup: ARCHITECTURE.md engine section, status flip, AGENTS.md pitfalls | review-ready | 🔨 in progress (this change) |
 
 ### Risks & mitigations
 
@@ -279,3 +281,11 @@ limitation.
   `q`-key check moved *before* the `picker`/`menu` updates so the key can't
   be consumed by a child first. In your own models, handle global quit keys
   before delegating to component `update`s.
+- **Two `frame()`s coexist during phase 2** (detailed in ARCHITECTURE.md,
+  "Two `frame()`s coexisting"): the eager
+  `ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`
+  (non-optional `Int`s, minimum-enforcing, returns `ViewOutput`) and the
+  tree-based `View.frame(width:height:horizontalAlignment:verticalAlignment:)`
+  (`Int?` dimensions, proposal semantics, returns `FrameView`). Overload
+  resolution sends `ViewOutput` receivers to the eager one, so existing
+  code is unaffected. Phase 3 may retire the eager one.
