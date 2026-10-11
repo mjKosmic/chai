@@ -175,6 +175,15 @@ implemented without proposals — that is the point. Its legacy `body`
 delegates to the existing `.width()`/`.height()` modifiers when both
 dimensions are fixed.
 
+**`frame()` overflow semantics (decided):** `frame()` does **not** clip.
+A child whose truthful answer exceeds the frame's fixed size overflows
+the frame's bounds (SwiftUI-consistent), with the terminal buffer as the
+final backstop; a `.clipped()` modifier is a phase-3 candidate. Shrinking
+content to fit is the phase-3 wrapping/flex story — `frame()` is
+placement, not shrinking. Note `frame()` is a proposal *generator*: it
+answers its fixed size to its parent regardless of the child's answer,
+and proposes that fixed size downward.
+
 ### Spec & parity strategy
 
 - Parity harness (M0): for a corpus of trees, render once through the
