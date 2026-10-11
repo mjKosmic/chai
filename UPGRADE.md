@@ -208,6 +208,15 @@ and proposes that fixed size downward.
      SwiftUI-consistent; unpinned by pre-existing tests (`StackTests`
      alignment cases use single-line children). Corpus cases are marked
      `isKnownDivergent` with explicit engine-side expectations.
+  4. `frame()` flexible-axis fill exists only in the engine: a frame with
+     a flexible (`nil`) dimension fills a non-`nil` proposal in
+     `_sizeThatFits` ("fill available space"), but the eager `body` has no
+     proposal context, so it resolves fixed dimensions only. A
+     flexible-axis frame (e.g. `Text("ab").frame(horizontalAlignment:
+     .center)` at an 8-column proposal) renders centered in the engine and
+     at the child's ideal width in the eager path. Corpus case marked
+     `isKnownDivergent` with explicit engine-side expectations. This
+     asymmetry self-retires in phase 3 when the eager path is removed.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 
@@ -237,6 +246,15 @@ and proposes that fixed size downward.
 `AnyView`; `ModifiedContent`-style modifier wrappers; proposal-aware `Text`
 wrapping (the leaf measures unwrapped — the seam now exists to add it);
 dynamic alt-screen control; proportional `Spacer` variants.
+Also: carry the proposal into `_render`. `FrameView._render` receives only
+the assigned size, never the proposal, so a flexible-axis frame proposes
+*ideal* to its child on re-measure — observationally identical today
+(children ignore proposals), but a proposal-responsive child (the phase-3
+wrapping `Text`) inside a flexible-axis frame would measure differently
+between the fit pass (which proposed the offer) and the render pass. If
+that class of child lands, `_render(into:at:size:proposal:)` (or similar)
+is the SPI extension point; `FrameView`'s doc comment records the same
+limitation.
 
 ---
 

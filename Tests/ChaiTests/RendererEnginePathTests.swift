@@ -205,4 +205,65 @@ struct RendererEnginePathTests {
         #expect(mock.output.contains("abcde"))
         #expect(mock.output.contains("fgh"))
     }
+
+    // MARK: - Framed centering (M4 acceptance)
+
+    @Test func framedTreeCentersContentInTerminal() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 20, height: 5)
+        await renderer.enterAltScreen()
+        mock.reset()
+        // The GroceryList motivating scenario: an HStack centered in the
+        // terminal via a fixed-dimension frame.
+        await renderer.write(
+            HStack {
+                Text("ab")
+                Text("cd")
+            }
+            .frame(
+                width: 20, height: 5,
+                horizontalAlignment: .center, verticalAlignment: .middle
+            )
+        )
+        await renderer.flush()
+        // The frame answers the terminal size (20×5) and places the 4-wide,
+        // 1-tall stack at its alignment fractions: col 8, row 2. The mock
+        // output row carries 8 leading spaces before "abcd" (followed by the
+        // row's erase-line-right).
+        #expect(mock.output.contains("        abcd" + ANSI.eraseLineRight))
+        // Vertical centering: rows 0 and 1 are painted blank before the
+        // content row — the frame's vertical padding is drawn above it.
+        #expect(
+            mock.output.contains(
+                ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight + "\r\n"
+                    + "        abcd" + ANSI.eraseLineRight
+            )
+        )
+    }
+
+    @Test func framedTreeReflowsOnTerminalResize() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 20, height: 5)
+        await renderer.enterAltScreen()
+        mock.reset()
+        await renderer.write(
+            HStack {
+                Text("ab")
+                Text("cd")
+            }
+            .frame(horizontalAlignment: .center, verticalAlignment: .middle)
+        )
+        await renderer.flush()
+        // Flexible frame: fills the 20-wide offer → centered at col 8.
+        #expect(mock.output.contains("        abcd"))
+        mock.reset()
+        // Shrink the terminal: the flexible frame re-fills the new offer and
+        // re-centers (4-wide stack in 10 columns → col 3).
+        await renderer.setSize(width: 10, height: 5)
+        await renderer.flush()
+        #expect(mock.output.contains("   abcd"))
+    }
 }

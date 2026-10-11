@@ -459,5 +459,98 @@ extension ParityCase {
             // Both children measure 0×0; the stack is 0×0 → zero rows.
             expectedRows: []
         ),
+
+        // ── M4 additions: frame() ──────────────────────────────────────────
+        //
+        // Fixed-dimension frames are PARITY cases: the legacy `body`'s
+        // `.width()`/`.height()` composition agrees with the engine for fixed
+        // dims (both enforce minimums, aligned by the same fraction math).
+        // The flexible-axis case is the one divergence (see below).
+
+        ParityCase(
+            name: "fixed frame left top around small vstack",
+            view: VStack {
+                Text("a")
+                Text("b")
+            }
+            .frame(width: 6, height: 3),
+            width: 6,
+            // Eager: width-pad "a"/"b" to 6 (left), then height-pad 1 blank
+            // row at the bottom → rows ["a", "b", ""].
+            expectedRows: ["a", "b", ""]
+        ),
+
+        ParityCase(
+            name: "fixed frame right bottom around small vstack",
+            view: VStack {
+                Text("a")
+                Text("b")
+            }
+            .frame(width: 8, height: 4, horizontalAlignment: .right, verticalAlignment: .bottom),
+            width: 8,
+            // Eager: width-pad to 8 (right) → "       a","       b"; then
+            // height-pad 2 blank rows on top.
+            expectedRows: ["", "", "       a", "       b"]
+        ),
+
+        ParityCase(
+            name: "fixed frame center middle around text",
+            view: Text("ab")
+                .frame(width: 8, height: 3, horizontalAlignment: .center, verticalAlignment: .middle),
+            width: 8,
+            // Eager: width-pad "ab" to 8 (center) → "   ab   "; height-pad 1
+            // blank row each side (odd remainder goes bottom) → row 1 has the
+            // content.
+            expectedRows: ["", "   ab", ""]
+        ),
+
+        ParityCase(
+            name: "fixed frame center middle around hstack",
+            view: HStack {
+                Text("a")
+                Text("b")
+            }
+            .frame(width: 6, height: 2, horizontalAlignment: .center, verticalAlignment: .middle),
+            width: 6,
+            // Eager: "ab" padded to 6 (center) → "  ab  "; height-pad 1 blank
+            // row at the bottom (odd remainder goes bottom).
+            expectedRows: ["  ab", ""]
+        ),
+
+        ParityCase(
+            name: "fixed frame smaller than child does not clip in either path",
+            view: Text("abcd")
+                .frame(width: 2, horizontalAlignment: .center),
+            width: 2,
+            // No clipping (pinned overflow semantics): the 4-wide child
+            // overflows the 2-wide frame; the derived 2-wide buffer truncates
+            // it in BOTH paths (eager's width() pads but never truncates, and
+            // `layout` truncates at the buffer edge; the engine's leaf write
+            // truncates at the buffer edge too).
+            expectedRows: ["ab"]
+        ),
+
+        // !!! ALLOWED DIVERGENCE #4 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // Flexible-axis fill exists only in the engine. The eager `body` has
+        // no proposal context: with no fixed dimensions it resolves to the
+        // content's ideal width ("ab", 2 columns). The engine is proposed 8
+        // columns by the harness, fills the offer (answers 8), and centers
+        // the 2-wide child within it → "   ab". Default `.left` would make
+        // the fill invisible at the visible-rows level (content at col 0
+        // either way), so the case uses `.center` to pin the fill + placement
+        // in one observable row.
+
+        ParityCase(
+            name: "DIVERGENT: flexible width frame fills proposal and centers",
+            view: Text("ab")
+                .frame(horizontalAlignment: .center),
+            width: 8,
+            // TODAY's eager output: no proposal context → ideal "ab".
+            expectedRows: ["ab"],
+            isKnownDivergent: true,
+            // Engine: fills the 8-column offer, centers the child at col 3.
+            expectedEngineRows: ["   ab"]
+        ),
     ]
 }
