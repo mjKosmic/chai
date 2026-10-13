@@ -7,8 +7,9 @@ declarative approach built on Swift `@resultBuilder`.
 **Phase status:** phase 1 (declarative view tree) merged via PR #19.
 Phase 2 (proposal-driven layout engine) **has landed** on
 `declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
-this docs milestone). **Phase 3 is the next phase;** its seed and
-suggested staging are in "Deferred to phase 3" below.
+this docs milestone). **Phase 3 is in progress** on
+`declarative-phase-3` — Stage A plan below; the full seed and staging are
+in "Deferred to phase 3".
 
 ---
 
@@ -242,6 +243,54 @@ and proposes that fixed size downward.
 - **Dual paths during phase 2** → `body` stays authoritative for eager
   modifiers; the engine is authoritative for the renderer. Phase 3 retires
   the duality.
+
+---
+
+## Phase 3 — Stage A: first proposal consumers (in progress, branch `declarative-phase-3`)
+
+**Scope (decided):** the proposal-carrying `_render` SPI fix, word-aware
+wrapping `Text`, fill/flex views + proportional `Spacer` variants, and
+`.clipped()`. **Not** in Stage A: `AnyView` (Stage B), modifier
+wrappers/eager-path retirement (Stage C).
+
+**Pinned decisions:**
+
+- **SPI: clean break, pre-alpha.** `_render(into:at:size:)` becomes
+  `_render(into:at:size:proposal:)`, updating all conformers (the `View`
+  default, `ViewOutput`, `Spacer`, `VStack`, `HStack`, `FrameView`). The
+  contract changes from "propose identically in structure" to **"the
+  proposal passed to a child at render time must equal the proposal used
+  to measure it at fit time"** — value-equal, not just structurally
+  equal. This closes the phase-2 limitation (FrameView's render-time
+  ideal-on-flexible-axes becomes a faithful reconstruction).
+- **Wrapping `Text`: word-aware with a char-level fallback.** Break at
+  whitespace (the whitespace is consumed at the break; interior runs are
+  preserved) and *after* hyphens (no characters inserted). Each CJK
+  character is its own break unit — CJK runs wrap character-by-character
+  naturally. A non-CJK word wider than the container falls back to
+  char-level wrapping (display-width aware, CJK-safe mid-word). Existing
+  newlines are hard breaks — wrapping applies per hard line. Styles are
+  preserved: segments split at break points, never re-styled.
+- **`ViewOutput` stays a non-wrapping raster leaf** (explicit newlines
+  only, proposals ignored) — it is a fully-formed raster. Only `Text`
+  consumes width proposals. This keeps every existing `body: ViewOutput`
+  model and the string-writing RendererTests byte-identical.
+- **Stage A slice:** A0 behavior-preserving refactor → A1 wrapping `Text`
+  → A2 fill/flex/Spacer → A3 `.clipped()`.
+
+### Milestones
+
+| # | Deliverable | Exit criteria |
+|---|---|---|
+| A0 | **Proposal-carrying `_render`** — the clean SPI break across all conformers; `Renderer.flush` passes the fit proposal (width w, height alt-screen h / nil) to the root render; `FrameView` reconstructs its fit proposal on re-measure; docs rewritten (ARCHITECTURE fit/render section, AGENTS pitfall #2 becomes a value-equality contract) | Behavior-preserving: all 1108 suites green unmodified; a test-local proposal-echo consumer view + a renderer-level parity case exercising `assigned ≠ proposed` at the root (the phase-2 harness blind spot) |
+| A1 | **Word-aware wrapping `Text`** — measures wrapped at a non-nil width proposal, renders the wrapped content; algorithm per the pinned rules | New wrapping tests (whitespace/hyphen/CJK/fallback/hard-newline/style preservation); corpus truncation cases re-pinned as **divergence #5** (engine wraps, eager truncates — `expectedRows` eager, `expectedEngineRows` wrapped, `isKnownDivergent`); example uses a wrapping `Text` |
+| A2 | **Fill/flex views + proportional `Spacer`** — minimal fill views answering proposal dimensions; flexible `Spacer` variants taking a fraction of leftover space | Measurement/placement tests; corpus additions where eagable (fill-only engine behavior → divergence if eager can't express it) |
+| A3 | **`.clipped()`** — `ClipView` renders the child, then clears any cells the child painted outside its assigned rect (the opt-in for frame's pinned no-clip decision) | Clip tests (overflow child clipped at rect); corpus parity (clip is engine-side only — new divergence or declared engine-only feature with a corpus case) |
+
+Divergence-list updates are expected at A1 (truncation → wrap) and A3
+(clipping) — the closed-list mechanism is designed for exactly this;
+every change must carry `expectedRows` + `expectedEngineRows` + an
+`isKnownDivergent` flag, and the closed list's wording stays.
 
 ### Deferred to phase 3 (seed list and suggested staging)
 
