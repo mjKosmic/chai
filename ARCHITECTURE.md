@@ -591,6 +591,10 @@ The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAl
 
 Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 3 may retire the eager one once the engine is the only path.
 
+### Scope: what the engine deliberately does not do
+
+Phase 3's planned features (wrapping `Text`, fill/flex views, `AnyView`, tree-preserving modifier wrappers) deliberately avoid SwiftUI's hardest machinery: there is **no view identity** and **no per-view diffing**. The Elm model re-renders full frames every tick and the only history the framework keeps is the `CellBuffer` from the last frame for cell-level row diffing. This is a core simplification, not a gap: a full-frame layout pass at terminal frame rates is cheap enough that identity tracking buys nothing. Any phase-3 design that introduces identity or structural diffing on the view tree should be treated as scope creep and justified separately.
+
 ---
 
 ## Spices — Component Library

@@ -6,9 +6,9 @@ declarative approach built on Swift `@resultBuilder`.
 
 **Phase status:** phase 1 (declarative view tree) merged via PR #19.
 Phase 2 (proposal-driven layout engine) **has landed** on
-`declarative-phase-2` (M0–M4; M5 is the docs/cleanup milestone — this
-change). **Phase 3 is the next phase;** its seed is the "Deferred to
-phase 3" list below.
+`declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
+this docs milestone). **Phase 3 is the next phase;** its seed and
+suggested staging are in "Deferred to phase 3" below.
 
 ---
 
@@ -243,11 +243,37 @@ and proposes that fixed size downward.
   modifiers; the engine is authoritative for the renderer. Phase 3 retires
   the duality.
 
-### Deferred to phase 3
+### Deferred to phase 3 (seed list and suggested staging)
 
-`AnyView`; `ModifiedContent`-style modifier wrappers; proposal-aware `Text`
-wrapping (the leaf measures unwrapped — the seam now exists to add it);
-dynamic alt-screen control; proportional `Spacer` variants.
+The seed list: `AnyView`; `ModifiedContent`-style modifier wrappers;
+proposal-aware `Text` wrapping (the leaf measures unwrapped — the seam
+exists); dynamic alt-screen control (per-state fullscreen; today it is a
+program-level startup option); proportional `Spacer` variants; and a
+`.clipped()` modifier (the opt-in accompanying `frame()`'s pinned no-clip
+decision).
+
+Suggested staging from the phase-2 closeout — the ordering constraint is
+load-bearing:
+
+1. **Stage A — first proposal consumers.** Carry the proposal into
+   `_render` and add a renderer-level parity case exercising
+   `assigned ≠ proposed` (the harness never does: `engineBuffer` renders
+   at the measured size with the same proposal), *then* land wrapping
+   `Text`, fill/flex views, proportional `Spacer` variants, and
+   `.clipped()`.
+2. **Stage B — `AnyView`** type erasure for heterogenous runtime-built
+   children (`buildArray` currently requires one homogeneous `V`).
+3. **Stage C — modifiers stay in the tree.** Rebuild
+   `.bordered()/.padded()/.beside()/.above()` and the rest of the eager
+   family as `ModifiedContent`-style wrappers, retire the eager
+   `_resolveToViewOutput()` path and `ViewOutput.frame`, and collapse
+   the divergence list — entry #4 self-retires; **preserve the engine
+   `Spacer` semantics from entry #1** (exactly N blank rows), never the
+   eager doubling quirk.
+
+Dynamic alt-screen control is a runtime concern, not a layout one — scope
+it explicitly at kickoff or park it.
+
 Also: carry the proposal into `_render`. `FrameView._render` receives only
 the assigned size, never the proposal, so a flexible-axis frame proposes
 *ideal* to its child on re-measure — observationally identical today
