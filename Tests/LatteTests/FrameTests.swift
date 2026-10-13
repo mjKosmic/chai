@@ -77,8 +77,9 @@ struct FramePlacementTests {
         height: Int
     ) -> [String] {
         var buffer = CellBuffer(width: width, height: height)
-        let size = view._sizeThatFits(ProposedSize(width: width, height: height))
-        view._render(into: &buffer, at: .zero, size: size)
+        let proposal = ProposedSize(width: width, height: height)
+        let size = view._sizeThatFits(proposal)
+        view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
         return visibleRows(buffer)
     }
 
@@ -194,7 +195,7 @@ struct FrameOverflowTests {
         let frame = Text("abcd\nef").frame(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
         #expect(size == ViewSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
 
         // Shortage is clamped: the child renders from offset 0.
         #expect(buffer[0, 0].character == "a")
@@ -212,7 +213,7 @@ struct FrameOverflowTests {
         let frame = Text("abcd\nef").frame(width: 2, height: 1)
         var buffer = CellBuffer(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
         #expect(visibleRows(buffer) == ["ab"])
     }
 
@@ -223,7 +224,7 @@ struct FrameOverflowTests {
         var buffer = CellBuffer(width: 4, height: 2)
         let frame = Text("abcd\nef").frame(width: 2, height: 1, horizontalAlignment: .right)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
         #expect(buffer[0, 0].character == "a")
         #expect(visibleRows(buffer) == ["abcd", "ef"])
     }
@@ -322,7 +323,7 @@ struct FrameDegenerateTests {
         let size = frame._sizeThatFits(.unspecified)
         // Fixed width 0 answers 0; the flexible height is the child's 1.
         #expect(size == ViewSize(width: 0, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
         // No clipping: the 4-wide child renders past the 0-wide frame,
         // clipped only at the 4-wide buffer.
         #expect(buffer[0, 0].character == "a")
@@ -334,10 +335,42 @@ struct FrameDegenerateTests {
         let frame = Text("abcd").frame(height: 0)
         let size = frame._sizeThatFits(.unspecified)
         #expect(size == ViewSize(width: 4, height: 0))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
         // The child renders at row 0 (shortage clamped), clipped only at the
         // buffer.
         #expect(buffer[0, 0].character == "a")
         #expect(buffer[3, 0].character == "d")
+    }
+}
+
+// MARK: - Fit proposal reconstruction (A0)
+
+@Suite("Frame Proposal Reconstruction")
+struct FrameProposalReconstructionTests {
+
+    @Test func flexibleAxisFrameProposesIncomingWidthToChild() {
+        // FrameView(width: nil) at an 8-column proposal: the flexible axis
+        // proposes the incoming 8 in BOTH passes (A0 reconstructs the fit
+        // proposal), so the echo renders "W:8". Pre-A0 the render pass
+        // proposed ideal on flexible axes → the echo saw nil → "W:-1".
+        let buffer = engineBuffer(
+            FrameView(width: nil) {
+                ProposalEchoView()
+            },
+            width: 8
+        )
+        #expect(visibleRows(buffer) == ["W:8"])
+    }
+
+    @Test func fixedAxisFrameStillProposesFixedWidthToChild() {
+        // A fixed-width frame proposes its fixed width in both passes
+        // regardless of the incoming proposal.
+        let buffer = engineBuffer(
+            FrameView(width: 4) {
+                ProposalEchoView()
+            },
+            width: 8
+        )
+        #expect(visibleRows(buffer) == ["W:4"])
     }
 }

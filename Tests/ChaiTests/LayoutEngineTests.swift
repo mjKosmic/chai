@@ -159,7 +159,7 @@ struct EngineRenderTests {
 
     @Test func viewOutputRendersAtZeroOrigin() {
         var buffer = CellBuffer(width: 10, height: 1)
-        ViewOutput("Hello")._render(into: &buffer, at: .zero, size: .zero)
+        ViewOutput("Hello")._render(into: &buffer, at: .zero, size: .zero, proposal: .unspecified)
         #expect(rowText(buffer, row: 0) == "Hello")
         #expect(buffer[0, 0].character == "H")
         #expect(buffer[4, 0].character == "o")
@@ -167,7 +167,7 @@ struct EngineRenderTests {
 
     @Test func textRendersThroughDefault() {
         var buffer = CellBuffer(width: 10, height: 1)
-        Text("hi")._render(into: &buffer, at: .zero, size: .zero)
+        Text("hi")._render(into: &buffer, at: .zero, size: .zero, proposal: .unspecified)
         #expect(buffer[0, 0].character == "h")
         #expect(buffer[1, 0].character == "i")
         #expect(buffer[2, 0] == .empty)
@@ -180,7 +180,8 @@ struct EngineRenderTests {
         ViewOutput("a\nb")._render(
             into: &buffer,
             at: ViewOrigin(col: 2, row: 0),
-            size: ViewSize(width: 2, height: 2)
+            size: ViewSize(width: 2, height: 2),
+            proposal: .unspecified
         )
         #expect(buffer[2, 0].character == "a")
         #expect(buffer[2, 1].character == "b")
@@ -196,7 +197,8 @@ struct EngineRenderTests {
         ViewOutput("你\n好")._render(
             into: &buffer,
             at: ViewOrigin(col: 2, row: 0),
-            size: ViewSize(width: 4, height: 2)
+            size: ViewSize(width: 4, height: 2),
+            proposal: .unspecified
         )
         // Row 0: two spaces then 你 (wide, with continuation at col 3).
         #expect(buffer[2, 0].character == "你")
@@ -214,7 +216,7 @@ struct EngineRenderTests {
         // Matching `wrapping: false`: a line wider than the buffer is
         // truncated at the right edge, not wrapped onto another row.
         var buffer = CellBuffer(width: 4, height: 1)
-        ViewOutput("abcdef")._render(into: &buffer, at: .zero, size: .zero)
+        ViewOutput("abcdef")._render(into: &buffer, at: .zero, size: .zero, proposal: .unspecified)
         #expect(rowText(buffer, row: 0) == "abcd")
         #expect(buffer[3, 0].character == "d")
     }
@@ -224,7 +226,8 @@ struct EngineRenderTests {
         ViewOutput("abc\ndefgh")._render(
             into: &buffer,
             at: ViewOrigin(col: 2, row: 0),
-            size: ViewSize(width: 2, height: 2)
+            size: ViewSize(width: 2, height: 2),
+            proposal: .unspecified
         )
         // "abc" at col 2: cols 0–1 empty, "ab" at 2–3, "c" truncated.
         #expect(rowText(buffer, row: 0) == "  ab")
@@ -235,7 +238,7 @@ struct EngineRenderTests {
         // Blank cells are the buffer default — a spacer draws nothing, and
         // pre-existing cells are left untouched.
         var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
-        Spacer(columns: 4)._render(into: &buffer, at: .zero, size: ViewSize(width: 4, height: 1))
+        Spacer(columns: 4)._render(into: &buffer, at: .zero, size: ViewSize(width: 4, height: 1), proposal: .unspecified)
         #expect(rowText(buffer, row: 0) == "xxxx")
     }
 }

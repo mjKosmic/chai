@@ -36,7 +36,10 @@ func eagerBuffer(
 }
 
 /// Rasterize a view through the *engine* path: measure with the proposal
-/// `(width, nil)`, render into a buffer at the measured size.
+/// `(width, nil)`, render into a buffer at the measured size with the SAME
+/// fit proposal (A0) — the fit/render value-equality contract, so
+/// proposal-consuming children (the test-local `ProposalEchoView`) see the
+/// fit proposal at render time.
 ///
 /// The buffer's width is only a truncation bound — the view's **measured**
 /// size drives placement (leaf writes use `wrapping: false` and clip at the
@@ -45,9 +48,10 @@ func eagerBuffer(
 /// pads to its own max width. `frame()` (M4) is the view that lets users opt
 /// into terminal-width placement.
 func engineBuffer(_ view: some View, width: Int, height: Int? = nil) -> CellBuffer {
-    let size = view._sizeThatFits(ProposedSize(width: width, height: nil))
+    let proposal = ProposedSize(width: width, height: nil)
+    let size = view._sizeThatFits(proposal)
     var buffer = CellBuffer(width: width, height: height ?? size.height)
-    view._render(into: &buffer, at: .zero, size: size)
+    view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
     return buffer
 }
 

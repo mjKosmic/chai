@@ -102,11 +102,13 @@ public struct HStack<Content: View>: View {
 // of joining their resolved outputs. Parity with the eager `body` above is
 // verified by the corpus in Tests/LatteTests/LayoutParity.
 //
-// Proposal semantics are identical between the fit and render passes — both
-// propose the stack's width and leave height ideal — so a child measures the
-// same in both passes. This consistency is a hard requirement: M4's `frame()`
-// will render a stack at an assigned size wider than its ideal and relies on
-// the child measuring identically in both passes.
+// Proposal semantics are identical between the fit and render passes: the
+// render pass carries the incoming proposal (A0) and proposes the stack's
+// width with height ideal to every child, exactly as the fit pass did — so a
+// child measures the same in both passes even when its assigned size differs
+// from the proposed width. This consistency is a hard requirement: M4's
+// `frame()` renders a stack at an assigned size wider than its ideal and
+// relies on the child measuring identically in both passes.
 
 extension VStack {
     /// Measure each child with the stack's proposal width (height ideal) and
@@ -126,13 +128,21 @@ extension VStack {
     /// formula and `max(0, ...)` guard — then advance the row by the child's
     /// height. Empty children measure 0×0 and advance nothing, carrying the
     /// eager skip-empty semantics.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+    ///
+    /// Each child is re-measured and rendered with the same proposal the fit
+    /// pass used — `ProposedSize(width: proposal.width, height: nil)` — so a
+    /// proposal-consuming child measures identically in both passes even when
+    /// the assigned `size.width` differs from the incoming proposal width (the
+    /// renderer-root case). The assigned `size` still drives placement:
+    /// shortage is computed against `size.width`, not the proposal.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
         var row = origin.row
+        let childProposal = ProposedSize(width: proposal.width, height: nil)
         for child in content._childViews() {
-            let childSize = child._sizeThatFits(ProposedSize(width: size.width, height: nil))
+            let childSize = child._sizeThatFits(childProposal)
             let shortage = max(0, size.width - childSize.width)
             let col = origin.col + Int(Double(shortage) * alignment.fraction)
-            child._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize)
+            child._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
             row += childSize.height
         }
     }
@@ -158,13 +168,17 @@ extension HStack {
     /// Place each child at the alignment fraction of the vertical shortage —
     /// mirroring `extendLines`' `topPad = Int(shortage * fraction)` formula —
     /// then advance the column by the child's width.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+    ///
+    /// Each child is re-measured and rendered with the same proposal the fit
+    /// pass used — `ProposedSize(width: nil, height: proposal.height)`.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
         var col = origin.col
+        let childProposal = ProposedSize(width: nil, height: proposal.height)
         for child in content._childViews() {
-            let childSize = child._sizeThatFits(ProposedSize(width: nil, height: size.height))
+            let childSize = child._sizeThatFits(childProposal)
             let shortage = max(0, size.height - childSize.height)
             let row = origin.row + Int(Double(shortage) * alignment.fraction)
-            child._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize)
+            child._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
             col += childSize.width
         }
     }

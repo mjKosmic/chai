@@ -119,11 +119,12 @@ renderer flip must keep them green without modification.
 `ViewOrigin`. These were sound in the reverted attempt; only what they
 operated on was wrong.
 
-**View protocol engine SPI** — replaces `_collectChildOutputs()`:
+**View protocol engine SPI** — replaces `_collectChildOutputs()` (shown
+with the A0 signature — phase 3 landed the proposal-carrying `_render`):
 
 ```swift
 func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
-func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize)
+func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize)
 func _childViews() -> [any View]
 ```
 
@@ -255,14 +256,14 @@ wrappers/eager-path retirement (Stage C).
 
 **Pinned decisions:**
 
-- **SPI: clean break, pre-alpha.** `_render(into:at:size:)` becomes
-  `_render(into:at:size:proposal:)`, updating all conformers (the `View`
+- **SPI: clean break, pre-alpha (landed in A0).** `_render(into:at:size:)` is now
+  `_render(into:at:size:proposal:)` across all conformers (the `View`
   default, `ViewOutput`, `Spacer`, `VStack`, `HStack`, `FrameView`). The
-  contract changes from "propose identically in structure" to **"the
+  contract changed from "propose identically in structure" to **"the
   proposal passed to a child at render time must equal the proposal used
   to measure it at fit time"** — value-equal, not just structurally
-  equal. This closes the phase-2 limitation (FrameView's render-time
-  ideal-on-flexible-axes becomes a faithful reconstruction).
+  equal. This closed the phase-2 limitation (FrameView's render-time
+  ideal-on-flexible-axes became a faithful reconstruction).
 - **Wrapping `Text`: word-aware with a char-level fallback.** Break at
   whitespace (the whitespace is consumed at the break; interior runs are
   preserved) and *after* hyphens (no characters inserted). Each CJK
@@ -282,7 +283,7 @@ wrappers/eager-path retirement (Stage C).
 
 | # | Deliverable | Exit criteria |
 |---|---|---|
-| A0 | **Proposal-carrying `_render`** — the clean SPI break across all conformers; `Renderer.flush` passes the fit proposal (width w, height alt-screen h / nil) to the root render; `FrameView` reconstructs its fit proposal on re-measure; docs rewritten (ARCHITECTURE fit/render section, AGENTS pitfall #2 becomes a value-equality contract) | Behavior-preserving: all 1108 suites green unmodified; a test-local proposal-echo consumer view + a renderer-level parity case exercising `assigned ≠ proposed` at the root (the phase-2 harness blind spot) |
+| A0 | **Proposal-carrying `_render`** — the clean SPI break across all conformers; `Renderer.flush` passes the fit proposal (width w, height alt-screen h / nil) to the root render; `FrameView` reconstructs its fit proposal on re-measure; docs rewritten (ARCHITECTURE fit/render section, AGENTS pitfall #2 becomes a value-equality contract) | Behavior-preserving: all 1108 suites green unmodified; a test-local proposal-echo consumer view + a renderer-level parity case exercising `assigned ≠ proposed` at the root (the phase-2 harness blind spot) | ✅ landed |
 | A1 | **Word-aware wrapping `Text`** — measures wrapped at a non-nil width proposal, renders the wrapped content; algorithm per the pinned rules | New wrapping tests (whitespace/hyphen/CJK/fallback/hard-newline/style preservation); corpus truncation cases re-pinned as **divergence #5** (engine wraps, eager truncates — `expectedRows` eager, `expectedEngineRows` wrapped, `isKnownDivergent`); example uses a wrapping `Text` |
 | A2 | **Fill/flex views + proportional `Spacer`** — minimal fill views answering proposal dimensions; flexible `Spacer` variants taking a fraction of leftover space | Measurement/placement tests; corpus additions where eagable (fill-only engine behavior → divergence if eager can't express it) |
 | A3 | **`.clipped()`** — `ClipView` renders the child, then clears any cells the child painted outside its assigned rect (the opt-in for frame's pinned no-clip decision) | Clip tests (overflow child clipped at rect); corpus parity (clip is engine-side only — new divergence or declared engine-only feature with a corpus case) |
@@ -323,21 +324,7 @@ load-bearing:
 Dynamic alt-screen control is a runtime concern, not a layout one — scope
 it explicitly at kickoff or park it.
 
-Also: carry the proposal into `_render`. `FrameView._render` receives only
-the assigned size, never the proposal, so a flexible-axis frame proposes
-*ideal* to its child on re-measure — observationally identical today
-(children ignore proposals), but a proposal-responsive child (the phase-3
-wrapping `Text`) inside a flexible-axis frame would measure differently
-between the fit pass (which proposed the offer) and the render pass. If
-that class of child lands, `_render(into:at:size:proposal:)` (or similar)
-is the SPI extension point; `FrameView`'s doc comment records the same
-limitation. Note the value-level gap already exists at the renderer's
-root: `flush()` fits with the terminal width but renders at the measured
-size, so a root stack proposes `termWidth` at fit and its own width at
-render — inert while leaves ignore proposals. The parity harness never
-exercises assigned ≠ proposed (`engineBuffer` renders at the measured
-size with the same proposal); add a renderer-level parity case when
-proposal-consuming children land.
+Also resolved by A0: carry the proposal into `_render`. `FrameView._render` previously received only the assigned size, never the proposal, so a flexible-axis frame proposed *ideal* to its child on re-measure — observationally identical while children ignored proposals, but a proposal-responsive child (the phase-3 wrapping `Text`) inside a flexible-axis frame would have measured differently between the fit pass (which proposed the offer) and the render pass. A0 landed `_render(into:at:size:proposal:)` and `FrameView` now reconstructs its fit proposal (`width ?? proposal.width` / `height ?? proposal.height`). The value-level gap at the renderer's root is also closed: `flush()` fits with the terminal width and now passes the *same proposal value* to the root render. The parity harness blind spot — `engineBuffer` renders at the measured size with the same proposal, so it never exercised `assigned ≠ proposed` — is closed by the test-local `ProposalEchoView`, which pins the renderer-level (`W:20` at a 20-column terminal for a stack measuring 12) and frame-closure (`W:8` on a flexible-axis frame at an 8-column proposal) cases.
 
 ---
 

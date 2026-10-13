@@ -80,6 +80,26 @@ struct RendererEnginePathTests {
         #expect(mock.output.contains("footer"))
     }
 
+    // MARK: - Fit/render proposal consistency (A0)
+
+    @Test func proposalEchoSeesFitProposalAtRootRender() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 20, height: 24)
+        await renderer.write(VStack {
+            ProposalEchoView()
+            Text("hi")
+        })
+        await renderer.flush()
+        // The echo measures min(20, 12) = 12 wide, so the stack measures
+        // 12×2 — narrower than the 20-column terminal. The echo's render-time
+        // proposal must be the FIT proposal (terminal width 20), not its
+        // assigned size (12). Pre-A0 this rendered "W:12" — the value-level
+        // gap at the renderer root that the proposal-carrying `_render`
+        // closes.
+        #expect(mock.output.contains("W:20"))
+    }
+
     // MARK: - Inline truncation
 
     @Test func inlineTruncationThroughEngine() async {

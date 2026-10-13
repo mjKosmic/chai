@@ -41,13 +41,18 @@ public protocol View: Sendable {
     ///
     /// The default resolves through ``body``. `size` is the concrete size
     /// assigned by the parent after measurement; the view places its content
-    /// at `origin` honoring that assigned size.
+    /// at `origin` honoring that assigned size. `proposal` is the proposal
+    /// this view was measured with in the fit pass — containers must forward
+    /// it unchanged so proposal-consuming children measure and render
+    /// identically (the fit/render value-equality contract; see
+    /// ARCHITECTURE.md "Fit/render consistency").
     ///
     /// - Parameters:
     ///   - buffer: The buffer to draw into.
     ///   - origin: The top-left position to draw at.
     ///   - size: The size assigned to this view by its parent.
-    func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize)
+    ///   - proposal: The proposal used to measure this view in the fit pass.
+    func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize)
 
     /// The views a container should treat as this view's children.
     ///
@@ -87,7 +92,9 @@ extension ViewOutput: View {
     /// (``CellBuffer/init(width:height:fill:wrapping:)``): inline-mode buffers
     /// truncate at the right edge, alt-screen buffers wrap. The mode decision
     /// stays renderer-level while the leaf SPI stays free of mode flags.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+    ///
+    /// A `ViewOutput` is a fully-formed raster: the proposal is ignored.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
         buffer.write(content, at: origin.col, row: origin.row)
     }
 }
@@ -113,9 +120,10 @@ extension View {
         body._sizeThatFits(proposal)
     }
 
-    /// The default engine implementation resolves through ``body``.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
-        body._render(into: &buffer, at: origin, size: size)
+    /// The default engine implementation resolves through ``body``,
+    /// forwarding the proposal along.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+        body._render(into: &buffer, at: origin, size: size, proposal: proposal)
     }
 
     /// The default treats this view as its own single child.
@@ -238,7 +246,8 @@ extension Spacer {
     }
 
     /// Rendering a spacer is a no-op: blank cells are the buffer default.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
+    /// The proposal is ignored.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
         // Blank cells are the buffer's default fill; nothing to draw.
     }
 }
