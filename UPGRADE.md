@@ -221,6 +221,24 @@ and proposes that fixed size downward.
      at the child's ideal width in the eager path. Corpus case marked
      `isKnownDivergent` with explicit engine-side expectations. This
      asymmetry self-retires in phase 3 when the eager path is removed.
+  5. Proposal-consuming `Text` wraps instead of truncating (A1): `Text` is
+     the first production proposal consumer, so at a positive non-`nil`
+     width proposal the engine wraps its content (`StyledText.wrappedToWidth`
+     — measure and render share the function), whereas the eager path has no
+     proposal context and truncates the over-wide line at the buffer edge.
+     Corpus case "DIVERGENT: vstack wide Text line wraps (A1) instead of
+     truncating" is marked `isKnownDivergent` with eager `expectedRows`
+     `["abcde", "x"]` and wrapped `expectedEngineRows` `["abcde", "fgh",
+     "x"]`. This asymmetry self-retires in Stage C when the eager path is
+     removed.
+  6. A fixed-width `frame()` around `Text` wraps instead of overflowing
+     (A1): the frame is a proposal *generator*, so its fixed width reaches
+     the proposal-consuming `Text`, which wraps to fit — removing the
+     horizontal overflow the pre-A1 frame tests pinned. The eager path keeps
+     the unwrapped raster and truncates at the derived buffer width. Corpus
+     case "DIVERGENT: fixed frame smaller than Text wraps (A1); eager
+     truncates at buffer" (`expectedRows` `["ab"]`, `expectedEngineRows`
+     `["ab", "cd"]`). Like #4, this asymmetry self-retires in Stage C.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 
@@ -284,14 +302,27 @@ wrappers/eager-path retirement (Stage C).
 | # | Deliverable | Exit criteria |
 |---|---|---|
 | A0 | **Proposal-carrying `_render`** — the clean SPI break across all conformers; `Renderer.flush` passes the fit proposal (width w, height alt-screen h / nil) to the root render; `FrameView` reconstructs its fit proposal on re-measure; docs rewritten (ARCHITECTURE fit/render section, AGENTS pitfall #2 becomes a value-equality contract) | Behavior-preserving: all 1108 suites green unmodified; a test-local proposal-echo consumer view + a renderer-level parity case exercising `assigned ≠ proposed` at the root (the phase-2 harness blind spot) | ✅ landed |
-| A1 | **Word-aware wrapping `Text`** — measures wrapped at a non-nil width proposal, renders the wrapped content; algorithm per the pinned rules | New wrapping tests (whitespace/hyphen/CJK/fallback/hard-newline/style preservation); corpus truncation cases re-pinned as **divergence #5** (engine wraps, eager truncates — `expectedRows` eager, `expectedEngineRows` wrapped, `isKnownDivergent`); example uses a wrapping `Text` |
+| A1 | **Word-aware wrapping `Text`** — measures wrapped at a non-nil width proposal, renders the wrapped content; algorithm per the pinned rules | New wrapping tests (whitespace/hyphen/CJK/fallback/hard-newline/style preservation); corpus truncation cases re-pinned as **divergences #5/#6** (engine wraps, eager truncates — `expectedRows` eager, `expectedEngineRows` wrapped, `isKnownDivergent`); example uses a wrapping `Text` | ✅ landed |
 | A2 | **Fill/flex views + proportional `Spacer`** — minimal fill views answering proposal dimensions; flexible `Spacer` variants taking a fraction of leftover space | Measurement/placement tests; corpus additions where eagable (fill-only engine behavior → divergence if eager can't express it) |
 | A3 | **`.clipped()`** — `ClipView` renders the child, then clears any cells the child painted outside its assigned rect (the opt-in for frame's pinned no-clip decision) | Clip tests (overflow child clipped at rect); corpus parity (clip is engine-side only — new divergence or declared engine-only feature with a corpus case) |
 
 Divergence-list updates are expected at A1 (truncation → wrap) and A3
 (clipping) — the closed-list mechanism is designed for exactly this;
 every change must carry `expectedRows` + `expectedEngineRows` + an
-`isKnownDivergent` flag, and the closed list's wording stays.
+`isKnownDivergent` flag, and the closed list's wording stays. A1 landed
+two: #5 (a proposal-consuming `Text` wraps instead of truncating) and #6
+(a fixed-width `frame()` around `Text` wraps instead of overflowing) —
+both self-retire in Stage C.
+
+**Wrapping-wrapper overlap (A1 → Stage C).** The A1 wrapping algorithm
+lives in Chai (`StyledText.wrappedToWidth(_:)`) because it operates on
+Chai's `StyledText` segment model and must preserve styles exactly. Latte
+has its own eager, string-level wrapper (`Latte/Layout/Wrap.swift`) used by
+the eager modifiers; the dependency direction (Latte imports Chai) forbids
+reusing it in the engine. The two coexist while the eager path lives and
+are reconciled in **Stage C**, when the eager path (`_resolveToViewOutput`)
+is retired and the eager wrapper goes with it — as noted in the A1 source
+file's header.
 
 ### Deferred to phase 3 (seed list and suggested staging)
 

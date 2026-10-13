@@ -318,15 +318,30 @@ extension ParityCase {
         // buffer width is TRUNCATED, not wrapped — the overflow columns are
         // dropped and no extra row appears. Pinned here so M2's inline-mode
         // buffer policy (truncate) is verified against it.
-
+        //
+        // !!! ALLOWED DIVERGENCE #5 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // A1 made `Text` a proposal consumer: it now WRAPS its content to a
+        // positive non-nil width proposal (measure and render use the same
+        // `StyledText.wrappedToWidth(_:)`). The engine therefore wraps the
+        // 8-column first line into two rows at the 5-column proposal, while
+        // the eager path still truncates at the buffer edge (it has no
+        // proposal context). Pinned below is TODAY's eager output; the engine
+        // must produce the wrapped rows.
         ParityCase(
-            name: "vstack wide line truncates at buffer width",
+            name: "DIVERGENT: vstack wide Text line wraps (A1) instead of truncating",
             view: VStack {
                 Text("abcdefgh")
                 Text("x")
             },
             width: 5,
-            expectedRows: ["abcde", "x"]
+            // TODAY's eager output: the 8-column line is truncated at the
+            // 5-column buffer edge → ["abcde", "x"].
+            expectedRows: ["abcde", "x"],
+            isKnownDivergent: true,
+            // Engine (A1): `Text("abcdefgh")` wraps to "abcde"/"fgh" (char-level
+            // fallback at the 5-column proposal) → ["abcde", "fgh", "x"].
+            expectedEngineRows: ["abcde", "fgh", "x"]
         ),
 
         // ── Known divergence ────────────────────────────────────────────────
@@ -517,17 +532,27 @@ extension ParityCase {
             expectedRows: ["  ab", ""]
         ),
 
+        // !!! ALLOWED DIVERGENCE #6 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // A1 made `Text` a proposal consumer, so a fixed-width frame now WRAPS
+        // its Text child to the frame's width. The engine's child is "ab"/"cd"
+        // (2×2) inside the 2-wide frame — no horizontal overflow — while the
+        // eager `body` (no proposal context) keeps the 4-wide raster and the
+        // derived 2-wide buffer truncates it to "ab". The frame still does not
+        // clip (pinned); the divergence is the wrap itself. Pinned below is
+        // TODAY's eager output; the engine must produce the wrapped rows.
         ParityCase(
-            name: "fixed frame smaller than child does not clip in either path",
+            name: "DIVERGENT: fixed frame smaller than Text wraps (A1); eager truncates at buffer",
             view: Text("abcd")
                 .frame(width: 2, horizontalAlignment: .center),
             width: 2,
-            // No clipping (pinned overflow semantics): the 4-wide child
-            // overflows the 2-wide frame; the derived 2-wide buffer truncates
-            // it in BOTH paths (eager's width() pads but never truncates, and
-            // `layout` truncates at the buffer edge; the engine's leaf write
-            // truncates at the buffer edge too).
-            expectedRows: ["ab"]
+            // TODAY's eager output: the 4-wide raster is truncated at the
+            // 2-wide buffer edge → ["ab"].
+            expectedRows: ["ab"],
+            isKnownDivergent: true,
+            // Engine (A1): `Text("abcd")` wraps to the frame's 2-column
+            // proposal → ["ab", "cd"].
+            expectedEngineRows: ["ab", "cd"]
         ),
 
         // !!! ALLOWED DIVERGENCE #4 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!

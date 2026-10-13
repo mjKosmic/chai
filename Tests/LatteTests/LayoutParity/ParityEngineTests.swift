@@ -11,10 +11,11 @@ import Latte
 // - Non-divergent cases must reproduce BOTH the pinned eager spec
 //   (`expectedRows`) and the live eager buffer (`eagerBuffer`).
 // - `isKnownDivergent` cases must reproduce their documented engine rows
-//   (`expectedEngineRows`) — divergence #1 (Spacer doubling) and the M2
-//   divergence #3 (multi-line VStack children aligned as blocks).
-//   No case is skipped: every divergent case has a positive engine-side
-//   expectation.
+//   (`expectedEngineRows`) — divergence #1 (Spacer doubling), the M2
+//   divergence #3 (multi-line VStack children aligned as blocks), #4
+//   (flexible-axis fill), and the A1 divergences #5/#6 (proposal-consuming
+//   `Text` wraps instead of truncating). No case is skipped: every divergent
+//   case has a positive engine-side expectation.
 
 @Suite("Layout Parity — M2 engine path")
 struct ParityEngineTests {

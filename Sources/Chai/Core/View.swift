@@ -158,6 +158,45 @@ public struct Text: View {
     }
 }
 
+// MARK: - Text engine implementation
+
+extension Text {
+    /// Proposal-aware measurement (phase-3 A1): a non-`nil`, positive width
+    /// proposal wraps the content to that width and the measured size is the
+    /// WRAPPED result's `(maxLineWidth, lineCount())`. A `nil` proposal
+    /// (ideal) and a non-positive width (degenerate) measure the unwrapped
+    /// ideal, unchanged.
+    ///
+    /// Measurement and rendering wrap with the SAME function
+    /// (`StyledText.wrappedToWidth(_:)`), so the two passes agree by
+    /// construction — the fit/render value-equality contract (A0) holds for
+    /// Text without the render pass re-deriving anything.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        if let width = proposal.width, width > 0 {
+            let wrapped = content.wrappedToWidth(width)
+            return ViewSize(width: wrapped.maxLineWidth, height: wrapped.lineCount())
+        }
+        return ViewSize(width: content.maxLineWidth, height: content.lineCount())
+    }
+
+    /// Proposal-aware rendering (phase-3 A1): writes the content wrapped to
+    /// `proposal.width` when it is non-`nil` and positive; otherwise writes
+    /// the content unchanged. The write follows the buffer's wrap-vs-truncate
+    /// policy at the right edge, so a degenerate line wider than the proposal
+    /// (e.g. a single CJK character at width 1) is clipped by the buffer.
+    ///
+    /// The wrapped content is computed exactly once per pass and never cached:
+    /// the fit pass measured the same value, so the render is consistent by
+    /// construction (see ``_sizeThatFits(_:)``).
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+        if let width = proposal.width, width > 0 {
+            buffer.write(content.wrappedToWidth(width), at: origin.col, row: origin.row)
+        } else {
+            buffer.write(content, at: origin.col, row: origin.row)
+        }
+    }
+}
+
 // MARK: - Spacer
 
 /// A view that produces empty space.

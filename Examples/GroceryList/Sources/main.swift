@@ -96,9 +96,16 @@ struct GroceryList: Model {
     }
 
     var body: some View {
-        HStack {
-            picker
-            menu
+        // A1: the header is a proposal-consuming `Text`, so it WRAPS to the
+        // frame's width (the char-level fallback guarantees it fits any
+        // positive width) instead of overflowing. The HStack below is centered
+        // with the header as one block via `.frame(...)`.
+        VStack {
+            Text("Grocery list — ↑/↓ move · space tick · ctrl+a all · esc none · q quit")
+            HStack {
+                picker
+                menu
+            }
         }
         .frame(
             width: width,
