@@ -2,16 +2,25 @@
 
 /// A size proposal passed to a view during layout measurement.
 ///
-/// The proposal carries the width and height a parent is offering. A `nil`
-/// dimension means **ideal**: the view reports the size it would naturally
-/// take, without being constrained. A non-`nil` dimension is a firm offer —
-/// the view should report the size it would take within that bound.
+/// A proposal is an **offer, not a bound**: it tells the view what the
+/// parent is offering on each axis, and the view answers with the size it
+/// wants. The answer is never clamped — a view may return a size smaller
+/// than, equal to, or **larger than** the offer. A `nil` dimension means
+/// **ideal**: no offer was made on that axis, so report your natural size.
+///
+/// Overruling an offer is normal and intentional: clamping the answer
+/// would destroy information the parent needs (a scroll viewport must know
+/// its content extends past the visible area even though the visible area
+/// is all it can show). Enforcement happens downstream — the parent's
+/// placement decision (`size:` in ``View/_render(into:at:size:proposal:)``)
+/// and, finally, the ``CellBuffer`` bounds. See ARCHITECTURE.md
+/// "An offer, not a box".
 ///
 /// ```swift
 /// // Ask a view for its ideal size.
 /// let ideal = text._sizeThatFits(.unspecified)
 ///
-/// // Ask a view how wide it wants to be within a 20-column constraint.
+/// // Ask a view how wide it wants to be when offered 20 columns.
 /// let size = text._sizeThatFits(ProposedSize(width: 20, height: nil))
 /// ```
 public struct ProposedSize: Sendable, Equatable {
@@ -34,7 +43,8 @@ public struct ProposedSize: Sendable, Equatable {
         self.height = height
     }
 
-    /// A proposal with no constraints: both dimensions are ideal.
+    /// A proposal that offers nothing on either axis: both dimensions are
+    /// ideal.
     public static let unspecified = ProposedSize(width: nil, height: nil)
 }
 
