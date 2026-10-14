@@ -218,6 +218,44 @@ struct TextWrappingTableTests {
         #expect(StyledText("").wrappedToWidth(5).plainText == "")
         #expect(StyledText("").wrappedToWidth(5).lineCount() == 0)
     }
+
+    // MARK: Leading / trailing whitespace fits within the width (PR #21 review)
+
+    @Test func leadingWhitespaceThatCannotFitWithTheNextCharacterIsDropped() {
+        // Indentation that cannot fit together with the following character
+        // is dropped rather than pushing the line past `width` (review
+        // finding: a line must never exceed the requested width merely to
+        // carry whitespace, and no visible character may be pushed out).
+        #expect(StyledText("  ab").wrappedToWidth(1).plainText == "a\nb")
+        #expect(StyledText("  ab").wrappedToWidth(2).plainText == "ab")
+        #expect(StyledText("    code").wrappedToWidth(3).plainText == "cod\ne")
+        #expect(StyledText("    code").wrappedToWidth(3).maxLineWidth == 3)
+    }
+
+    @Test func leadingWhitespaceThatFitsIsPreserved() {
+        // The run fits together with the character — it is indentation and
+        // stays (only interior runs are preserved unconditionally, but a
+        // leading run that fits is no different).
+        #expect(StyledText("  ab").wrappedToWidth(3).plainText == "  a\nb")
+        #expect(StyledText("  ab").wrappedToWidth(10).plainText == "  ab")
+    }
+
+    @Test func trailingWhitespaceIsTrimmedToFit() {
+        // A trailing run is preserved up to the width; the excess is trimmed
+        // so the final line never exceeds the offer.
+        #expect(StyledText("abc  ").wrappedToWidth(3).plainText == "abc")
+        #expect(StyledText("abc  ").wrappedToWidth(5).plainText == "abc  ")
+        #expect(StyledText("ab    ").wrappedToWidth(5).plainText == "ab   ")
+    }
+
+    @Test func newlineOnlyContentWrapsToEmpty() {
+        // Deliberate: content with no visible character (whitespace- or
+        // newline-only) wraps to empty and measures 0x0. Pinned as allowed
+        // divergence #10 (the eager path measures ViewOutput("\n") as two
+        // blank rows).
+        #expect(StyledText("\n").wrappedToWidth(5).lineCount() == 0)
+        #expect(StyledText("\n\n").wrappedToWidth(5).lineCount() == 0)
+    }
 }
 
 // MARK: - `Text` wiring (production proposal consumer)
@@ -305,6 +343,21 @@ struct TextWrappingIntegrationTests {
         )
     }
 
+    @Test func minimumHoldsForWhitespacePrefixedContent() {
+        // PR #21 review: leading whitespace used to defeat the minimum
+        // contract (`Text("  ab")._sizeThatFits(.zero)` returned width 3).
+        // The leading run is now dropped when it cannot fit with the next
+        // character, so the minimum is the widest character (1).
+        #expect(Text("  ab")._sizeThatFits(.zero) == ViewSize(width: 1, height: 2))
+    }
+
+    @Test func newlineOnlyTextMeasuresZero() {
+        // Allowed divergence #10: content with no visible character
+        // (newline-only included) wraps to empty and measures 0x0, where the
+        // eager path measures ViewOutput("\n") as two blank rows.
+        #expect(Text("\n")._sizeThatFits(ProposedSize(width: 5, height: nil)) == .zero)
+    }
+
     @Test func renderWritesTheWrappedContentAtTheProposal() {
         // The fit proposal (5) and the render proposal are the SAME value: the
         // rendered rows are exactly the measured wrapped rows.
@@ -321,6 +374,15 @@ struct TextWrappingIntegrationTests {
         var buffer = CellBuffer(width: 8, height: 8)
         Text("abcdefgh")._render(into: &buffer, at: .zero, size: size, proposal: proposal)
         #expect(visibleRows(buffer) == ["a", "b", "c", "d", "e", "f", "g", "h"])
+    }
+
+    @Test func narrowWidthRenderKeepsEveryVisibleCharacter() {
+        // PR #21 review: `Text("    code")` at width 3 used to wrap to
+        // "    c"/"ode" — the first row exceeded the width, the truncating
+        // buffer rendered "   ", and the "c" was lost. The indentation is
+        // dropped instead, so every visible character survives.
+        let proposal = ProposedSize(width: 3, height: nil)
+        #expect(engineRows(Text("    code"), proposal: proposal) == ["cod", "e"])
     }
 
     @Test func textMeasuresWrappedInsideAVStack() {

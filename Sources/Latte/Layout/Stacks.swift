@@ -40,8 +40,11 @@ private func distributedMainAxis(
 
     let rigidTotal = rigidSizes.reduce(0, +)
     // A flexing stack fills a non-nil proposal; with no offer it is
-    // content-sized (the flexible children stay at their rigid size).
-    let stackSize = proposal ?? rigidTotal
+    // content-sized (the flexible children stay at their rigid size). It
+    // never reports BELOW its rigid content — a 0-wide spacer must not hide
+    // overflow from the parent (an offer, not a bound) — and a negative or
+    // zero offer floors at the rigid total (which is >= 0).
+    let stackSize = max(proposal ?? rigidTotal, rigidTotal)
     let leftover = max(0, stackSize - rigidTotal)
     let childSizes = zip(rigidSizes, shares).map { rigid, share -> Int in
         guard share > 0 else { return rigid }

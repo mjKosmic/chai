@@ -268,6 +268,15 @@ and proposes that fixed size downward.
      `expectedEngineRows` `["ab"]` (the frame answers width 2; the clip masks
      the 4-wide raster to the 2-wide rect). Like #4–#8, it self-retires in
      Stage C.
+  10. Newline-only `Text` collapses to nothing in the engine (A1, pinned
+     during the PR #21 review): content with no visible character
+     (whitespace- or newline-only) wraps to empty and measures 0x0 — the A1
+     blank-line rule preserves hard lines only when the content has a
+     visible character. The eager path measures `Text("\n")` as
+     `ViewOutput("\n")` → `lineCount()` = 2 blank rows. Corpus case
+     "DIVERGENT: newline-only Text collapses to nothing (A1); eager measures
+     two blank rows" (`expectedRows` `["", ""]`, `expectedEngineRows` `[]`).
+     Self-retires in Stage C.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 
@@ -365,12 +374,16 @@ every change must carry `expectedRows` + `expectedEngineRows` + an
 two: #5 (a proposal-consuming `Text` wraps instead of truncating) and #6
 (a fixed-width `frame()` around `Text` wraps instead of overflowing) —
 both self-retire in Stage C. A2 landed #7 (`FlexibleSpacer` distributes
-leftover space only in the engine; the eager join skips the empty spacer) —
-also self-retiring. A3 landed #9 (`.clipped()` masks overflow only in the
-engine; the eager path has no assigned rect) — also self-retiring. A3 also
-added `ProposedSize.zero` and `Text`'s minimum semantics: no corpus impact,
-because the harness proposes `(width, nil)` with positive widths — no zero
-offers — so the corpus is unaffected (verified).
+leftover space only in the engine; the eager join skips the empty spacer)
+and #8 (`Fill` claims the proposed dimensions; promoted to the corpus
+during review) — also self-retiring. A3 landed #9 (`.clipped()` masks
+overflow only in the engine; the eager path has no assigned rect) — also
+self-retiring. The PR #21 review pinned #10 (newline-only `Text`
+collapses to nothing in the engine; the eager path measures two blank
+rows). A3 also added `ProposedSize.zero` and `Text`'s minimum semantics:
+no corpus impact, because the harness proposes `(width, nil)` with
+positive widths — no zero offers — so the corpus is unaffected
+(verified).
 
 **A2 SPI note.** A2 adds a fourth SPI method, `View._flexibility()`
 (default `.rigid`), queried by the stacks to distribute leftover main-axis
@@ -434,6 +447,13 @@ load-bearing:
    eager `ViewOutput.frame` retirement — `ViewOutput(...).frame(width:
    height:)` with both dimensions silently resolves to the old eager
    frame, which does not clip, instead of the tree-based `View.frame`.)
+   **HStack remaining-width proposal (PR #21 review candidate):** HStack
+   measures columns at ideal width (it proposes `(nil, height)`), so a
+   wrapping `Text` is inert inside an HStack — over-wide content
+   overflows and truncates. Pinned as the current contract
+   (`hstackNeverProposesWidthSoTextCannotWrapInsideIt`); Stage C should
+   consider proposing the remaining width to HStack children so wrapping
+   composes horizontally.
 
 Dynamic alt-screen control is a runtime concern, not a layout one — scope
 it explicitly at kickoff or park it.

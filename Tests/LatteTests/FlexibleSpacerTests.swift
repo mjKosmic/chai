@@ -122,6 +122,33 @@ struct FlexibleSpacerHStackTests {
         )
     }
 
+    @Test func flexStackNeverReportsBelowItsRigidContent() {
+        // PR #21 review: a 0-wide spacer must not hide overflow from the
+        // parent (an offer, not a bound) — a flexing stack floors its answer
+        // at the rigid total even when the offer is smaller.
+        let stack = HStack {
+            Text("aaaa")
+            FlexibleSpacer()
+            Text("bbbb")
+        }
+        #expect(
+            stack._sizeThatFits(ProposedSize(width: 3, height: nil)) == ViewSize(width: 8, height: 1)
+        )
+    }
+
+    @Test func negativeMainAxisProposalFloorsAtRigidTotal() {
+        // PR #21 review: a negative offer used to produce a negative ViewSize
+        // (no other view does that — Text clamps negatives to the minimum).
+        let stack = HStack {
+            Text("aaaa")
+            FlexibleSpacer()
+            Text("bbbb")
+        }
+        #expect(
+            stack._sizeThatFits(ProposedSize(width: -4, height: nil)) == ViewSize(width: 8, height: 1)
+        )
+    }
+
     @Test func rigidStackDoesNotFillAWideProposal() {
         // The pre-A2 path, unchanged: without a flexible child the stack is
         // content-sized no matter how wide the offer is.

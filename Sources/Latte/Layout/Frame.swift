@@ -175,6 +175,13 @@ extension View {
     /// bounds, with the terminal buffer as the final backstop. Use
     /// ``View/clipped()`` to mask that overflow.
     ///
+    /// - Note: On a ``ViewOutput`` receiver, calling `frame(width:height:)`
+    ///   with **both** dimensions resolves to the pre-existing eager
+    ///   `ViewOutput.frame` overload (minimum-enforcing, returns `ViewOutput`)
+    ///   rather than this one — width-only calls, or any non-`ViewOutput`
+    ///   receiver, use this tree-based frame. The eager overload is retired
+    ///   in Stage C (UPGRADE.md), which removes the ambiguity.
+    ///
     /// ```swift
     /// // Center a small view in the terminal window.
     /// VStack {

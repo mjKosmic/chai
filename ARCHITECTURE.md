@@ -597,9 +597,9 @@ The engine must reproduce the eager path, and the repo holds it to that with a h
 
 - **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()` — each pinned with the *visible rows* its eager rendering produces. The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. The harness lands first (M0) so every subsequent engine change is verified against a mechanical spec, never against hand-waving.
 - **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: eager line alignment writes space cells where the engine leaves cells `.empty` — both render identically under `eraseLineRight`.
-- **The divergence list is closed.** Nine divergences are documented and pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`); *no corpus case is skipped*:
+- **The divergence list is closed.** Ten divergences are documented; nine are corpus-pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`) — #2 is invisible at the visible-row level by construction and needs no corpus case; *no corpus case is skipped*:
   1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubles them (a join quirk pinned as an eager-path bug).
-  2. `.empty` vs space cells in alignment padding — invisible by construction.
+  2. `.empty` vs space cells in alignment padding — invisible by construction (no corpus case needed).
   3. Multi-line children block-aligned under non-left `VStack` alignment: the engine aligns each child as one layout unit; the eager path aligned each line (an artifact of text joining). SwiftUI-consistent.
   4. `frame()` flexible-fill exists only in the engine: a `nil` frame dimension fills a non-`nil` proposal, which the proposal-less eager `body` cannot express. Self-retires when the eager path is removed (phase 3).
   5. Proposal-consuming `Text` wraps instead of truncating (A1): the eager path has no proposal context. Self-retires in Stage C.
@@ -607,6 +607,7 @@ The engine must reproduce the eager path, and the repo holds it to that with a h
   7. `FlexibleSpacer` distributes leftover space only in the engine (A2): the eager join skips the spacer's empty `body`. Self-retires in Stage C.
   8. `Fill` claims the proposed dimensions only in the engine (A2): in a non-left-aligned `VStack` it widens the stack to the proposal and shifts its siblings; the eager path skips its empty `body`. Self-retires in Stage C.
   9. `.clipped()` masks overflow only in the engine (A3): the eager path has no assigned rect, so `ClipView.body` resolves its content unchanged. Corpus case `ViewOutput("abcd").frame(width: 2).clipped()`: eager `["abcd"]` (the eager `.width()` modifier pads, never truncates), engine `["ab"]`. Self-retires in Stage C.
+  10. Newline-only `Text` collapses to nothing in the engine (pinned during the PR #21 review): content with no visible character wraps to empty and measures 0×0, while the eager path measures `Text("\n")` as two blank rows. Self-retires in Stage C.
 
 The parity suites run the corpus through both paths: `ParitySpecTests` (eager golden spec), `ParityEngineTests` (engine vs pinned spec, engine vs live eager, divergent cases vs documented engine rows), `ParityHarnessTests` (pins the comparison semantics themselves).
 

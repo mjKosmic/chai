@@ -139,6 +139,16 @@ private func wrapHardLine(
 
         let candidate = curWidth + pendingWidth + charWidth
         if candidate <= width || cur.isEmpty {
+            // A leading whitespace run that cannot fit together with this
+            // character is indentation, not content: drop it so a line never
+            // exceeds `width` merely to carry whitespace, and no visible
+            // character is pushed past the right edge. (Whitespace-only
+            // content never reaches here — it wraps to empty before wrapping
+            // begins; interior runs on a non-empty line are preserved.)
+            if cur.isEmpty && pendingWidth > 0 && candidate > width {
+                pending = []
+                pendingWidth = 0
+            }
             // The character fits on the current line — commit the pending
             // whitespace run and the character. When the line is empty the
             // character is placed even if it alone exceeds `width` (a CJK
@@ -198,8 +208,29 @@ private func wrapHardLine(
     }
 
     // Flush the final line, preserving any trailing pending whitespace
-    // (interior whitespace runs are preserved when no break happens at them).
-    lines.append(cur + pending)
+    // (interior whitespace runs are preserved when no break happens at them)
+    // — trimmed to what fits, so a trailing run cannot push the line past
+    // `width`.
+    lines.append(cur + fittedTrailingWhitespace(pending, curWidth: curWidth, width: width))
+}
+
+/// Keep only the leading portion of a trailing whitespace run that fits within
+/// `width` after the visible content (`curWidth`). Trimming is display-width
+/// aware; a run that fits entirely is preserved.
+private func fittedTrailingWhitespace(
+    _ pending: [(Character, TextAttributes)],
+    curWidth: Int,
+    width: Int
+) -> [(Character, TextAttributes)] {
+    var remaining = max(0, width - curWidth)
+    var result: [(Character, TextAttributes)] = []
+    for item in pending {
+        let itemWidth = displayWidth(of: item.0)
+        guard itemWidth <= remaining else { break }
+        result.append(item)
+        remaining -= itemWidth
+    }
+    return result
 }
 
 /// Collapse a wrapped line's per-character stream back into styled segments.

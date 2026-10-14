@@ -76,6 +76,25 @@ struct StacksEngineMeasurementTests {
         #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 1))
     }
 
+    @Test func hstackNeverProposesWidthSoTextCannotWrapInsideIt() {
+        // Documented HStack column model (PR #21 review finding): HStack
+        // measures columns at IDEAL width — it proposes `(nil, height)` — so
+        // a wrapping `Text` child is inert inside an HStack; over-wide
+        // content overflows and is truncated at the buffer. Pinned as the
+        // current contract; "propose remaining width to HStack children" is
+        // a Stage C candidate (UPGRADE.md).
+        let stack = HStack {
+            Text("abcdefghij")
+        }
+        #expect(
+            stack._sizeThatFits(ProposedSize(width: 5, height: nil)) == ViewSize(width: 10, height: 1)
+        )
+        let size = stack._sizeThatFits(ProposedSize(width: 5, height: nil))
+        var buffer = CellBuffer(width: 5, height: size.height)
+        stack._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 5, height: nil))
+        #expect(visibleRows(buffer) == ["abcde"])
+    }
+
     @Test func vstackEmptyChildrenMeasureZero() {
         #expect(VStack { Empty() }._sizeThatFits(.unspecified) == .zero)
         #expect(

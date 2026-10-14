@@ -662,5 +662,25 @@ extension ParityCase {
             // 4-wide raster to the 2-wide rect → ["ab"].
             expectedEngineRows: ["ab"]
         ),
+
+        // !!! ALLOWED DIVERGENCE #10 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // Newline-only `Text` collapses to 0x0 in the engine: content with
+        // no visible character (whitespace- or newline-only) wraps to empty
+        // — the A1 blank-line rule preserves hard lines only when the
+        // content has a visible character. The eager path resolves
+        // `Text("\n")` to `ViewOutput("\n")` and measures `lineCount()` = 2
+        // blank rows. Pinned below is TODAY's eager output; the engine
+        // renders nothing.
+        ParityCase(
+            name: "DIVERGENT: newline-only Text collapses to nothing (A1); eager measures two blank rows",
+            view: Text("\n"),
+            width: 8,
+            // TODAY's eager output: "\n" is two blank lines.
+            expectedRows: ["", ""],
+            isKnownDivergent: true,
+            // Engine: no visible character → wraps to empty → 0x0 → no rows.
+            expectedEngineRows: []
+        ),
     ]
 }
