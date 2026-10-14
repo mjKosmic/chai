@@ -318,15 +318,30 @@ extension ParityCase {
         // buffer width is TRUNCATED, not wrapped — the overflow columns are
         // dropped and no extra row appears. Pinned here so M2's inline-mode
         // buffer policy (truncate) is verified against it.
-
+        //
+        // !!! ALLOWED DIVERGENCE #5 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // A1 made `Text` a proposal consumer: it now WRAPS its content to a
+        // positive non-nil width proposal (measure and render use the same
+        // `StyledText.wrappedToWidth(_:)`). The engine therefore wraps the
+        // 8-column first line into two rows at the 5-column proposal, while
+        // the eager path still truncates at the buffer edge (it has no
+        // proposal context). Pinned below is TODAY's eager output; the engine
+        // must produce the wrapped rows.
         ParityCase(
-            name: "vstack wide line truncates at buffer width",
+            name: "DIVERGENT: vstack wide Text line wraps (A1) instead of truncating",
             view: VStack {
                 Text("abcdefgh")
                 Text("x")
             },
             width: 5,
-            expectedRows: ["abcde", "x"]
+            // TODAY's eager output: the 8-column line is truncated at the
+            // 5-column buffer edge → ["abcde", "x"].
+            expectedRows: ["abcde", "x"],
+            isKnownDivergent: true,
+            // Engine (A1): `Text("abcdefgh")` wraps to "abcde"/"fgh" (char-level
+            // fallback at the 5-column proposal) → ["abcde", "fgh", "x"].
+            expectedEngineRows: ["abcde", "fgh", "x"]
         ),
 
         // ── Known divergence ────────────────────────────────────────────────
@@ -517,17 +532,27 @@ extension ParityCase {
             expectedRows: ["  ab", ""]
         ),
 
+        // !!! ALLOWED DIVERGENCE #6 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // A1 made `Text` a proposal consumer, so a fixed-width frame now WRAPS
+        // its Text child to the frame's width. The engine's child is "ab"/"cd"
+        // (2×2) inside the 2-wide frame — no horizontal overflow — while the
+        // eager `body` (no proposal context) keeps the 4-wide raster and the
+        // derived 2-wide buffer truncates it to "ab". The frame still does not
+        // clip (pinned); the divergence is the wrap itself. Pinned below is
+        // TODAY's eager output; the engine must produce the wrapped rows.
         ParityCase(
-            name: "fixed frame smaller than child does not clip in either path",
+            name: "DIVERGENT: fixed frame smaller than Text wraps (A1); eager truncates at buffer",
             view: Text("abcd")
                 .frame(width: 2, horizontalAlignment: .center),
             width: 2,
-            // No clipping (pinned overflow semantics): the 4-wide child
-            // overflows the 2-wide frame; the derived 2-wide buffer truncates
-            // it in BOTH paths (eager's width() pads but never truncates, and
-            // `layout` truncates at the buffer edge; the engine's leaf write
-            // truncates at the buffer edge too).
-            expectedRows: ["ab"]
+            // TODAY's eager output: the 4-wide raster is truncated at the
+            // 2-wide buffer edge → ["ab"].
+            expectedRows: ["ab"],
+            isKnownDivergent: true,
+            // Engine (A1): `Text("abcd")` wraps to the frame's 2-column
+            // proposal → ["ab", "cd"].
+            expectedEngineRows: ["ab", "cd"]
         ),
 
         // !!! ALLOWED DIVERGENCE #4 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
@@ -551,6 +576,111 @@ extension ParityCase {
             isKnownDivergent: true,
             // Engine: fills the 8-column offer, centers the child at col 3.
             expectedEngineRows: ["   ab"]
+        ),
+
+        // ── A2 additions: FlexibleSpacer ───────────────────────────────────
+        //
+        // !!! ALLOWED DIVERGENCE #7 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // `FlexibleSpacer` distributes leftover main-axis space, which only
+        // exists in the engine: the eager path has no proposal context, so its
+        // `body` resolves to empty content and the eager HStack join SKIPS the
+        // empty component (the phase-1 skip-empty semantics) → "LR". The
+        // engine sees the 10-column offer, the spacer reports a positive
+        // fraction, and the stack fills the offer and hands the spacer the 8
+        // leftover columns → "L        R".
+        //
+        // A `Fill` corpus case would be invisible under the harness's
+        // `(width, nil)` proposal (an HStack offers `nil` width to its
+        // children), so `Fill` is covered by unit tests instead —
+        // `Tests/ChaiTests/FlexibilityTests.swift` and
+        // `Tests/LatteTests/FlexibleSpacerTests.swift`.
+        ParityCase(
+            name: "DIVERGENT: hstack FlexibleSpacer distributes leftover (A2); eager skips empty spacer",
+            view: HStack {
+                Text("L")
+                FlexibleSpacer()
+                Text("R")
+            },
+            width: 10,
+            // TODAY's eager output: the spacer's body is empty and the eager
+            // join skips it → "LR".
+            expectedRows: ["LR"],
+            isKnownDivergent: true,
+            // Engine (A2): the spacer absorbs the 8-column leftover → "L" +
+            // 8 spaces + "R".
+            expectedEngineRows: ["L        R"]
+        ),
+
+        // !!! ALLOWED DIVERGENCE #8 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // `Fill` answers the proposal dimensions, so in a non-left-aligned
+        // VStack it widens the stack to the offer (Fill claims the proposed
+        // width) and shifts its sibling to the alignment offset. The eager
+        // path resolves Fill's empty `body` and skips it (skip-empty
+        // semantics), so the stack stays content-sized. Pinned below is
+        // TODAY's eager output; the engine must produce the shifted row.
+        ParityCase(
+            name: "DIVERGENT: vstack right-aligned Fill claims proposed width (A2)",
+            view: VStack(alignment: .right) {
+                Text("ab")
+                Fill()
+            },
+            width: 8,
+            // TODAY's eager output: Fill's empty body is skipped → "ab".
+            expectedRows: ["ab"],
+            isKnownDivergent: true,
+            // Engine (A2): Fill claims the 8-column proposal; the stack is
+            // 8 wide and the right-aligned Text sits at offset 6 →
+            // "      ab".
+            expectedEngineRows: ["      ab"]
+        ),
+
+        // !!! ALLOWED DIVERGENCE #9 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // `.clipped()` masks overflow only in the engine (A3). The eager path
+        // has no assigned rect, so `ClipView.body` resolves its content
+        // unchanged — clipping is a render-time mask. The receiver here is a
+        // `ViewOutput`, so `.frame(width: 2)` resolves to the NEW `View.frame`
+        // (the eager overload requires `height`), producing
+        // `FrameView<ViewOutput>`. The eager frame's `.width()` modifier PADS
+        // to a minimum and never truncates — "abcd" is already wider than 2, so
+        // it is unchanged. The engine's frame answers width 2, the 4-wide
+        // raster overflows it, and the clip masks it to "ab".
+        ParityCase(
+            name: "DIVERGENT: clipped frame masks overflow in the engine (A3); eager no-op",
+            view: ViewOutput("abcd")
+                .frame(width: 2)
+                .clipped(),
+            width: 4,
+            // TODAY's eager output: `.width(2)` pads to a minimum (a no-op for
+            // the already-4-wide "abcd") and `.clipped()` cannot clip →
+            // ["abcd"].
+            expectedRows: ["abcd"],
+            isKnownDivergent: true,
+            // Engine (A3): the frame answers width 2; the clip masks the
+            // 4-wide raster to the 2-wide rect → ["ab"].
+            expectedEngineRows: ["ab"]
+        ),
+
+        // !!! ALLOWED DIVERGENCE #10 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // Newline-only `Text` collapses to 0x0 in the engine: content with
+        // no visible character (whitespace- or newline-only) wraps to empty
+        // — the A1 blank-line rule preserves hard lines only when the
+        // content has a visible character. The eager path resolves
+        // `Text("\n")` to `ViewOutput("\n")` and measures `lineCount()` = 2
+        // blank rows. Pinned below is TODAY's eager output; the engine
+        // renders nothing.
+        ParityCase(
+            name: "DIVERGENT: newline-only Text collapses to nothing (A1); eager measures two blank rows",
+            view: Text("\n"),
+            width: 8,
+            // TODAY's eager output: "\n" is two blank lines.
+            expectedRows: ["", ""],
+            isKnownDivergent: true,
+            // Engine: no visible character → wraps to empty → 0x0 → no rows.
+            expectedEngineRows: []
         ),
     ]
 }

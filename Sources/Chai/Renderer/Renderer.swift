@@ -35,8 +35,9 @@ actor Renderer {
     ///
     /// Stored as an existential rather than resolved eagerly: ``flush()``
     /// lays the tree out through the phase-2 engine
-    /// (``View/_sizeThatFits(_:)`` + ``View/_render(into:at:size:)``) into a
-    /// ``CellBuffer``. `nil` (nothing written yet) renders as an empty view.
+    /// (``View/_sizeThatFits(_:)`` + ``View/_render(into:at:size:proposal:)``)
+    /// into a ``CellBuffer``. `nil` (nothing written yet) renders as an empty
+    /// view.
     private var pendingView: (any View)? = nil
 
     /// The cursor queued for the next flush (set separately from content).
@@ -186,12 +187,16 @@ actor Renderer {
         let w = termWidth > 0 ? termWidth : Self.fallbackWidth
         let altScreenHeight = termHeight > 0 ? termHeight : 24
 
-        // Measure the tree under the terminal proposal. Inline mode proposes
-        // width only (height stays ideal — the buffer is content-sized,
-        // clamped below); alt-screen mode proposes the fixed terminal size.
-        let measured = view._sizeThatFits(
-            ProposedSize(width: w, height: altScreenActive ? altScreenHeight : nil)
-        )
+        // The fit proposal: measure the tree under the terminal offer. Inline
+        // mode proposes width only (height stays ideal — the buffer is
+        // content-sized, clamped below); alt-screen mode proposes the fixed
+        // terminal size. The SAME value is passed to the root render call —
+        // the fit/render value-equality contract (A0) — so a proposal-
+        // consuming child at the root sees the fit proposal, not its assigned
+        // (measured) size.
+        let proposal = ProposedSize(width: w, height: altScreenActive ? altScreenHeight : nil)
+
+        let measured = view._sizeThatFits(proposal)
 
         let bufferHeight: Int
         if measured.height == 0 {
@@ -230,7 +235,7 @@ actor Renderer {
             origin = .zero
         }
 
-        view._render(into: &newBuffer, at: origin, size: measured)
+        view._render(into: &newBuffer, at: origin, size: measured, proposal: proposal)
 
         // ── Determine what needs updating ─────────────────────────────────
 

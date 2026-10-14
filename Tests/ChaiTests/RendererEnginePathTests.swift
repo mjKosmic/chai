@@ -12,7 +12,9 @@ import Latte
 //
 // - Real trees (VStack/HStack, control flow) written via the generic
 //   `write` render correctly after `flush`.
-// - Inline truncation: over-wide content truncates at the terminal width.
+// - Inline truncation vs wrapping (A1): a proposal-consuming `Text` root
+//   WRAPS at the terminal width, while a non-wrapping `ViewOutput` root
+//   truncates at it — the two cases pin the proposal-consumer boundary.
 // - Inline suffix clamp: content taller than the terminal shows its LAST
 //   `termHeight` rows (the engine's negative-row-origin equivalent of
 //   `StyledText.suffix(lines:)`).
@@ -80,9 +82,36 @@ struct RendererEnginePathTests {
         #expect(mock.output.contains("footer"))
     }
 
-    // MARK: - Inline truncation
+    // MARK: - Fit/render proposal consistency (A0)
 
-    @Test func inlineTruncationThroughEngine() async {
+    @Test func proposalEchoSeesFitProposalAtRootRender() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 20, height: 24)
+        await renderer.write(VStack {
+            ProposalEchoView()
+            Text("hi")
+        })
+        await renderer.flush()
+        // The echo measures min(20, 12) = 12 wide, so the stack measures
+        // 12×2 — narrower than the 20-column terminal. The echo's render-time
+        // proposal must be the FIT proposal (terminal width 20), not its
+        // assigned size (12). Pre-A0 this rendered "W:12" — the value-level
+        // gap at the renderer root that the proposal-carrying `_render`
+        // closes.
+        #expect(mock.output.contains("W:20"))
+    }
+
+    // MARK: - Inline wrapping vs truncation (A1 proposal-consumer boundary)
+
+    @Test func inlineTextWrapsThroughEngine() async {
+        // A1 spec delta: `Text` is a proposal consumer, so the over-wide first
+        // row now WRAPS at the 5-column terminal instead of being truncated.
+        // The engine measures the root VStack at the terminal proposal, the
+        // `Text("abcdefgh")` child wraps to "abcde"/"fgh", and the buffer is
+        // sized to the wrapped height (3 rows). The inline truncate policy is
+        // still in force — it is simply no longer reached, because the wrapped
+        // content fits (see `inlineViewOutputTruncatesThroughEngine`).
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         await renderer.setSize(width: 5, height: 24)
@@ -91,10 +120,53 @@ struct RendererEnginePathTests {
             Text("x")
         })
         await renderer.flush()
-        // The over-wide first row truncates at the 5-column terminal; the
-        // following logical row is NOT stolen by wrapping.
         #expect(mock.output.contains("abcde"))
+        #expect(mock.output.contains("fgh"))
+        #expect(mock.output.contains("x"))
         #expect(!mock.output.contains("abcdefgh"))
+    }
+
+    @Test func inlineViewOutputTruncatesThroughEngine() async {
+        // The non-wrapping contrast at the same terminal: `ViewOutput` stays a
+        // raster leaf that ignores proposals (the pinned A1 decision), so the
+        // over-wide first row truncates and the following logical row is NOT
+        // stolen by wrapping.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 5, height: 24)
+        await renderer.write(VStack {
+            ViewOutput("abcdefgh")
+            ViewOutput("x")
+        })
+        await renderer.flush()
+        #expect(mock.output.contains("abcde"))
+        #expect(mock.output.contains("x"))
+        #expect(!mock.output.contains("fgh"))
+        #expect(!mock.output.contains("abcdefgh"))
+    }
+
+    @Test func rootTextWrapsThroughEngine() async {
+        // Root `Text` at a narrow terminal: the renderer's fit proposal is the
+        // terminal width, and the root Text wraps into rows.
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 5, height: 24)
+        await renderer.write(Text("abcdefgh"))
+        await renderer.flush()
+        #expect(mock.output.contains("abcde"))
+        #expect(mock.output.contains("fgh"))
+    }
+
+    @Test func rootViewOutputTruncatesThroughEngine() async {
+        // Root `ViewOutput` at the same narrow terminal: ignored proposal →
+        // one truncated row, no "fgh".
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 5, height: 24)
+        await renderer.write(ViewOutput("abcdefgh"))
+        await renderer.flush()
+        #expect(mock.output.contains("abcde"))
+        #expect(!mock.output.contains("fgh"))
     }
 
     // MARK: - Inline suffix clamp
@@ -184,10 +256,12 @@ struct RendererEnginePathTests {
         await renderer.flush()
         mock.reset()
         // Shrink the terminal: the next flush re-measures and re-lays-out the
-        // pending tree at the new width (truncating at 5 columns).
+        // pending tree at the new width. A1: the root `Text` wraps to
+        // 5-column rows instead of truncating.
         await renderer.setSize(width: 5, height: 24)
         await renderer.flush()
         #expect(mock.output.contains("ABCDE"))
+        #expect(mock.output.contains("FGHIJ"))
         #expect(!mock.output.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
     }
 
@@ -199,7 +273,10 @@ struct RendererEnginePathTests {
         await renderer.setSize(width: 5, height: 24)
         await renderer.enterAltScreen()
         mock.reset()
-        await renderer.write(Text("abcdefgh"))
+        // A non-wrapping child, so the overflow actually reaches the buffer:
+        // `Text` would wrap itself at the terminal proposal (A1) and never
+        // exercise the alt-screen buffer policy.
+        await renderer.write(ViewOutput("abcdefgh"))
         await renderer.flush()
         // Alt-screen buffers wrap: overflow spills onto the next buffer row.
         #expect(mock.output.contains("abcde"))
@@ -265,5 +342,79 @@ struct RendererEnginePathTests {
         await renderer.setSize(width: 10, height: 5)
         await renderer.flush()
         #expect(mock.output.contains("   abcd"))
+    }
+
+    // MARK: - Fill claims offered space (A2)
+
+    @Test func fillClaimsOfferedHeightThroughEngine() async {
+        // `Fill` answers the proposal, so the HStack is as tall as the frame's
+        // 3-row offer (1×3). The bottom-aligned frame then has no vertical
+        // shortage and places the stack at the TOP — "x" is painted on row 0
+        // and rows 1–2 are painted blank (the space `Fill` claimed).
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 10, height: 3)
+        await renderer.write(
+            HStack {
+                Fill()
+                Text("x")
+            }
+            .frame(width: 4, height: 3, verticalAlignment: .bottom)
+        )
+        await renderer.flush()
+        #expect(
+            mock.output.contains(
+                "x" + ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight
+            )
+        )
+
+        // Contrast: without `Fill` the stack is 1 row tall, so the same
+        // bottom-aligned frame places "x" on the LAST row instead.
+        let contrast = MockTerminal()
+        let contrastRenderer = Renderer(terminal: contrast)
+        await contrastRenderer.setSize(width: 10, height: 3)
+        await contrastRenderer.write(
+            HStack {
+                Text("x")
+            }
+            .frame(width: 4, height: 3, verticalAlignment: .bottom)
+        )
+        await contrastRenderer.flush()
+        #expect(
+            contrast.output.contains(
+                ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight + "\r\n"
+                    + "x" + ANSI.eraseLineRight
+            )
+        )
+    }
+
+    // MARK: - Clipped trees (A3)
+
+    @Test func clippedTreeShowsClippedRowsThroughEngine() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 8, height: 4)
+        await renderer.enterAltScreen()
+        mock.reset()
+        // The frame answers width 3; the clip masks the 6-wide raster to
+        // "abc". The eager path would show "abcdef" (no clipping).
+        await renderer.write(
+            ViewOutput("abcdef").frame(width: 3).clipped()
+        )
+        await renderer.flush()
+        #expect(mock.output.contains("abc" + ANSI.eraseLineRight))
+        #expect(!mock.output.contains("abcdef"))
+        #expect(!mock.output.contains("abcd"))
+    }
+
+    @Test func zeroProbedTextIsMeasuredCorrectly() async {
+        // The renderer root never offers zero — it proposes the terminal
+        // width — so `.zero` is a unit-level measurement pin (see
+        // `ProposedSizeZeroTests`). Kept here as the renderer-path counterpart
+        // so the A3 minimum semantics are pinned on both surfaces.
+        #expect(Text("abcd")._sizeThatFits(.zero) == ViewSize(width: 1, height: 4))
     }
 }

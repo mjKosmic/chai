@@ -61,6 +61,12 @@ extension ViewOutput {
     /// Lines already wider than `width` or content already taller than `height`
     /// are unchanged — this enforces minimums, not maximums.
     ///
+    /// - Note: This eager overload shadows the tree-based ``View/frame(width:
+    ///   height:horizontalAlignment:verticalAlignment:)`` when called with
+    ///   **both** dimensions on a `ViewOutput` receiver. Prefer the
+    ///   tree-based frame (it composes with the layout engine, clipping, and
+    ///   flexible fill); this overload is retired in Stage C (UPGRADE.md).
+    ///
     /// - Parameters:
     ///   - width: The minimum column width.
     ///   - height: The minimum line count.

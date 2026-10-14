@@ -77,8 +77,9 @@ struct FramePlacementTests {
         height: Int
     ) -> [String] {
         var buffer = CellBuffer(width: width, height: height)
-        let size = view._sizeThatFits(ProposedSize(width: width, height: height))
-        view._render(into: &buffer, at: .zero, size: size)
+        let proposal = ProposedSize(width: width, height: height)
+        let size = view._sizeThatFits(proposal)
+        view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
         return visibleRows(buffer)
     }
 
@@ -186,15 +187,27 @@ struct FramePlacementTests {
 @Suite("Frame Overflow")
 struct FrameOverflowTests {
 
+    /// A non-wrapping raster leaf: its `body` is a `ViewOutput`, so its
+    /// measured and rendered size ignores the frame's width proposal — exactly
+    /// the pre-A1 `Text` behavior. Used to pin the frame's no-clip semantics
+    /// independently of A1's proposal-consuming `Text`, which wraps its
+    /// content to the frame's fixed width and therefore no longer overflows
+    /// horizontally (see `textWrapsToFrameWidthInsteadOfOverflowing` below).
+    private struct Raster: View {
+        let content: String
+        init(_ content: String) { self.content = content }
+        var body: ViewOutput { ViewOutput(content) }
+    }
+
     @Test func childLargerThanFrameOverflowsBounds() {
-        // Frame is 2×1 around a 4×2 child. The buffer is 4×2 — larger than
-        // the frame — so the overflow is visible: content extends past the
-        // frame's assigned bounds in both axes.
+        // Frame is 2×1 around a 4×2 NON-WRAPPING child. The buffer is 4×2 —
+        // larger than the frame — so the overflow is visible: content extends
+        // past the frame's assigned bounds in both axes.
         var buffer = CellBuffer(width: 4, height: 2)
-        let frame = Text("abcd\nef").frame(width: 2, height: 1)
+        let frame = Raster("abcd\nef").frame(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
         #expect(size == ViewSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
 
         // Shortage is clamped: the child renders from offset 0.
         #expect(buffer[0, 0].character == "a")
@@ -209,10 +222,10 @@ struct FrameOverflowTests {
         // A buffer the size of the frame truncates the overflowing content
         // at the buffer edge — the buffer is the final backstop, not the
         // frame.
-        let frame = Text("abcd\nef").frame(width: 2, height: 1)
+        let frame = Raster("abcd\nef").frame(width: 2, height: 1)
         var buffer = CellBuffer(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
         #expect(visibleRows(buffer) == ["ab"])
     }
 
@@ -221,11 +234,28 @@ struct FrameOverflowTests {
         // so the child still renders from the alignment offset of the
         // available (zero) shortage — column 0.
         var buffer = CellBuffer(width: 4, height: 2)
-        let frame = Text("abcd\nef").frame(width: 2, height: 1, horizontalAlignment: .right)
+        let frame = Raster("abcd\nef").frame(width: 2, height: 1, horizontalAlignment: .right)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
         #expect(buffer[0, 0].character == "a")
         #expect(visibleRows(buffer) == ["abcd", "ef"])
+    }
+
+    @Test func textWrapsToFrameWidthInsteadOfOverflowing() {
+        // A1 spec delta: `Text` is now a proposal consumer, so a fixed-width
+        // frame WRAPS its text child to the frame's width instead of letting
+        // it overflow horizontally (the char-level fallback guarantees the
+        // wrapped content fits any positive width). The frame still does not
+        // clip, so the vertical overflow remains: the frame answers 2×1 but
+        // the wrapped child is 2 columns × 3 rows.
+        var buffer = CellBuffer(width: 4, height: 3)
+        let frame = Text("abcd\nef").frame(width: 2, height: 1)
+        let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
+        #expect(size == ViewSize(width: 2, height: 1))
+        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
+        // "abcd" wraps to "ab"/"cd"; "ef" stays; all three rows land below the
+        // 1-tall frame's bounds (no clipping).
+        #expect(visibleRows(buffer) == ["ab", "cd", "ef"])
     }
 }
 
@@ -316,17 +346,22 @@ struct FrameLegacyBodyTests {
 @Suite("Frame Degenerate Sizes")
 struct FrameDegenerateTests {
 
-    @Test func zeroWidthFrameDoesNotCrashAndOverflows() {
+    @Test func zeroWidthFrameCompressesTextToMinimumAndOverflows() {
         var buffer = CellBuffer(width: 4, height: 1)
         let frame = Text("abcd").frame(width: 0)
         let size = frame._sizeThatFits(.unspecified)
-        // Fixed width 0 answers 0; the flexible height is the child's 1.
-        #expect(size == ViewSize(width: 0, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size)
-        // No clipping: the 4-wide child renders past the 0-wide frame,
-        // clipped only at the 4-wide buffer.
+        // Fixed width 0 answers 0. A3: the frame's fixed 0 width reaches the
+        // `Text` child as its proposal, so the child answers its MINIMUM (1
+        // wide, 4 rows — one character per row); the flexible height then
+        // forwards the child's ideal height, 4.
+        #expect(size == ViewSize(width: 0, height: 4))
+        frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
+        // No clipping: the 1-wide child renders past the 0-wide frame's bounds
+        // (col 0), clipped only at the 4-wide buffer. Only the first row lands
+        // (the buffer is 1 tall).
         #expect(buffer[0, 0].character == "a")
-        #expect(buffer[3, 0].character == "d")
+        #expect(buffer[1, 0] == .empty)
+        #expect(buffer[3, 0] == .empty)
     }
 
     @Test func zeroHeightFrameDoesNotCrashAndOverflows() {
@@ -334,10 +369,42 @@ struct FrameDegenerateTests {
         let frame = Text("abcd").frame(height: 0)
         let size = frame._sizeThatFits(.unspecified)
         #expect(size == ViewSize(width: 4, height: 0))
-        frame._render(into: &buffer, at: .zero, size: size)
+        frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
         // The child renders at row 0 (shortage clamped), clipped only at the
         // buffer.
         #expect(buffer[0, 0].character == "a")
         #expect(buffer[3, 0].character == "d")
+    }
+}
+
+// MARK: - Fit proposal reconstruction (A0)
+
+@Suite("Frame Proposal Reconstruction")
+struct FrameProposalReconstructionTests {
+
+    @Test func flexibleAxisFrameProposesIncomingWidthToChild() {
+        // FrameView(width: nil) at an 8-column proposal: the flexible axis
+        // proposes the incoming 8 in BOTH passes (A0 reconstructs the fit
+        // proposal), so the echo renders "W:8". Pre-A0 the render pass
+        // proposed ideal on flexible axes → the echo saw nil → "W:-1".
+        let buffer = engineBuffer(
+            FrameView(width: nil) {
+                ProposalEchoView()
+            },
+            width: 8
+        )
+        #expect(visibleRows(buffer) == ["W:8"])
+    }
+
+    @Test func fixedAxisFrameStillProposesFixedWidthToChild() {
+        // A fixed-width frame proposes its fixed width in both passes
+        // regardless of the incoming proposal.
+        let buffer = engineBuffer(
+            FrameView(width: 4) {
+                ProposalEchoView()
+            },
+            width: 8
+        )
+        #expect(visibleRows(buffer) == ["W:4"])
     }
 }

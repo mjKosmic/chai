@@ -76,6 +76,25 @@ struct StacksEngineMeasurementTests {
         #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 1))
     }
 
+    @Test func hstackNeverProposesWidthSoTextCannotWrapInsideIt() {
+        // Documented HStack column model (PR #21 review finding): HStack
+        // measures columns at IDEAL width — it proposes `(nil, height)` — so
+        // a wrapping `Text` child is inert inside an HStack; over-wide
+        // content overflows and is truncated at the buffer. Pinned as the
+        // current contract; "propose remaining width to HStack children" is
+        // a Stage C candidate (UPGRADE.md).
+        let stack = HStack {
+            Text("abcdefghij")
+        }
+        #expect(
+            stack._sizeThatFits(ProposedSize(width: 5, height: nil)) == ViewSize(width: 10, height: 1)
+        )
+        let size = stack._sizeThatFits(ProposedSize(width: 5, height: nil))
+        var buffer = CellBuffer(width: 5, height: size.height)
+        stack._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 5, height: nil))
+        #expect(visibleRows(buffer) == ["abcde"])
+    }
+
     @Test func vstackEmptyChildrenMeasureZero() {
         #expect(VStack { Empty() }._sizeThatFits(.unspecified) == .zero)
         #expect(
@@ -172,7 +191,7 @@ struct StacksEngineAlignmentTests {
             Text("aa")
             Text("bbbbb")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 5, height: 2))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 5, height: 2), proposal: ProposedSize(width: 5, height: nil))
         #expect(buffer[0, 0].character == "a")
         #expect(buffer[1, 0].character == "a")
         #expect(visibleRows(buffer) == ["aa", "bbbbb"])
@@ -186,7 +205,7 @@ struct StacksEngineAlignmentTests {
             Text("ab")
             Text("abc")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 3, height: 2))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 3, height: 2), proposal: ProposedSize(width: 3, height: nil))
         #expect(buffer[0, 0] == .empty)
         #expect(buffer[1, 0].character == "a")
         #expect(buffer[2, 0].character == "b")
@@ -200,7 +219,7 @@ struct StacksEngineAlignmentTests {
             Text("ab")
             Text("cdef")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 4, height: 2))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 4, height: 2), proposal: ProposedSize(width: 4, height: nil))
         #expect(buffer[0, 0] == .empty)
         #expect(buffer[1, 0] == .empty)
         #expect(buffer[2, 0].character == "a")
@@ -215,7 +234,7 @@ struct StacksEngineAlignmentTests {
             Text("aa")
             Text("bbbbb")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 5, height: 2))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 5, height: 2), proposal: ProposedSize(width: 5, height: nil))
         #expect(buffer[0, 0] == .empty)
         #expect(buffer[1, 0].character == "a")
         #expect(buffer[2, 0].character == "a")
@@ -229,7 +248,7 @@ struct StacksEngineAlignmentTests {
             Text("x")
             Text("xxxxx")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 5, height: 1))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 5, height: 1), proposal: ProposedSize(width: 5, height: nil))
         #expect(buffer[0, 0] == .empty)
         #expect(buffer[1, 0] == .empty)
         #expect(buffer[2, 0].character == "x")
@@ -244,7 +263,7 @@ struct StacksEngineAlignmentTests {
             Text("a\nb\nc\nd")
             Text("x")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 4))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 4), proposal: ProposedSize(width: nil, height: 4))
         #expect(buffer[1, 0].character == "x")
         #expect(visibleRows(buffer) == ["ax", "b", "c", "d"])
     }
@@ -256,7 +275,7 @@ struct StacksEngineAlignmentTests {
             Text("a\nb")
             Text("1")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 2))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 2), proposal: ProposedSize(width: nil, height: 2))
         // The left child occupies col 0 (rows 0–1); the right child "1" sits
         // at col 1, row 1 — the cell above it (col 1, row 0) stays empty.
         #expect(buffer[1, 0] == .empty)
@@ -271,7 +290,7 @@ struct StacksEngineAlignmentTests {
             Text("a\nb\nc\nd")
             Text("x")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 4))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 4), proposal: ProposedSize(width: nil, height: 4))
         // The left child occupies col 0 (rows 0–3); the right child "x" is at
         // col 1, row 1 — the cell above it (col 1, row 0) stays empty.
         #expect(buffer[1, 0] == .empty)
@@ -286,7 +305,7 @@ struct StacksEngineAlignmentTests {
             Text("a\nb\nc")
             Text("x")
         }
-        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 3))
+        stack._render(into: &buffer, at: .zero, size: ViewSize(width: 2, height: 3), proposal: ProposedSize(width: nil, height: 3))
         // The left child occupies col 0 (rows 0–2); "x" is at col 1, row 1.
         #expect(buffer[1, 0] == .empty)
         #expect(buffer[1, 2] == .empty)
@@ -433,5 +452,54 @@ struct StacksEngineRenderTests {
             width: 8
         )
         #expect(visibleRows(buffer) == ["ab z", "cde"])
+    }
+}
+
+// MARK: - Fit/render proposal forwarding (A0)
+
+@Suite("Stacks Engine Proposal Forwarding")
+struct StacksEngineProposalForwardingTests {
+
+    @Test func vstackForwardsFitProposalWhenAssignedSizeDiffersFromProposal() {
+        var buffer = CellBuffer(width: 20, height: 2)
+        let stack = VStack {
+            ProposalEchoView()
+            Text("hi")
+        }
+        // Fit proposal (20, nil) → the echo caps at 12, so the stack measures
+        // 12×2. Rendered directly at the measured size with the fit proposal:
+        // the child must still receive the FIT proposal (20), not the assigned
+        // width (12). Pre-A0 the render pass derived the child proposal from
+        // the assigned size → "W:12".
+        stack._render(
+            into: &buffer,
+            at: .zero,
+            size: ViewSize(width: 12, height: 2),
+            proposal: ProposedSize(width: 20, height: nil)
+        )
+        #expect(visibleRows(buffer) == ["W:20", "hi"])
+    }
+
+    @Test func vstackPlacementMathStillUsesAssignedSize() {
+        var buffer = CellBuffer(width: 12, height: 2)
+        let stack = VStack(alignment: .right) {
+            ProposalEchoView()
+            Text("hi")
+        }
+        // The echo (12 wide) fills the assigned 12 columns → shortage 0 → the
+        // right alignment places it at col 0, even though the proposal offered
+        // 20. If placement ran against the proposal width, the echo would sit
+        // at col 8.
+        stack._render(
+            into: &buffer,
+            at: .zero,
+            size: ViewSize(width: 12, height: 2),
+            proposal: ProposedSize(width: 20, height: nil)
+        )
+        #expect(buffer[0, 0].character == "W")
+        #expect(buffer[8, 0] == .empty)
+        // The second child ("hi", 2 wide) right-aligns within the assigned 12:
+        // shortage 10 → col 10.
+        #expect(buffer[10, 1].character == "h")
     }
 }

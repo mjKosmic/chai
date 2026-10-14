@@ -32,20 +32,20 @@ import Chai
 /// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` does **not**
 /// clip. A child whose truthful answer exceeds the frame's fixed size
 /// overflows the frame's bounds (SwiftUI-consistent), with the terminal
-/// buffer as the final backstop; the `.clipped()` modifier is a phase-3
-/// candidate. Shrinking content to fit is the phase-3 wrapping/flex story —
+/// buffer as the final backstop; ``View/clipped()`` is the opt-in that masks
+/// that overflow. Shrinking content to fit is the phase-3 wrapping/flex story —
 /// a frame is placement, not shrinking.
 ///
-/// ## Known SPI limitation (fit vs render proposal)
+/// ## Fit proposal reconstruction (A0)
 ///
-/// ``View/_render(into:at:size:)`` receives only the assigned size, not the
-/// proposal, so a flexible axis cannot reconstruct what the fit pass offered
-/// — ``_render(into:at:size:)`` proposes *ideal* on flexible axes instead.
-/// With today's proposal-ignoring children (``ViewOutput`` measures unwrapped)
-/// this is observationally identical to proposing the offer. A
-/// proposal-responsive child (phase-3 wrapping `Text`) inside a flexible-axis
-/// frame may need the proposal carried into `_render` — a phase-3 SPI
-/// extension candidate (recorded in UPGRADE.md).
+/// ``View/_render(into:at:size:proposal:)`` receives the proposal the fit
+/// pass used, so a flexible axis reconstructs the offer exactly: the child is
+/// re-measured and rendered with
+/// `ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)`
+/// — the same value the fit pass proposed (fixed dimensions constant;
+/// flexible axes pass the incoming offer through). This closes the phase-2
+/// limitation where render-time flexible axes proposed *ideal*; see
+/// ARCHITECTURE.md "Fit/render consistency".
 ///
 /// The legacy ``body`` cannot express flexible-fill either: it has no
 /// proposal context, so it applies the existing ``ViewOutput/width(_:align:)``
@@ -123,9 +123,10 @@ public struct FrameView<Content: View>: View {
 // Phase-2 layout engine (UPGRADE.md): the frame is a proposal *generator*.
 // `_sizeThatFits` answers fixed dimensions verbatim, fills non-`nil` offers
 // on flexible axes, and falls back to the child's ideal when the offer is
-// `nil`. `_render` re-measures the child with fixed dimensions constant and
-// flexible axes ideal, then places it at the alignment fraction of the
-// shortage — mirroring the stacks' `Int(Double(shortage) * fraction)`
+// `nil`. `_render` reconstructs the fit proposal (A0) — fixed dimensions
+// constant, flexible axes = the incoming proposal — re-measures the child
+// with it, renders the child with it, and places it at the alignment fraction
+// of the shortage — mirroring the stacks' `Int(Double(shortage) * fraction)`
 // formula and `max(0, ...)` guard. No clipping: a child larger than the
 // frame overflows its bounds (the buffer is the backstop).
 
@@ -142,19 +143,21 @@ extension FrameView {
         )
     }
 
-    /// Re-measure the child (fixed dims constant, flexible axes ideal), then
-    /// place it at the alignment fraction of the shortage per axis.
+    /// Reconstruct the fit proposal (fixed dims constant, flexible axes = the
+    /// incoming proposal), re-measure the child with it, then place it at the
+    /// alignment fraction of the shortage per axis.
     ///
     /// A child larger than the frame renders from its alignment offset
     /// (shortage clamped to 0) and overflows the frame's bounds — no
     /// clipping, the buffer is the backstop.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize) {
-        let childSize = content._sizeThatFits(ProposedSize(width: width, height: height))
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+        let childProposal = ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)
+        let childSize = content._sizeThatFits(childProposal)
         let colShortage = max(0, size.width - childSize.width)
         let col = origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
         let rowShortage = max(0, size.height - childSize.height)
         let row = origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
-        content._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize)
+        content._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
     }
 }
 
@@ -169,7 +172,15 @@ extension View {
     /// assigned rect according to the alignment fractions.
     ///
     /// A frame does **not** clip: content larger than the frame overflows its
-    /// bounds, with the terminal buffer as the final backstop.
+    /// bounds, with the terminal buffer as the final backstop. Use
+    /// ``View/clipped()`` to mask that overflow.
+    ///
+    /// - Note: On a ``ViewOutput`` receiver, calling `frame(width:height:)`
+    ///   with **both** dimensions resolves to the pre-existing eager
+    ///   `ViewOutput.frame` overload (minimum-enforcing, returns `ViewOutput`)
+    ///   rather than this one — width-only calls, or any non-`ViewOutput`
+    ///   receiver, use this tree-based frame. The eager overload is retired
+    ///   in Stage C (UPGRADE.md), which removes the ambiguity.
     ///
     /// ```swift
     /// // Center a small view in the terminal window.
