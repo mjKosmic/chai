@@ -239,6 +239,25 @@ and proposes that fixed size downward.
      case "DIVERGENT: fixed frame smaller than Text wraps (A1); eager
      truncates at buffer" (`expectedRows` `["ab"]`, `expectedEngineRows`
      `["ab", "cd"]`). Like #4, this asymmetry self-retires in Stage C.
+  7. `FlexibleSpacer` distributes leftover space only in the engine (A2):
+     the eager path has no proposal context, so the spacer's `body` resolves
+     to empty content and the eager join **skips** the empty component (the
+     phase-1 skip-empty semantics). At a 10-column offer,
+     `HStack { Text("L"); FlexibleSpacer(); Text("R") }` is `"LR"` eagerly
+     and `"L        R"` in the engine (the spacer absorbs the 8 leftover
+     columns). Corpus case "DIVERGENT: hstack FlexibleSpacer distributes
+     leftover (A2); eager skips empty spacer" (`expectedRows` `["LR"]`,
+     `expectedEngineRows` `["L        R"]`). Like #4/#5/#6, it self-retires
+     in Stage C.
+  8. `Fill` claims the proposed dimensions only in the engine (A2): `Fill`
+     answers the offer on both axes, so in a non-left-aligned `VStack` it
+     makes the stack as wide as the proposal and shifts its siblings
+     (`VStack(alignment: .right) { Text("ab"); Fill() }` at width 8: eager
+     `["ab"]`, engine `["      ab"]`). The eager path resolves Fill's empty
+     `body` and skips it (skip-empty semantics). Corpus case "DIVERGENT:
+     vstack right-aligned Fill claims proposed width (A2)" with
+     `expectedRows` `["ab"]` and `expectedEngineRows` `["      ab"]`. Like
+     #4–#7, it self-retires in Stage C.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 
@@ -303,7 +322,7 @@ wrappers/eager-path retirement (Stage C).
 |---|---|---|
 | A0 | **Proposal-carrying `_render`** — the clean SPI break across all conformers; `Renderer.flush` passes the fit proposal (width w, height alt-screen h / nil) to the root render; `FrameView` reconstructs its fit proposal on re-measure; docs rewritten (ARCHITECTURE fit/render section, AGENTS pitfall #2 becomes a value-equality contract) | Behavior-preserving: all 1108 suites green unmodified; a test-local proposal-echo consumer view + a renderer-level parity case exercising `assigned ≠ proposed` at the root (the phase-2 harness blind spot) | ✅ landed |
 | A1 | **Word-aware wrapping `Text`** — measures wrapped at a non-nil width proposal, renders the wrapped content; algorithm per the pinned rules | New wrapping tests (whitespace/hyphen/CJK/fallback/hard-newline/style preservation); corpus truncation cases re-pinned as **divergences #5/#6** (engine wraps, eager truncates — `expectedRows` eager, `expectedEngineRows` wrapped, `isKnownDivergent`); example uses a wrapping `Text` | ✅ landed |
-| A2 | **Fill/flex views + proportional `Spacer`** — minimal fill views answering proposal dimensions; flexible `Spacer` variants taking a fraction of leftover space | Measurement/placement tests; corpus additions where eagable (fill-only engine behavior → divergence if eager can't express it) |
+| A2 | **Fill/flex views + proportional `Spacer`** — minimal fill views answering proposal dimensions; flexible `Spacer` variants taking a fraction of leftover space | Measurement/placement tests; corpus additions where eagable (fill-only engine behavior → divergence if eager can't express it) | ✅ landed |
 | A3 | **`.clipped()`** — `ClipView` renders the child, then clears any cells the child painted outside its assigned rect (the opt-in for frame's pinned no-clip decision) | Clip tests (overflow child clipped at rect); corpus parity (clip is engine-side only — new divergence or declared engine-only feature with a corpus case) |
 
 Divergence-list updates are expected at A1 (truncation → wrap) and A3
@@ -312,7 +331,20 @@ every change must carry `expectedRows` + `expectedEngineRows` + an
 `isKnownDivergent` flag, and the closed list's wording stays. A1 landed
 two: #5 (a proposal-consuming `Text` wraps instead of truncating) and #6
 (a fixed-width `frame()` around `Text` wraps instead of overflowing) —
-both self-retire in Stage C.
+both self-retire in Stage C. A2 landed #7 (`FlexibleSpacer` distributes
+leftover space only in the engine; the eager join skips the empty spacer) —
+also self-retiring.
+
+**A2 SPI note.** A2 adds a fourth SPI method, `View._flexibility()`
+(default `.rigid`), queried by the stacks to distribute leftover main-axis
+space. A stack is *flexing* on its main axis when at least one child reports
+a positive fraction on that axis; it then fills a non-`nil` main-axis
+proposal and assigns each flexible child
+`rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares,
+`Int()` truncation, remainder left unallocated at the trailing end). With no
+flexible child the code path is unchanged. Only `FlexibleSpacer` overrides
+it in A2; `Fill` is a plain consumer (it answers the proposal verbatim on
+both axes) and is *not* flexible.
 
 **Wrapping-wrapper overlap (A1 → Stage C).** The A1 wrapping algorithm
 lives in Chai (`StyledText.wrappedToWidth(_:)`) because it operates on

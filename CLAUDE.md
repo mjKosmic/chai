@@ -42,7 +42,7 @@ Examples/GroceryList/Sources/main.swift   the phase-2 acceptance example (center
 ```
 
 The layout engine lives across the seam: value types and the `View` SPI
-(`_sizeThatFits`/`_render`/`_childViews`) are in `Chai/Core/{LayoutTypes,View}.swift`,
+(`_sizeThatFits`/`_render`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
 the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
 `Chai/Renderer/Renderer.swift`. See `ARCHITECTURE.md` → "The Layout Engine".
 

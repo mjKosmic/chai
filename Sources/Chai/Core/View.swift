@@ -63,6 +63,17 @@ public protocol View: Sendable {
     /// `_childViews()`, enabling containers such as `HStack` to enumerate
     /// individual children for layout.
     func _childViews() -> [any View]
+
+    /// How much leftover main-axis space this view absorbs in a stack.
+    ///
+    /// SPI: containers query this to distribute leftover space; regular views
+    /// are rigid (``LayoutFlexibility/rigid``). A stack that lays out along an
+    /// axis with at least one positively-flexible child fills a non-`nil`
+    /// proposal on that axis and splits the leftover proportionally between
+    /// the flexible children (``FlexibleSpacer`` is the ready-made flexible
+    /// view). Outside a stack nothing distributes leftover space, so a
+    /// flexible view measures as if it were rigid.
+    func _flexibility() -> LayoutFlexibility
 }
 
 // MARK: - ViewOutput: View
@@ -129,6 +140,12 @@ extension View {
     /// The default treats this view as its own single child.
     public func _childViews() -> [any View] {
         [self]
+    }
+
+    /// The default is rigid: an ordinary view never absorbs leftover space.
+    /// Only flexible views (``FlexibleSpacer``) override this.
+    public func _flexibility() -> LayoutFlexibility {
+        .rigid
     }
 }
 
@@ -239,6 +256,132 @@ public struct Spacer: View {
             return ViewOutput(String(repeating: "\n", count: lines))
         }
         return ViewOutput("")
+    }
+}
+
+// MARK: - FlexibleSpacer
+
+/// A view that absorbs a share of a stack's leftover main-axis space.
+///
+/// Unlike ``Spacer``, which occupies a *fixed* number of blank lines or
+/// columns, a `FlexibleSpacer` takes a proportional share of the space the
+/// enclosing stack has left over after every child's rigid size is
+/// accounted for. Two `FlexibleSpacer()`s split evenly; a
+/// `FlexibleSpacer(fraction: 2)` next to a `FlexibleSpacer(fraction: 1)`
+/// takes twice the space.
+///
+/// ```swift
+/// HStack {
+///     Text("Left")
+///     FlexibleSpacer()
+///     Text("Right")
+/// }
+/// ```
+///
+/// ## Outside a stack it is empty
+///
+/// Leftover distribution is a **stack** behavior: only `VStack`/`HStack`
+/// query ``View/_flexibility()``. Anywhere else (as a root view, inside a
+/// ``FrameView``, ...) nothing distributes leftover space, so a
+/// `FlexibleSpacer` measures 0×0 and renders nothing — exactly like
+/// ``Empty``.
+///
+/// ## Rigid measurement
+///
+/// A stack still measures every child *rigidly* before distributing: a
+/// `FlexibleSpacer` answers 0×0 (its flexible axis contributes nothing to the
+/// rigid total), and the stack adds its share of the leftover afterwards.
+///
+/// - Note: A `fraction` that is not positive makes the spacer rigid
+///   (``LayoutFlexibility/rigid``), so it behaves exactly like ``Empty``.
+public struct FlexibleSpacer: View {
+    private let fraction: Double
+
+    /// Create a flexible spacer.
+    ///
+    /// - Parameter fraction: This spacer's share of the stack's leftover
+    ///   main-axis space, relative to its flexible siblings. Defaults to `1`.
+    ///   A non-positive value makes the spacer rigid.
+    public init(fraction: Double = 1) {
+        self.fraction = fraction
+    }
+
+    /// The eager path has no proposal context and no stack to distribute
+    /// leftover space, so the spacer resolves to empty content — an enclosing
+    /// eager join skips it (allowed divergence #7 in UPGRADE.md).
+    public var body: ViewOutput {
+        ViewOutput("")
+    }
+}
+
+// MARK: - FlexibleSpacer engine implementation
+
+extension FlexibleSpacer {
+    /// Rigid measurement is 0×0: the spacer's contribution to a stack's rigid
+    /// total is nothing; the stack adds the distributed leftover to this size
+    /// (see ``VStack``/``HStack``). Outside a stack, that distribution never
+    /// happens, so the spacer measures 0×0. The proposal is ignored.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        .zero
+    }
+
+    /// Rendering a spacer is a no-op: blank cells are the buffer default.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+        // Blank cells are the buffer's default fill; nothing to draw.
+    }
+
+    /// Both axes report the fraction: a stack consults only the axis it lays
+    /// out along (`HStack`: width; `VStack`: height). A non-positive fraction
+    /// is rigid.
+    public func _flexibility() -> LayoutFlexibility {
+        guard fraction > 0 else { return .rigid }
+        return LayoutFlexibility(width: fraction, height: fraction)
+    }
+}
+
+// MARK: - Fill
+
+/// A view that occupies exactly the space it is offered, rendering nothing.
+///
+/// `Fill` answers the proposal verbatim on both axes — it is a *consumer*:
+/// its size is undefined without an offer. Use it as a blank filler inside a
+/// fixed ``View/frame(width:height:horizontalAlignment:verticalAlignment:)``,
+/// or anywhere a view should claim the full offered rect while painting
+/// nothing.
+///
+/// ```swift
+/// HStack {
+///     Text("x")
+///     Fill()
+/// }
+/// .frame(width: 20, height: 3)
+/// ```
+///
+/// A `nil` proposal dimension is not an offer, so `Fill` reports 0 on that
+/// axis: outside any non-`nil` proposal it is 0×0 (like ``Empty``).
+public struct Fill: View {
+    public init() {}
+
+    /// The eager path has no proposal context, so `Fill` resolves to empty
+    /// content. It claims space only in the engine.
+    public var body: ViewOutput {
+        ViewOutput("")
+    }
+}
+
+// MARK: - Fill engine implementation
+
+extension Fill {
+    /// Answer the offer on both axes: `(proposal.width ?? 0, proposal.height ?? 0)`.
+    /// A `nil` dimension is ideal, not an offer, so it reports 0 there.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        ViewSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+    }
+
+    /// Filling is invisible: the cells it claims are the buffer's blank
+    /// default, so there is nothing to draw.
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+        // Blank cells are the buffer's default fill; nothing to draw.
     }
 }
 

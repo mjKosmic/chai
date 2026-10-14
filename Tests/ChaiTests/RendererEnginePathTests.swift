@@ -343,4 +343,51 @@ struct RendererEnginePathTests {
         await renderer.flush()
         #expect(mock.output.contains("   abcd"))
     }
+
+    // MARK: - Fill claims offered space (A2)
+
+    @Test func fillClaimsOfferedHeightThroughEngine() async {
+        // `Fill` answers the proposal, so the HStack is as tall as the frame's
+        // 3-row offer (1×3). The bottom-aligned frame then has no vertical
+        // shortage and places the stack at the TOP — "x" is painted on row 0
+        // and rows 1–2 are painted blank (the space `Fill` claimed).
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 10, height: 3)
+        await renderer.write(
+            HStack {
+                Fill()
+                Text("x")
+            }
+            .frame(width: 4, height: 3, verticalAlignment: .bottom)
+        )
+        await renderer.flush()
+        #expect(
+            mock.output.contains(
+                "x" + ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight
+            )
+        )
+
+        // Contrast: without `Fill` the stack is 1 row tall, so the same
+        // bottom-aligned frame places "x" on the LAST row instead.
+        let contrast = MockTerminal()
+        let contrastRenderer = Renderer(terminal: contrast)
+        await contrastRenderer.setSize(width: 10, height: 3)
+        await contrastRenderer.write(
+            HStack {
+                Text("x")
+            }
+            .frame(width: 4, height: 3, verticalAlignment: .bottom)
+        )
+        await contrastRenderer.flush()
+        #expect(
+            contrast.output.contains(
+                ANSI.eraseLineRight + "\r\n"
+                    + ANSI.eraseLineRight + "\r\n"
+                    + "x" + ANSI.eraseLineRight
+            )
+        )
+    }
 }

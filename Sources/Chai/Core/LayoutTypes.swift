@@ -61,6 +61,50 @@ public struct ViewSize: Sendable, Equatable {
     public static let zero = ViewSize(width: 0, height: 0)
 }
 
+/// How much leftover main-axis space a view absorbs inside a stack.
+///
+/// A `nil` fraction on an axis means the view is **rigid** on that axis: it
+/// takes exactly the size it measures and never absorbs leftover space. A
+/// positive fraction means the view is **flexible** on that axis and shares
+/// the stack's leftover space proportionally with the other flexible
+/// siblings (see ``View/_flexibility()``).
+///
+/// A stack lays out along one main axis, so it consults only that axis's
+/// fraction: ``HStack`` reads ``width``, ``VStack`` reads ``height``. The
+/// other axis is the stack's cross axis, where the fraction is ignored.
+///
+/// ```swift
+/// // Rigid on both axes (the default for every view).
+/// let rigid = LayoutFlexibility.rigid
+///
+/// // Absorbs leftover space on both axes; an enclosing stack uses the one
+/// // it lays out along.
+/// let flexible = LayoutFlexibility(width: 1, height: 1)
+/// ```
+public struct LayoutFlexibility: Sendable, Equatable {
+
+    /// The fraction of leftover horizontal space this view absorbs, or `nil`
+    /// when it is rigid horizontally.
+    public var width: Double?
+
+    /// The fraction of leftover vertical space this view absorbs, or `nil`
+    /// when it is rigid vertically.
+    public var height: Double?
+
+    /// Create a flexibility value.
+    ///
+    /// - Parameters:
+    ///   - width: The horizontal share, or `nil` for rigid.
+    ///   - height: The vertical share, or `nil` for rigid.
+    public init(width: Double? = nil, height: Double? = nil) {
+        self.width = width
+        self.height = height
+    }
+
+    /// Rigid on both axes — the view absorbs no leftover space.
+    public static let rigid = LayoutFlexibility(width: nil, height: nil)
+}
+
 /// A position within a ``CellBuffer``, in display columns and rows.
 public struct ViewOrigin: Sendable, Equatable {
 

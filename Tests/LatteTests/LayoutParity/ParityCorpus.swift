@@ -577,5 +577,63 @@ extension ParityCase {
             // Engine: fills the 8-column offer, centers the child at col 3.
             expectedEngineRows: ["   ab"]
         ),
+
+        // ── A2 additions: FlexibleSpacer ───────────────────────────────────
+        //
+        // !!! ALLOWED DIVERGENCE #7 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // `FlexibleSpacer` distributes leftover main-axis space, which only
+        // exists in the engine: the eager path has no proposal context, so its
+        // `body` resolves to empty content and the eager HStack join SKIPS the
+        // empty component (the phase-1 skip-empty semantics) → "LR". The
+        // engine sees the 10-column offer, the spacer reports a positive
+        // fraction, and the stack fills the offer and hands the spacer the 8
+        // leftover columns → "L        R".
+        //
+        // A `Fill` corpus case would be invisible under the harness's
+        // `(width, nil)` proposal (an HStack offers `nil` width to its
+        // children), so `Fill` is covered by unit tests instead —
+        // `Tests/ChaiTests/FlexibilityTests.swift` and
+        // `Tests/LatteTests/FlexibleSpacerTests.swift`.
+        ParityCase(
+            name: "DIVERGENT: hstack FlexibleSpacer distributes leftover (A2); eager skips empty spacer",
+            view: HStack {
+                Text("L")
+                FlexibleSpacer()
+                Text("R")
+            },
+            width: 10,
+            // TODAY's eager output: the spacer's body is empty and the eager
+            // join skips it → "LR".
+            expectedRows: ["LR"],
+            isKnownDivergent: true,
+            // Engine (A2): the spacer absorbs the 8-column leftover → "L" +
+            // 8 spaces + "R".
+            expectedEngineRows: ["L        R"]
+        ),
+
+        // !!! ALLOWED DIVERGENCE #8 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // `Fill` answers the proposal dimensions, so in a non-left-aligned
+        // VStack it widens the stack to the offer (Fill claims the proposed
+        // width) and shifts its sibling to the alignment offset. The eager
+        // path resolves Fill's empty `body` and skips it (skip-empty
+        // semantics), so the stack stays content-sized. Pinned below is
+        // TODAY's eager output; the engine must produce the shifted row.
+        ParityCase(
+            name: "DIVERGENT: vstack right-aligned Fill claims proposed width (A2)",
+            view: VStack(alignment: .right) {
+                Text("ab")
+                Fill()
+            },
+            width: 8,
+            // TODAY's eager output: Fill's empty body is skipped → "ab".
+            expectedRows: ["ab"],
+            isKnownDivergent: true,
+            // Engine (A2): Fill claims the 8-column proposal; the stack is
+            // 8 wide and the right-aligned Text sits at offset 6 →
+            // "      ab".
+            expectedEngineRows: ["      ab"]
+        ),
     ]
 }

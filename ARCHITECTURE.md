@@ -522,15 +522,18 @@ The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls
 
 ### Who the engine SPI is for
 
-The engine surface is three methods on ``View``:
+The engine surface is four methods on ``View``:
 
 ```swift
 func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
 func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize)
 func _childViews() -> [any View]
+func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_render` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code) and `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child). Only structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_render` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Only structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and only ``FlexibleSpacer`` overrides `_flexibility()`.
+
+`_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis proposal, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
 ### Proposal semantics
 
@@ -556,7 +559,7 @@ The proposal is an *argument* to the child's layout function, not a limit on its
 - **Ignorers** — today's leaves (`ViewOutput`, ``Spacer``). They answer their ideal size regardless of the offer. A `ViewOutput` is a fully-formed raster; the engine measures it unwrapped.
 - **Passers** — the stacks (`VStack`/`HStack`). They propagate context down: each child gets the stack's proposal on the stacking axis, `nil` (ideal) on the cross axis, and the stack sizes itself from the answers.
 - **Generators** — `frame()` (`FrameView`). It answers fixed dimensions verbatim no matter what the child says, and forces those dimensions down as the child's proposal. `frame()` cannot be implemented without proposals — answering a size you were never offered requires the offer machinery.
-- **Consumers** — the phase-3 wrapping `Text` and fill views. Their answer is *undefined* without an offer: a wrapping paragraph has no ideal width, so it must be asked "how wide may you be?" before it can answer "how tall you get." No consumer views exist yet; the seam exists to add them.
+- **Consumers** — the phase-3 wrapping ``Text`` and fill views. Their answer is *undefined* without an offer: a wrapping paragraph has no ideal width, so it must be asked "how wide may you be?" before it can answer "how tall you get." A1 landed wrapping `Text` (it wraps to a positive non-`nil` width proposal) and A2 landed ``Fill`` (it answers `proposal.width ?? 0` × `proposal.height ?? 0` — exactly the offered rect). ``FlexibleSpacer`` is a consumer of a different kind: it is rigid on its own (0×0) and reports a positive `_flexibility()` fraction so an enclosing stack can hand it a share of the leftover.
 
 **3. Fit/render consistency (value equality).**
 
@@ -575,11 +578,15 @@ The engine must reproduce the eager path, and the repo holds it to that with a h
 
 - **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()` — each pinned with the *visible rows* its eager rendering produces. The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. The harness lands first (M0) so every subsequent engine change is verified against a mechanical spec, never against hand-waving.
 - **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: eager line alignment writes space cells where the engine leaves cells `.empty` — both render identically under `eraseLineRight`.
-- **The divergence list is closed.** Four divergences are documented and pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`); *no corpus case is skipped*:
+- **The divergence list is closed.** Eight divergences are documented and pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`); *no corpus case is skipped*:
   1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubles them (a join quirk pinned as an eager-path bug).
   2. `.empty` vs space cells in alignment padding — invisible by construction.
   3. Multi-line children block-aligned under non-left `VStack` alignment: the engine aligns each child as one layout unit; the eager path aligned each line (an artifact of text joining). SwiftUI-consistent.
   4. `frame()` flexible-fill exists only in the engine: a `nil` frame dimension fills a non-`nil` proposal, which the proposal-less eager `body` cannot express. Self-retires when the eager path is removed (phase 3).
+  5. Proposal-consuming `Text` wraps instead of truncating (A1): the eager path has no proposal context. Self-retires in Stage C.
+  6. A fixed-width `frame()` around `Text` wraps instead of overflowing (A1). Self-retires in Stage C.
+  7. `FlexibleSpacer` distributes leftover space only in the engine (A2): the eager join skips the spacer's empty `body`. Self-retires in Stage C.
+  8. `Fill` claims the proposed dimensions only in the engine (A2): in a non-left-aligned `VStack` it widens the stack to the proposal and shifts its siblings; the eager path skips its empty `body`. Self-retires in Stage C.
 
 The parity suites run the corpus through both paths: `ParitySpecTests` (eager golden spec), `ParityEngineTests` (engine vs pinned spec, engine vs live eager, divergent cases vs documented engine rows), `ParityHarnessTests` (pins the comparison semantics themselves).
 
@@ -914,6 +921,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1108 t
 | `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
 | `LayoutEngineTests.swift` | M1/M2 engine units: `_sizeThatFits`/`_render`/`_childViews` on leaves and Latte containers, proposal handling, fraction math |
+| `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the `FlexibleSpacer`/`Fill` primitives (rigid 0×0 measurement, no-op render, empty eager body) |
 | `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
 | `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
 | `StructuralViewTests.swift` | `TupleView`/`ForEachView`/`ConditionalContent`/`OptionalView` flattening and `_childViews()` transparency |
@@ -939,6 +947,7 @@ Covers the string-level layout/styling modules plus the phase-2 engine:
 | `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
 | `StackTests.swift` / `StacksEngineTests.swift` | The eager join behavior *and* the engine measure/render of `VStack`/`HStack`, alignment, skip-empty |
 | `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, overflow (no clipping), legacy body |
+| `FlexibleSpacerTests.swift` | A2 leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis offer, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil proposal content-sized) and `Fill` in stacks/frames |
 | `LayoutParity/` | The M0–M2 parity discipline: `ParityHarness.swift` (eager/engine buffers + `visibleRows`), `ParityCorpus.swift` (the pinned corpus), `ParitySpecTests` (golden spec), `ParityEngineTests` (engine vs spec/eager + divergent cases), `ParityHarnessTests` (comparison semantics) |
 | `ViewOutputLayoutTests.swift` | The legacy eager `ViewOutput` modifiers (`.width()`, `.height()`, `.frame()`, `.beside()`, `.above()`, ...) |
 | `StyleTests.swift`, `StyleFlagTests.swift`, `UnderlineStyleTests.swift`, `ColorUtilitiesTests.swift`, `HyperlinkTests.swift`, `ListRendererTests.swift`, `TreeRendererTests.swift` | Styling, color utilities, hyperlinks, static renderers |
@@ -970,7 +979,7 @@ chai/
 │   │   │   ├── Command.swift            # Command enum + convenience factories
 │   │   │   ├── Program.swift            # Program<M>, ProgramRunner, SignalHandler
 │   │   │   ├── Program+Options.swift    # Program.Option (withAltScreen, withLogger, ...)
-│   │   │   ├── View.swift               # View protocol + layout engine SPI + Text/Spacer/Empty
+│   │   │   ├── View.swift               # View protocol + layout engine SPI + Text/Spacer/FlexibleSpacer/Fill/Empty
 │   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
 │   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
 │   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
@@ -1109,7 +1118,7 @@ The phase-1 renderer resolved children to `ViewOutput` strings before composing 
 
 ### Why is the engine SPI underscored-but-public?
 
-`_sizeThatFits(_:)`, `_render(into:at:size:proposal:)`, and `_childViews()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children) keep every other view working with zero engine code.
+`_sizeThatFits(_:)`, `_render(into:at:size:proposal:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
 
 ### Why proposal *arguments* rather than clamped constraints?
 
