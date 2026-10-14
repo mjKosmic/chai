@@ -420,6 +420,20 @@ load-bearing:
    the divergence list — entry #4 self-retires; **preserve the engine
    `Spacer` semantics from entry #1** (exactly N blank rows), never the
    eager doubling quirk.
+   **`Spacer` naming (decided during Stage A review):** make
+   zero-argument `Spacer()` flexible, SwiftUI-style — in SwiftUI
+   `Spacer()` *is* the flexible spacer, while Chai's `Spacer()` is
+   fixed (`Spacer(lines: 1)`), a documented onboarding trap. Unify:
+   `Spacer()` / `Spacer(fraction:)` flexible (fraction 1 default),
+   `Spacer(lines:)` / `Spacer(columns:)` stay the explicit fixed
+   variants, and `FlexibleSpacer` is retired into `Spacer` — a
+   source-breaking rename, acceptable pre-alpha. A unified type with
+   `init(fraction:)` / `init(lines:)` / `init(columns:)` carries both;
+   internal representation is an implementation detail.
+   (Also: the A3 review found an overload trap to eliminate with the
+   eager `ViewOutput.frame` retirement — `ViewOutput(...).frame(width:
+   height:)` with both dimensions silently resolves to the old eager
+   frame, which does not clip, instead of the tree-based `View.frame`.)
 
 Dynamic alt-screen control is a runtime concern, not a layout one — scope
 it explicitly at kickoff or park it.
