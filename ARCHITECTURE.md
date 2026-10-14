@@ -572,13 +572,32 @@ A container must propose **identically in `_sizeThatFits` and `_render`** — th
 
 The contract is enforced by convention (containers forward the proposal) and pinned by the echo tests — a container that drops the proposal will misplace proposal-consuming children.
 
+### Minimum offers (`ProposedSize.zero`)
+
+SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `ProposedSize.zero` is the offer a container makes when it wants a child's **narrowest producible** form; like every proposal it is an offer, not a bound — the answer is never clamped.
+
+Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero offer), `Spacer` answers its rigid size, `FlexibleSpacer`/`Empty` answer 0×0, and `Fill` answers the offered rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width proposal it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). Measurement and rendering resolve the minimum through the same function, so the fit/render value-equality contract holds.
+
+Containers follow their normal proposal rules at `.zero` — no special-casing. `VStack` proposes `(0, nil)` to its children, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` proposes `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child answers its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed". `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero offer on flexible axes.
+
+### Why there is no `.infinity`
+
+The third SwiftUI special case is deliberately absent, for two independent reasons:
+
+| Reason | Detail |
+|--------|--------|
+| No representation | A proposal dimension is `Int?`; there is no value for "infinity". |
+| No faithful answer | `ViewSize` is `Int`-based, so a view could never answer a maximum faithfully — a `FlexibleSpacer`'s maximum is "whatever the container decides is left", which is a *container-level* fact the child does not know. |
+
+The functionality maps onto mechanisms that already exist: "expand to fill" ≙ `_flexibility()` + the stack's leftover distribution; "measure the maximum" ≙ the container's own leftover math. `.infinity` would add a third proposal case with no way to answer it — so it stays out.
+
 ### The parity discipline
 
 The engine must reproduce the eager path, and the repo holds it to that with a harness rather than hope:
 
 - **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()` — each pinned with the *visible rows* its eager rendering produces. The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. The harness lands first (M0) so every subsequent engine change is verified against a mechanical spec, never against hand-waving.
 - **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: eager line alignment writes space cells where the engine leaves cells `.empty` — both render identically under `eraseLineRight`.
-- **The divergence list is closed.** Eight divergences are documented and pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`); *no corpus case is skipped*:
+- **The divergence list is closed.** Nine divergences are documented and pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`); *no corpus case is skipped*:
   1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubles them (a join quirk pinned as an eager-path bug).
   2. `.empty` vs space cells in alignment padding — invisible by construction.
   3. Multi-line children block-aligned under non-left `VStack` alignment: the engine aligns each child as one layout unit; the eager path aligned each line (an artifact of text joining). SwiftUI-consistent.
@@ -587,6 +606,7 @@ The engine must reproduce the eager path, and the repo holds it to that with a h
   6. A fixed-width `frame()` around `Text` wraps instead of overflowing (A1). Self-retires in Stage C.
   7. `FlexibleSpacer` distributes leftover space only in the engine (A2): the eager join skips the spacer's empty `body`. Self-retires in Stage C.
   8. `Fill` claims the proposed dimensions only in the engine (A2): in a non-left-aligned `VStack` it widens the stack to the proposal and shifts its siblings; the eager path skips its empty `body`. Self-retires in Stage C.
+  9. `.clipped()` masks overflow only in the engine (A3): the eager path has no assigned rect, so `ClipView.body` resolves its content unchanged. Corpus case `ViewOutput("abcd").frame(width: 2).clipped()`: eager `["abcd"]` (the eager `.width()` modifier pads, never truncates), engine `["ab"]`. Self-retires in Stage C.
 
 The parity suites run the corpus through both paths: `ParitySpecTests` (eager golden spec), `ParityEngineTests` (engine vs pinned spec, engine vs live eager, divergent cases vs documented engine rows), `ParityHarnessTests` (pins the comparison semantics themselves).
 
@@ -1012,7 +1032,8 @@ chai/
 │   │   │   ├── Wrap.swift               # ANSI-aware word wrapping
 │   │   │   ├── Inline.swift             # First-line extraction
 │   │   │   ├── Stacks.swift             # VStack/HStack (eager body + engine impl)
-│   │   │   └── Frame.swift              # FrameView + View.frame(...) modifier
+│   │   │   ├── Frame.swift              # FrameView + View.frame(...) modifier
+│   │   │   └── Clip.swift               # ClipView + View.clipped() modifier
 │   │   ├── Composition/
 │   │   │   ├── Join.swift               # Horizontal/vertical block joining
 │   │   │   └── Compositor.swift         # Z-ordered Layer canvas placement

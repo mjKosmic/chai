@@ -390,4 +390,31 @@ struct RendererEnginePathTests {
             )
         )
     }
+
+    // MARK: - Clipped trees (A3)
+
+    @Test func clippedTreeShowsClippedRowsThroughEngine() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 8, height: 4)
+        await renderer.enterAltScreen()
+        mock.reset()
+        // The frame answers width 3; the clip masks the 6-wide raster to
+        // "abc". The eager path would show "abcdef" (no clipping).
+        await renderer.write(
+            ViewOutput("abcdef").frame(width: 3).clipped()
+        )
+        await renderer.flush()
+        #expect(mock.output.contains("abc" + ANSI.eraseLineRight))
+        #expect(!mock.output.contains("abcdef"))
+        #expect(!mock.output.contains("abcd"))
+    }
+
+    @Test func zeroProbedTextIsMeasuredCorrectly() async {
+        // The renderer root never offers zero — it proposes the terminal
+        // width — so `.zero` is a unit-level measurement pin (see
+        // `ProposedSizeZeroTests`). Kept here as the renderer-path counterpart
+        // so the A3 minimum semantics are pinned on both surfaces.
+        #expect(Text("abcd")._sizeThatFits(.zero) == ViewSize(width: 1, height: 4))
+    }
 }

@@ -258,6 +258,16 @@ and proposes that fixed size downward.
      vstack right-aligned Fill claims proposed width (A2)" with
      `expectedRows` `["ab"]` and `expectedEngineRows` `["      ab"]`. Like
      #4–#7, it self-retires in Stage C.
+  9. `.clipped()` masks overflow only in the engine (A3): the eager path has
+     no assigned rect, so `ClipView.body` resolves its content unchanged —
+     clipping is a render-time mask. Corpus case "DIVERGENT: clipped frame
+     masks overflow in the engine (A3); eager no-op":
+     `ViewOutput("abcd").frame(width: 2).clipped()` at corpus width 4 — eager
+     `expectedRows` `["abcd"]` (the eager `.width()` modifier pads to a
+     minimum and never truncates, and `.clipped()` is a no-op eagerly), engine
+     `expectedEngineRows` `["ab"]` (the frame answers width 2; the clip masks
+     the 4-wide raster to the 2-wide rect). Like #4–#8, it self-retires in
+     Stage C.
 
 ### Milestones (each a PR-sized commit, TDD, zero warnings, suites green)
 
@@ -288,8 +298,8 @@ and proposes that fixed size downward.
 
 **Scope (decided):** the proposal-carrying `_render` SPI fix, word-aware
 wrapping `Text`, fill/flex views + proportional `Spacer` variants, and
-`.clipped()`. **Not** in Stage A: `AnyView` (Stage B), modifier
-wrappers/eager-path retirement (Stage C).
+`.clipped()` (plus `ProposedSize.zero` minimum semantics). **Not** in Stage A:
+`AnyView` (Stage B), modifier wrappers/eager-path retirement (Stage C).
 
 **Pinned decisions:**
 
@@ -314,7 +324,30 @@ wrappers/eager-path retirement (Stage C).
   consumes width proposals. This keeps every existing `body: ViewOutput`
   model and the string-writing RendererTests byte-identical.
 - **Stage A slice:** A0 behavior-preserving refactor → A1 wrapping `Text`
-  → A2 fill/flex/Spacer → A3 `.clipped()`.
+  → A2 fill/flex/Spacer → A3 `.clipped()` + `ProposedSize.zero`.
+- **Minimum offers: `ProposedSize.zero` (A3).** The second of SwiftUI's three
+  proposal special cases (`unspecified` = ideal, `zero` = minimum). `Text` is
+  the only *compressible* view: at a zero (or negative — clamped to zero, one
+  rule) width proposal it wraps to its narrowest producible form (the widest
+  single character in the content: 1 for ASCII-only, 2 if any wide/CJK
+  character is present; at least 1 for non-empty content; empty content stays
+  0×0). This replaces A1's "non-positive → unwrapped" behavior — a deliberate
+  spec delta (the degenerate tests were re-pinned). Every other view answers
+  its minimum by construction (`ViewOutput` its raster — it may exceed the
+  offer; `Spacer` its rigid size; `FlexibleSpacer`/`Empty` 0×0; `Fill` the
+  offered rect, i.e. `(0, 0)` at `.zero`), and containers follow their normal
+  proposal rules — no special-casing. Documented consequence: an `HStack` at
+  `.zero` proposes `(nil, 0)` to its children (it measures columns at *ideal*
+  width), so a `Text` child answers its ideal width, not its minimum — pinned
+  by test, not "fixed".
+- **No `.infinity` (A3, docs only).** The third SwiftUI special case is
+  deliberately absent: our proposal dimension is `Int?` (no representation for
+  infinity) and `ViewSize` is `Int`-based (a view could never answer
+  faithfully — a `FlexibleSpacer`'s maximum is "whatever the container decides
+  is left", a container-level fact). The functionality maps to existing
+  mechanisms: "expand to fill" ≙ `_flexibility()` + stack leftover
+  distribution; "measure maximum" ≙ the container's leftover math. See
+  ARCHITECTURE.md, "Why there is no `.infinity`".
 
 ### Milestones
 
@@ -323,7 +356,7 @@ wrappers/eager-path retirement (Stage C).
 | A0 | **Proposal-carrying `_render`** — the clean SPI break across all conformers; `Renderer.flush` passes the fit proposal (width w, height alt-screen h / nil) to the root render; `FrameView` reconstructs its fit proposal on re-measure; docs rewritten (ARCHITECTURE fit/render section, AGENTS pitfall #2 becomes a value-equality contract) | Behavior-preserving: all 1108 suites green unmodified; a test-local proposal-echo consumer view + a renderer-level parity case exercising `assigned ≠ proposed` at the root (the phase-2 harness blind spot) | ✅ landed |
 | A1 | **Word-aware wrapping `Text`** — measures wrapped at a non-nil width proposal, renders the wrapped content; algorithm per the pinned rules | New wrapping tests (whitespace/hyphen/CJK/fallback/hard-newline/style preservation); corpus truncation cases re-pinned as **divergences #5/#6** (engine wraps, eager truncates — `expectedRows` eager, `expectedEngineRows` wrapped, `isKnownDivergent`); example uses a wrapping `Text` | ✅ landed |
 | A2 | **Fill/flex views + proportional `Spacer`** — minimal fill views answering proposal dimensions; flexible `Spacer` variants taking a fraction of leftover space | Measurement/placement tests; corpus additions where eagable (fill-only engine behavior → divergence if eager can't express it) | ✅ landed |
-| A3 | **`.clipped()`** — `ClipView` renders the child, then clears any cells the child painted outside its assigned rect (the opt-in for frame's pinned no-clip decision) | Clip tests (overflow child clipped at rect); corpus parity (clip is engine-side only — new divergence or declared engine-only feature with a corpus case) |
+| A3 | **`.clipped()` + `ProposedSize.zero`** — `ClipView` masks the child to its assigned rect (the opt-in for frame's pinned no-clip decision); `ProposedSize.zero` adds the *minimum* offer with `Text` as its only compressible consumer; the `.infinity` rationale is recorded (docs only) | Clip tests (overflow clipped both axes, rect ownership, wide-char boundary, nesting, composition); minimum-semantics tests (`Text` ASCII/CJK/mixed/styled/empty, non-compressible leaves, `VStack` min composition, the HStack-at-zero observation, `FrameView` at zero); divergence #9; zero-warning suites green | ✅ landed |
 
 Divergence-list updates are expected at A1 (truncation → wrap) and A3
 (clipping) — the closed-list mechanism is designed for exactly this;
@@ -333,7 +366,11 @@ two: #5 (a proposal-consuming `Text` wraps instead of truncating) and #6
 (a fixed-width `frame()` around `Text` wraps instead of overflowing) —
 both self-retire in Stage C. A2 landed #7 (`FlexibleSpacer` distributes
 leftover space only in the engine; the eager join skips the empty spacer) —
-also self-retiring.
+also self-retiring. A3 landed #9 (`.clipped()` masks overflow only in the
+engine; the eager path has no assigned rect) — also self-retiring. A3 also
+added `ProposedSize.zero` and `Text`'s minimum semantics: no corpus impact,
+because the harness proposes `(width, nil)` with positive widths — no zero
+offers — so the corpus is unaffected (verified).
 
 **A2 SPI note.** A2 adds a fourth SPI method, `View._flexibility()`
 (default `.rigid`), queried by the stacks to distribute leftover main-axis

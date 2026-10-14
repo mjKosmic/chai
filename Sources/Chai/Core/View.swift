@@ -178,39 +178,71 @@ public struct Text: View {
 // MARK: - Text engine implementation
 
 extension Text {
-    /// Proposal-aware measurement (phase-3 A1): a non-`nil`, positive width
-    /// proposal wraps the content to that width and the measured size is the
-    /// WRAPPED result's `(maxLineWidth, lineCount())`. A `nil` proposal
-    /// (ideal) and a non-positive width (degenerate) measure the unwrapped
-    /// ideal, unchanged.
+    /// The content to measure and write for a given proposal.
     ///
-    /// Measurement and rendering wrap with the SAME function
-    /// (`StyledText.wrappedToWidth(_:)`), so the two passes agree by
-    /// construction — the fit/render value-equality contract (A0) holds for
-    /// Text without the render pass re-deriving anything.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        if let width = proposal.width, width > 0 {
-            let wrapped = content.wrappedToWidth(width)
-            return ViewSize(width: wrapped.maxLineWidth, height: wrapped.lineCount())
-        }
-        return ViewSize(width: content.maxLineWidth, height: content.lineCount())
+    /// Fit and render both resolve through this single function, so the two
+    /// passes agree by construction — the A0 fit/render value-equality
+    /// contract holds for `Text` without the render pass re-deriving anything.
+    ///
+    /// - `nil` width is ideal: the content is returned unwrapped.
+    /// - A positive width wraps the content to that width
+    ///   (``StyledText/wrappedToWidth(_:)``).
+    /// - A **zero or negative** width is the *minimum offer* (one rule; a
+    ///   negative offer clamps to zero): the content wraps to its narrowest
+    ///   producible width — ``minimumWrapWidth()``. This is the phase-3 A3
+    ///   minimum semantics (``ProposedSize/zero``); it replaces A1's
+    ///   "non-positive → unwrapped" behavior.
+    private func resolvedContent(for proposal: ProposedSize) -> StyledText {
+        guard let width = proposal.width else { return content }
+        if width > 0 { return content.wrappedToWidth(width) }
+        let minimumWidth = minimumWrapWidth()
+        guard minimumWidth > 0 else { return content }
+        return content.wrappedToWidth(minimumWidth)
     }
 
-    /// Proposal-aware rendering (phase-3 A1): writes the content wrapped to
-    /// `proposal.width` when it is non-`nil` and positive; otherwise writes
-    /// the content unchanged. The write follows the buffer's wrap-vs-truncate
-    /// policy at the right edge, so a degenerate line wider than the proposal
-    /// (e.g. a single CJK character at width 1) is clipped by the buffer.
+    /// The narrowest width at which this content can still be produced: the
+    /// widest single character in it, or `0` for empty content.
     ///
-    /// The wrapped content is computed exactly once per pass and never cached:
-    /// the fit pass measured the same value, so the render is consistent by
-    /// construction (see ``_sizeThatFits(_:)``).
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        if let width = proposal.width, width > 0 {
-            buffer.write(content.wrappedToWidth(width), at: origin.col, row: origin.row)
-        } else {
-            buffer.write(content, at: origin.col, row: origin.row)
+    /// Wrapping at this width puts every character on a line of its own
+    /// (display-width aware), so no character is ever split. ASCII-only
+    /// content yields `1`; the presence of any wide/CJK character raises it to
+    /// `2`. Non-empty content always yields at least `1` — whitespace-only
+    /// content then wraps to empty (0×0), matching the wrapping contract.
+    private func minimumWrapWidth() -> Int {
+        guard !content.isEmpty else { return 0 }
+        var widest = 0
+        for segment in content.segments {
+            for character in segment.text {
+                widest = max(widest, displayWidth(of: character))
+            }
         }
+        return max(1, widest)
+    }
+
+    /// Proposal-aware measurement (phase-3 A1, extended in A3): the measured
+    /// size is the **resolved** content's `(maxLineWidth, lineCount())` — the
+    /// wrapped result for a positive width, the minimum form for a zero or
+    /// negative width, and the unwrapped ideal for `nil`.
+    ///
+    /// Measurement and rendering resolve with the SAME function
+    /// (``resolvedContent(for:)``), so the two passes agree by construction.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        let resolved = resolvedContent(for: proposal)
+        return ViewSize(width: resolved.maxLineWidth, height: resolved.lineCount())
+    }
+
+    /// Proposal-aware rendering (phase-3 A1, extended in A3): writes the
+    /// **resolved** content — the wrapped form for a positive width, the
+    /// minimum form for a zero or negative width, the unwrapped content for
+    /// `nil`. The write follows the buffer's wrap-vs-truncate policy at the
+    /// right edge, so a degenerate line wider than the resolved width (e.g. a
+    /// single CJK character) is clipped by the buffer.
+    ///
+    /// The resolved content is computed exactly once per pass and never
+    /// cached: the fit pass measured the same value, so the render is
+    /// consistent by construction (see ``_sizeThatFits(_:)``).
+    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+        buffer.write(resolvedContent(for: proposal), at: origin.col, row: origin.row)
     }
 }
 

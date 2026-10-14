@@ -635,5 +635,32 @@ extension ParityCase {
             // "      ab".
             expectedEngineRows: ["      ab"]
         ),
+
+        // !!! ALLOWED DIVERGENCE #9 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
+        //
+        // `.clipped()` masks overflow only in the engine (A3). The eager path
+        // has no assigned rect, so `ClipView.body` resolves its content
+        // unchanged — clipping is a render-time mask. The receiver here is a
+        // `ViewOutput`, so `.frame(width: 2)` resolves to the NEW `View.frame`
+        // (the eager overload requires `height`), producing
+        // `FrameView<ViewOutput>`. The eager frame's `.width()` modifier PADS
+        // to a minimum and never truncates — "abcd" is already wider than 2, so
+        // it is unchanged. The engine's frame answers width 2, the 4-wide
+        // raster overflows it, and the clip masks it to "ab".
+        ParityCase(
+            name: "DIVERGENT: clipped frame masks overflow in the engine (A3); eager no-op",
+            view: ViewOutput("abcd")
+                .frame(width: 2)
+                .clipped(),
+            width: 4,
+            // TODAY's eager output: `.width(2)` pads to a minimum (a no-op for
+            // the already-4-wide "abcd") and `.clipped()` cannot clip →
+            // ["abcd"].
+            expectedRows: ["abcd"],
+            isKnownDivergent: true,
+            // Engine (A3): the frame answers width 2; the clip masks the
+            // 4-wide raster to the 2-wide rect → ["ab"].
+            expectedEngineRows: ["ab"]
+        ),
     ]
 }

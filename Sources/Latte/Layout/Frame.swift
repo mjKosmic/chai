@@ -32,8 +32,8 @@ import Chai
 /// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` does **not**
 /// clip. A child whose truthful answer exceeds the frame's fixed size
 /// overflows the frame's bounds (SwiftUI-consistent), with the terminal
-/// buffer as the final backstop; the `.clipped()` modifier is a phase-3
-/// candidate. Shrinking content to fit is the phase-3 wrapping/flex story —
+/// buffer as the final backstop; ``View/clipped()`` is the opt-in that masks
+/// that overflow. Shrinking content to fit is the phase-3 wrapping/flex story —
 /// a frame is placement, not shrinking.
 ///
 /// ## Fit proposal reconstruction (A0)
@@ -172,7 +172,8 @@ extension View {
     /// assigned rect according to the alignment fractions.
     ///
     /// A frame does **not** clip: content larger than the frame overflows its
-    /// bounds, with the terminal buffer as the final backstop.
+    /// bounds, with the terminal buffer as the final backstop. Use
+    /// ``View/clipped()`` to mask that overflow.
     ///
     /// ```swift
     /// // Center a small view in the terminal window.

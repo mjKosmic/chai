@@ -24,7 +24,11 @@ import Latte
 //    and each hard line wraps independently.
 // 6. Styles are preserved exactly via segment splitting; no invented/merged
 //    styles.
-// 7. Width ≤ 0 → unwrapped (both measure and render).
+// 7. The shared function's own guard: `width ≤ 0` returns the content
+//    unchanged. `Text` no longer routes a non-positive width proposal here —
+//    since A3 it clamps to the minimum producible width (`ProposedSize.zero`
+//    semantics, see `ProposedSizeZeroTests`) — but the primitive's guard
+//    remains the contract callers rely on for degenerate widths.
 //
 // The first block pins the shared wrapping function directly (exact, includes
 // embedded newlines); the second block pins the `Text` wiring (measure +
@@ -181,13 +185,18 @@ struct TextWrappingTableTests {
         #expect(wrapped.segments[2].style.foreground == nil)
     }
 
-    // MARK: Rule 7 — degenerate widths
+    // MARK: Rule 7 — degenerate widths (the primitive's guard)
 
-    @Test func widthZeroIsUnwrapped() {
+    @Test func primitiveWidthZeroReturnsContentUnchanged() {
+        // The shared wrapping function's contract: `width <= 0` is unusable,
+        // so it returns the content unchanged. (Since A3 `Text` never passes a
+        // non-positive width — it computes the minimum producible width first,
+        // see `ProposedSizeZeroTests`. This pins the primitive's guard, which
+        // other callers still rely on.)
         #expect(StyledText("hello world").wrappedToWidth(0).plainText == "hello world")
     }
 
-    @Test func negativeWidthIsUnwrapped() {
+    @Test func primitiveNegativeWidthReturnsContentUnchanged() {
         #expect(StyledText("hello world").wrappedToWidth(-3).plainText == "hello world")
     }
 
@@ -261,10 +270,14 @@ struct TextWrappingIntegrationTests {
         #expect(Text("The quick brown fox")._sizeThatFits(.unspecified) == ViewSize(width: 19, height: 1))
     }
 
-    @Test func nonPositiveWidthProposalMeasuresTheUnwrappedIdeal() {
+    @Test func nonPositiveWidthProposalMeasuresTheMinimum() {
+        // A3 spec delta: a zero (or negative) width proposal is the MINIMUM
+        // offer, not "unwrapped". "The quick brown fox" compresses to width 1
+        // (the widest single character); the three word-break spaces are
+        // consumed → 16 rows.
         #expect(
             Text("The quick brown fox")._sizeThatFits(ProposedSize(width: 0, height: nil))
-                == ViewSize(width: 19, height: 1)
+                == ViewSize(width: 1, height: 16)
         )
     }
 
@@ -299,16 +312,15 @@ struct TextWrappingIntegrationTests {
         #expect(engineRows(Text("abcdefgh"), proposal: proposal) == ["abcde", "fgh"])
     }
 
-    @Test func renderAtZeroWidthWritesContentUnwrapped() {
-        // Rule 7: a non-positive proposal renders the content unchanged — one
-        // row, NOT the wrapped two rows. The buffer is 8-wide so nothing is
-        // clipped; this pins "unwrapped", not "truncated".
+    @Test func renderAtZeroWidthWritesTheMinimumForm() {
+        // A3 spec delta: a zero-width proposal renders the SAME minimum form
+        // the fit pass measured — one 1-column row per character, at col 0.
         let proposal = ProposedSize(width: 0, height: nil)
         let size = Text("abcdefgh")._sizeThatFits(proposal)
-        #expect(size == ViewSize(width: 8, height: 1))
-        var buffer = CellBuffer(width: 8, height: 2)
+        #expect(size == ViewSize(width: 1, height: 8))
+        var buffer = CellBuffer(width: 8, height: 8)
         Text("abcdefgh")._render(into: &buffer, at: .zero, size: size, proposal: proposal)
-        #expect(visibleRows(buffer) == ["abcdefgh", ""])
+        #expect(visibleRows(buffer) == ["a", "b", "c", "d", "e", "f", "g", "h"])
     }
 
     @Test func textMeasuresWrappedInsideAVStack() {

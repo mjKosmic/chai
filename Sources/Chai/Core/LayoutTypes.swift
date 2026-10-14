@@ -46,6 +46,29 @@ public struct ProposedSize: Sendable, Equatable {
     /// A proposal that offers nothing on either axis: both dimensions are
     /// ideal.
     public static let unspecified = ProposedSize(width: nil, height: nil)
+
+    /// A zero offer: report your **minimum** size.
+    ///
+    /// SwiftUI's `ProposedViewSize` has three special cases — `unspecified`
+    /// (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first
+    /// two; the third is deliberately absent (see ARCHITECTURE.md, "Why there
+    /// is no `.infinity`").
+    ///
+    /// `.zero` is the offer a container makes when it wants a child's
+    /// *narrowest producible* form. Most views answer their minimum **by
+    /// construction** — a ``ViewOutput`` is a fully-formed raster and answers
+    /// its ideal size regardless (it may legitimately exceed the zero offer:
+    /// the answer is never clamped), ``Spacer`` answers its rigid size,
+    /// ``FlexibleSpacer``/``Empty`` answer 0×0, and ``Fill`` answers
+    /// `(0, 0)` because a zero offer is `(proposal.width ?? 0,
+    /// proposal.height ?? 0)`. ``Text`` is the one *compressible* view: at a
+    /// zero (or negative) width proposal it wraps to its minimum width.
+    ///
+    /// ```swift
+    /// // Ask a view for its minimum size.
+    /// let minimum = text._sizeThatFits(.zero)
+    /// ```
+    public static let zero = ProposedSize(width: 0, height: 0)
 }
 
 /// A concrete size measured for a view, in display columns and rows.

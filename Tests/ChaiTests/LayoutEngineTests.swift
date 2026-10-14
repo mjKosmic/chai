@@ -129,17 +129,18 @@ struct EngineMeasurementTests {
     // MARK: Non-wrapping leaves ignore proposals
     //
     // `ViewOutput` and `Spacer` are not proposal consumers. `Text` IS
-    // (A1) — see `TextWrappingTests`; the probe below documents only its
-    // degenerate non-positive-width path (unwrapped).
+    // (A1) — see `TextWrappingTests`; the probe below documents its minimum
+    // semantics at a non-positive width (A3): it compresses to the narrowest
+    // producible width (see `ProposedSizeZeroTests`).
 
     @Test func leavesIgnoreProposals() {
         // A `ViewOutput` is a fully-formed raster: proposals do not change
         // the ideal measurement.
         #expect(ViewOutput("abc")._sizeThatFits(ProposedSize(width: 1, height: 1)) == ViewSize(width: 3, height: 1))
         #expect(ViewOutput("abcd")._sizeThatFits(ProposedSize(width: 2, height: nil)) == ViewSize(width: 4, height: 1))
-        // A non-positive width proposal is degenerate for `Text`: it measures
-        // the unwrapped ideal (A1 rule 7).
-        #expect(Text("hi")._sizeThatFits(ProposedSize(width: 0, height: 0)) == ViewSize(width: 2, height: 1))
+        // A non-positive width proposal is the MINIMUM offer for `Text` (A3):
+        // "hi" compresses to width 1, one row per character.
+        #expect(Text("hi")._sizeThatFits(ProposedSize(width: 0, height: 0)) == ViewSize(width: 1, height: 2))
         #expect(Spacer(columns: 5)._sizeThatFits(ProposedSize(width: 1, height: 1)) == ViewSize(width: 5, height: 1))
     }
 }

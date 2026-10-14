@@ -346,17 +346,22 @@ struct FrameLegacyBodyTests {
 @Suite("Frame Degenerate Sizes")
 struct FrameDegenerateTests {
 
-    @Test func zeroWidthFrameDoesNotCrashAndOverflows() {
+    @Test func zeroWidthFrameCompressesTextToMinimumAndOverflows() {
         var buffer = CellBuffer(width: 4, height: 1)
         let frame = Text("abcd").frame(width: 0)
         let size = frame._sizeThatFits(.unspecified)
-        // Fixed width 0 answers 0; the flexible height is the child's 1.
-        #expect(size == ViewSize(width: 0, height: 1))
+        // Fixed width 0 answers 0. A3: the frame's fixed 0 width reaches the
+        // `Text` child as its proposal, so the child answers its MINIMUM (1
+        // wide, 4 rows — one character per row); the flexible height then
+        // forwards the child's ideal height, 4.
+        #expect(size == ViewSize(width: 0, height: 4))
         frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
-        // No clipping: the 4-wide child renders past the 0-wide frame,
-        // clipped only at the 4-wide buffer.
+        // No clipping: the 1-wide child renders past the 0-wide frame's bounds
+        // (col 0), clipped only at the 4-wide buffer. Only the first row lands
+        // (the buffer is 1 tall).
         #expect(buffer[0, 0].character == "a")
-        #expect(buffer[3, 0].character == "d")
+        #expect(buffer[1, 0] == .empty)
+        #expect(buffer[3, 0] == .empty)
     }
 
     @Test func zeroHeightFrameDoesNotCrashAndOverflows() {
