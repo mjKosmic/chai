@@ -55,6 +55,26 @@ func engineBuffer(_ view: some View, width: Int, height: Int? = nil) -> CellBuff
     return buffer
 }
 
+/// Rasterize a view through the phase-4 **allocation** path: one `_embed` walk
+/// from the root rect.
+///
+/// The root rect is the terminal width with the tree's reported height (`nil`
+/// height = inline mode's content-sized buffer, exactly like the phase-3
+/// harness proposal `(width, nil)`). The buffer height is `height ?? measured
+/// height`; an explicit height only pads/limits the buffer, it does not change
+/// the root assignment. Leaves anchor at their rect origin (no stretching —
+/// phase-4 decision 2), containers allocate child rects per their rules, and a
+/// `ClipView` reserves through the pure sizing pass.
+func embedBuffer(_ view: some View, width: Int, height: Int? = nil) -> CellBuffer {
+    let measured = view._sizeThatFits(ProposedSize(width: width, height: nil))
+    var buffer = CellBuffer(width: width, height: height ?? measured.height)
+    view._embed(
+        into: &buffer,
+        at: ViewRect(origin: .zero, size: ViewSize(width: width, height: measured.height))
+    )
+    return buffer
+}
+
 /// Extract per-row visible text from a buffer using the parity comparison
 /// semantics described above.
 ///

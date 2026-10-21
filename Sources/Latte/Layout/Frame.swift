@@ -27,6 +27,14 @@ import Chai
 ///   same `Int(Double(shortage) * fraction)` formula as the stacks
 ///   (``VStack``/``HStack``), with the same `max(0, ...)` guard.
 ///
+/// ## Phase 4: fixed dimensions are allocations
+///
+/// `_embed(into:at:)` treats a fixed dimension as allocation data — the frame
+/// owns it and allocates the child box verbatim — and a flexible dimension as
+/// pass-through of the assigned rect, floored by the child's report. The
+/// "proposal generator" story above describes the phase-3 `_render` path,
+/// which remains until the renderer flip (P3).
+///
 /// ## Overflow is not clipped (pinned decision)
 ///
 /// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` does **not**
@@ -158,6 +166,38 @@ extension FrameView {
         let rowShortage = max(0, size.height - childSize.height)
         let row = origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
         content._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
+    }
+
+    /// Allocate the content inside the frame's rect (phase 4).
+    ///
+    /// Fixed dimensions are **allocation data**: the frame owns them verbatim
+    /// and allocates the child the same fixed box, so the `width ?? proposal`
+    /// reconstruction and proposal echoing of the phase-3 engine are gone.
+    /// Flexible dimensions pass the assigned rect through, floored at the
+    /// child's report (a frame never occupies less than what it must place).
+    ///
+    /// The child is measured with the frame's own box as its query context —
+    /// a fixed height reaches a height-flexible child, matching the phase-3
+    /// fit proposal — then anchored at the alignment fraction of the shortage
+    /// per axis. Overflow is unmasked (`.clipped()` remains the opt-in).
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        let childProposal = ProposedSize(
+            width: width ?? rect.size.width,
+            height: height ?? rect.size.height
+        )
+        let childSize = content._sizeThatFits(childProposal)
+        let occupied = ViewSize(
+            width: width ?? max(rect.size.width, childSize.width),
+            height: height ?? max(rect.size.height, childSize.height)
+        )
+        let colShortage = max(0, occupied.width - childSize.width)
+        let col = rect.origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
+        let rowShortage = max(0, occupied.height - childSize.height)
+        let row = rect.origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
+        content._embed(
+            into: &buffer,
+            at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
+        )
     }
 }
 

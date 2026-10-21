@@ -34,6 +34,17 @@ struct ParityCase {
     /// here so no case is ever skipped by the engine parity suite.
     let expectedEngineRows: [String]?
 
+    /// Pinned expected visible rows for the phase-4 **allocation** (`_embed`)
+    /// path. `nil` means the allocation path must reproduce the engine rows
+    /// (`expectedEngineRows ?? expectedRows`).
+    ///
+    /// This field exists for **allocation deltas** — cases where the phase-4
+    /// allocation rules deliberately change output relative to the phase-3
+    /// engine (documented in UPGRADE.md, "Phase 4 — allocation deltas"). They
+    /// are distinct from the closed eager-vs-engine divergence list; an
+    /// allocation delta may exist on a non-divergent case.
+    let expectedEmbedRows: [String]?
+
     init(
         name: String,
         view: any View,
@@ -41,7 +52,8 @@ struct ParityCase {
         explicitHeight: Int? = nil,
         expectedRows: [String],
         isKnownDivergent: Bool = false,
-        expectedEngineRows: [String]? = nil
+        expectedEngineRows: [String]? = nil,
+        expectedEmbedRows: [String]? = nil
     ) {
         self.name = name
         self.view = view
@@ -50,6 +62,7 @@ struct ParityCase {
         self.expectedRows = expectedRows
         self.isKnownDivergent = isKnownDivergent
         self.expectedEngineRows = expectedEngineRows
+        self.expectedEmbedRows = expectedEmbedRows
     }
 }
 
@@ -681,6 +694,48 @@ extension ParityCase {
             isKnownDivergent: true,
             // Engine: no visible character → wraps to empty → 0x0 → no rows.
             expectedEngineRows: []
+        ),
+
+        // ── Phase-4 additions: allocation-path pins ─────────────────────────
+        //
+        // The allocation (`_embed`) path runs every case above; these two
+        // cases additionally pin the `Fill`-under-`HStack` rule that the
+        // phase-3 engine cannot express (it never offers a width to HStack
+        // children, so `Fill` reports 0 there).
+
+        ParityCase(
+            name: "hstack trailing Fill claims the remaining width",
+            view: HStack {
+                Text("x")
+                Fill()
+            },
+            width: 8,
+            // All three paths agree on the visible row: the trailing `Fill`
+            // paints nothing, and the text sits at col 0.
+            expectedRows: ["x"]
+        ),
+
+        // PHASE-4 ALLOCATION DELTA (UPGRADE.md, "Phase 4 — allocation deltas")
+        // — not an eager-vs-engine divergence: eager == engine here.
+        //
+        // Under allocation authority a *leading* `Fill` claims the assigned
+        // remainder, so its sibling shifts right. The phase-3 engine never
+        // offers a width to HStack children, so `Fill` reports 0 and "x" stays
+        // at col 0. The allocation path allocates `Fill` 7 columns and places
+        // "x" at col 7. This is the visible consequence of the occupied-width
+        // delta (the HStack reports 8 wide instead of 1).
+        ParityCase(
+            name: "PHASE-4 DELTA: hstack leading Fill shifts its sibling",
+            view: HStack {
+                Fill()
+                Text("x")
+            },
+            width: 8,
+            // Eager and phase-3 engine: the empty `Fill` is skipped / reports
+            // nothing, so "x" is at col 0.
+            expectedRows: ["x"],
+            // Allocation path: `Fill` claims columns 0–6, "x" at col 7.
+            expectedEmbedRows: ["       x"]
         ),
     ]
 }

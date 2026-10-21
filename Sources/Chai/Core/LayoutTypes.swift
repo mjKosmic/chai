@@ -138,6 +138,35 @@ public struct LayoutFlexibility: Sendable, Equatable {
     public static let rigid = LayoutFlexibility(width: nil, height: nil)
 }
 
+/// A rect within a ``CellBuffer``: an origin plus a size.
+///
+/// This is the phase-4 **assignment** — the value a container hands a child
+/// in ``View/_embed(into:at:)``. It is a bound, unlike ``ProposedSize``: the
+/// child renders inside the rect it was given (and may overflow it visually;
+/// the buffer remains the only hard wall). See `UPGRADE.md`, "Phase 4 —
+/// Top-down allocation engine".
+public struct ViewRect: Sendable, Equatable {
+
+    /// The top-left corner of the rect.
+    public var origin: ViewOrigin
+
+    /// The rect's size in display columns and rows.
+    public var size: ViewSize
+
+    /// Create a rect.
+    ///
+    /// - Parameters:
+    ///   - origin: The top-left corner.
+    ///   - size: The size in display columns and rows.
+    public init(origin: ViewOrigin = .zero, size: ViewSize) {
+        self.origin = origin
+        self.size = size
+    }
+
+    /// A zero-origin, zero-size rect.
+    public static let zero = ViewRect(origin: .zero, size: .zero)
+}
+
 /// A position within a ``CellBuffer``, in display columns and rows.
 public struct ViewOrigin: Sendable, Equatable {
 

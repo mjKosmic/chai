@@ -9,8 +9,8 @@ Phase 2 (proposal-driven layout engine) **has landed** on
 `declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
 this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
 Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
-allocation engine) is planned** — the phase-4 section below is the plan
-(the P0 commit); a design spike validated the direction
+allocation engine) is in progress** — P0–P2 landed (kernel + side-by-side
+corpus); P3 flips the renderer. A design spike validated the direction
 (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38 corpus cases).
 
 ---
@@ -464,18 +464,17 @@ Also resolved by A0: carry the proposal into `_render`. `FrameView._render` prev
 
 ---
 
-## Phase 4 — Top-down allocation engine (planned; this section is the P0 plan)
+## Phase 4 — Top-down allocation engine (in progress — P0–P2 landed)
 
 **Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
-re-scoped onto this phase's kernel (P4/PB below). This section is the plan
-commit — implementation starts at P1. Evidence of record:
-`TOP-DOWN-SPIKE.md` + `Tests/ChaiTests/Spike/` (a top-down allocation walker
-over the *current* public SPI reproduced the live engine **bug-for-bug,
-38/38 corpus cases**, all five semantic probes byte-identical — the
-prediction this plan is built on: pins hold, and the phase is an internals
-rewrite with the parity corpus as oracle). The spike suite retires at P1
-when its rules graduate into production (the deliberate corpus duplicate
-goes with it).
+re-scoped onto this phase's kernel (P4/PB below). **P0 (this plan) and
+P1/P2 (kernel + side-by-side) have landed.** Evidence of record:
+`TOP-DOWN-SPIKE.md` (a top-down allocation walker over the *current* public
+SPI reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
+semantic probes byte-identical — the prediction this plan was built on). The
+spike suite was retired in P1 when its rules graduated into production
+`_embed` implementations; its five probes are now assertions in
+`Tests/LatteTests/AllocationRulesTests.swift`.
 
 **Scope (decided):** replace **measurement-as-authority** with
 **allocation authority** — *children report; parents decide.* In scope:
@@ -510,7 +509,7 @@ result-builder view layer. Two guardrails follow, effective immediately:
 | 1 | Stack occupancy at width | **Shrink-wrap** — a stack occupies `max` child width; filling an assigned rect is `FlexibleSpacer`/`Fill`/`frame`'s job. Today's effective rule; corpus pins hold. |
 | 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect; stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
 | 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as today's `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
-| 4 | `Text` compression floor | **Adopt** — a `Text` allocated a rect narrower than its narrowest producible form clamps the wrap width to that minimum (query at `.zero`), so a wide/CJK character is never silently dropped in a one-column rect; overflow then overflows *visibly* into the buffer backstop. A deliberate spec delta (the A3 precedent: degenerate cases re-pinned); corpus additions pin the new behavior. |
+| 4 | `Text` compression floor | **Adopt** (P1 finding: the wrap kernel already keeps wide characters whole, so at positive allocations the clamp is a no-op today — it makes the rule explicit and covers the degenerate zero-width allocation path, which now uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the clamp guarantees a `Text` is never *allocated* below its narrowest producible width and that its own write never splits a wide character). |
 | 5 | SPI break mode | **Clean break** — `_embed(into:at:rect:)` replaces `_render(into:at:size:proposal:)`; no permanent coexistence. The old SPI survives only as a transition artifact across P1–P2 on the phase branch and is deleted in P3; nothing merges with dual render SPIs. |
 
 ### Architecture (spike §2 is the rule-level record; graduated shape)
@@ -559,9 +558,9 @@ func _childViews() -> [any View]                                // unchanged (tr
 
 | # | Deliverable | Exit criteria |
 |---|---|---|
-| P1 | **Allocation kernel + SPI** — `ViewRect`; `_embed` on all conformers (spike rules ported; per-conformer dispatch); `Text` compression floor; **simple-path contract suite**; corpus additions (floor delta, shrink-wrap-at-width, `Fill`-in-`HStack` width-context) | corpus green through the new `_embed` path with the live engine untouched (side-by-side harness); zero warnings |
-| P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (minus the floor's re-pinned degenerate cases); no other pin changes |
-| P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests | **all suites green unmodified** (the phase's proof point, the M3 precedent); old SPI fully gone |
+| P1 | **Allocation kernel + SPI** — `ViewRect`; `_embed` on all conformers (spike rules ported; per-conformer dispatch); `Text` compression floor; **simple-path contract suite**; corpus additions (the two `Fill`-in-`HStack` cases) | corpus green through the new `_embed` path with the live engine untouched (side-by-side harness); zero warnings — ✅ landed |
+| P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (every case without a documented allocation delta); no other pin changes — ✅ landed (`ParityEmbedTests`) |
+| P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green unmodified** (the phase's proof point, the M3 precedent); old SPI fully gone |
 | P4 | **Stage C on the new kernel** — `ModifiedContent`-style wrappers (allocate inset rect, embed child), eager-path retirement (`_resolveToViewOutput`, eager frame/wrap, divergence collapse #4–#10), `Spacer` naming unification, `ViewOutput.frame` retirement, HStack-remaining-width candidate (use-case-gated; now a one-rule change) | wrapper tests; divergence list collapses as predicted; **engine `Spacer` semantics from entry #1 preserved** (exactly N blank rows, never the eager doubling quirk) |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`) | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) |
 | PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
@@ -572,19 +571,40 @@ time after P1 (it forwards, it does not allocate). P4 requires P3 —
 **do not build Stage C on the old SPI**; that was the trap the spike was
 started in time to avoid. PD closes the phase.
 
+### Allocation deltas (P1 findings, on record)
+
+The allocation path reproduces every corpus pin except one documented
+delta — the `Fill`-under-`HStack` rule that the phase-3 engine cannot
+express (it never offers a width to HStack children, so `Fill` reports 0
+there):
+
+- **A leading `Fill` claims the assigned remainder.** `HStack { Fill();
+  Text("x") }` at width 8: the stack occupies 8 (was 1) and "x" moves to
+  col 7 (was col 0). A *trailing* `Fill` does not shift its sibling
+  (`HStack { Text("x"); Fill() }` is unchanged). Pinned as
+  `PHASE-4 DELTA: hstack leading Fill shifts its sibling`
+  (`expectedEmbedRows`) plus the trailing case as a normal pin, and as unit
+  tests in `AllocationRulesTests`.
+- **Consequences scheduled for P3** (old-engine path tests that must be
+  re-pinned to the new placement, documented here so they are not
+  surprises): `FillInStacksTests.fillDisplacesSiblingsInABottomAlignedFrame`
+  (rows become `["   x", "", ""]`) and
+  `RendererEnginePathTests.fillClaimsOfferedHeightThroughEngine` (the "x"
+  moves to col 3 inside the 4-wide frame). `hstackChildClaimsTheOfferedHeight`
+  is unaffected (it queries at a `nil` width).
+- **Compression floor:** no observable delta for positive allocations (the
+  wrap kernel already keeps wide characters whole). The P1 clamp is the
+  explicit rule plus the degenerate zero-width path; see decision 4.
+
 ### Divergence list & corpus fate
 
 - The list does **not** shrink automatically — the walker reproduced
   today's semantics deliberately. Entries #4–#10 self-retire at P4 with
   the eager path (the engine-vs-eager *comparison itself* retires with
   it); #1–#3 remain engine semantics.
-- The compression floor (decision 4) is the **one** deliberate output
-  delta in phase 4 proper — re-pinned degenerate cases plus corpus
-  additions.
-- The `Fill`-in-`HStack` occupied-width change (spike probe 4: the stack
-  *measures* 8 wide where today's engine answers 1×1) is invisible at
-  `visibleRows` level but visible to parent math — a width-context corpus
-  addition pins it (it follows from decisions 1+2).
+- The `Fill`-in-`HStack` rule is an **allocation delta**, not an
+  eager-vs-engine divergence: eager and the phase-3 engine still agree; the
+  corpus carries it in `expectedEmbedRows` (documented above).
 
 ### Risks & mitigations
 

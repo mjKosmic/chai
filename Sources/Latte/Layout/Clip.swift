@@ -87,6 +87,31 @@ extension ClipView {
     public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
         var clipped = CellBuffer(width: size.width, height: size.height)
         content._render(into: &clipped, at: .zero, size: size, proposal: proposal)
+        blit(clipped, into: &buffer, at: origin)
+    }
+
+    /// Mask the content at the rect it occupies (phase 4).
+    ///
+    /// The mask size is the child's **reserved** size from the pure sizing
+    /// pass (`_sizeThatFits` under the assigned rect's context) — the same
+    /// number the phase-3 engine received as its assigned size when the clip
+    /// measured as a passthrough. The child is embedded into a temp buffer of
+    /// exactly that size (truncate policy: horizontal overflow and
+    /// wide-character-straddling drops stay unchanged), then the whole temp is
+    /// blitted blank-inclusive at the rect origin (painter order).
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        let reserved = content._sizeThatFits(
+            ProposedSize(width: rect.size.width, height: rect.size.height)
+        )
+        var clipped = CellBuffer(width: reserved.width, height: reserved.height)
+        content._embed(into: &clipped, at: ViewRect(origin: .zero, size: reserved))
+        blit(clipped, into: &buffer, at: rect.origin)
+    }
+
+    /// Copy a temp buffer onto the shared buffer at `origin`, preserving the
+    /// buffer's wide-character invariants (continuation cells are skipped:
+    /// setting a primary already creates its continuation).
+    private func blit(_ clipped: CellBuffer, into buffer: inout CellBuffer, at origin: ViewOrigin) {
         for row in 0..<clipped.height {
             for col in 0..<clipped.width {
                 let cell = clipped[col, row]
