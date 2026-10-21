@@ -9,9 +9,10 @@ Phase 2 (proposal-driven layout engine) **has landed** on
 `declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
 this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
 Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
-allocation engine) is in progress** — P0–P2 landed (kernel + side-by-side
-corpus); P3 flips the renderer. A design spike validated the direction
-(`TOP-DOWN-SPIKE.md` — walker == engine, 38/38 corpus cases).
+allocation engine) is in progress** — P0–P3 landed (plan, kernel +
+side-by-side corpus, renderer flip/clean break); P4/PB/PD remain. A design
+spike validated the direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
+corpus cases).
 
 ---
 
@@ -460,17 +461,17 @@ load-bearing:
 Dynamic alt-screen control is a runtime concern, not a layout one — scope
 it explicitly at kickoff or park it.
 
-Also resolved by A0: carry the proposal into `_render`. `FrameView._render` previously received only the assigned size, never the proposal, so a flexible-axis frame proposed *ideal* to its child on re-measure — observationally identical while children ignored proposals, but a proposal-responsive child (the phase-3 wrapping `Text`) inside a flexible-axis frame would have measured differently between the fit pass (which proposed the offer) and the render pass. A0 landed `_render(into:at:size:proposal:)` and `FrameView` now reconstructs its fit proposal (`width ?? proposal.width` / `height ?? proposal.height`). The value-level gap at the renderer's root is also closed: `flush()` fits with the terminal width and now passes the *same proposal value* to the root render. The parity harness blind spot — `engineBuffer` renders at the measured size with the same proposal, so it never exercised `assigned ≠ proposed` — is closed by the test-local `ProposalEchoView`, which pins the renderer-level (`W:20` at a 20-column terminal for a stack measuring 12) and frame-closure (`W:8` on a flexible-axis frame at an 8-column proposal) cases.
+Also resolved by A0: carry the proposal into `_render`. `FrameView._render` previously received only the assigned size, never the proposal, so a flexible-axis frame proposed *ideal* to its child on re-measure — observationally identical while children ignored proposals, but a proposal-responsive child (the phase-3 wrapping `Text`) inside a flexible-axis frame would have measured differently between the fit pass (which proposed the offer) and the render pass. A0 landed `_render(into:at:size:proposal:)` and `FrameView` now reconstructs its fit proposal (`width ?? proposal.width` / `height ?? proposal.height`). The value-level gap at the renderer's root is also closed: `flush()` fits with the terminal width and now passes the *same proposal value* to the root render. The parity harness blind spot — `engineBuffer` renders at the measured size with the same proposal, so it never exercised `assigned ≠ proposed` — is closed by the test-local `ProposalEchoView`, which pins the renderer-level (`W:20` at a 20-column terminal for a stack measuring 12) and frame-closure (`W:8` on a flexible-axis frame at an 8-column proposal) cases. *(Retired in phase 4 P3: `ProposalEchoView` and these echo expectations were deleted with the A0 contract; `RectEchoView` pins the allocation analogue — the child observes its allocated rect.)*
 
 ---
 
-## Phase 4 — Top-down allocation engine (in progress — P0–P2 landed)
+## Phase 4 — Top-down allocation engine (in progress — P0–P3 landed)
 
 **Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
-re-scoped onto this phase's kernel (P4/PB below). **P0 (this plan) and
-P1/P2 (kernel + side-by-side) have landed.** Evidence of record:
-`TOP-DOWN-SPIKE.md` (a top-down allocation walker over the *current* public
-SPI reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
+re-scoped onto this phase's kernel (P4/PB below). **P0 (plan), P1/P2 (kernel +
+side-by-side) and P3 (renderer flip, clean break) have landed.** Evidence of
+record: `TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
+reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
 semantic probes byte-identical — the prediction this plan was built on). The
 spike suite was retired in P1 when its rules graduated into production
 `_embed` implementations; its five probes are now assertions in
@@ -514,20 +515,21 @@ result-builder view layer. Two guardrails follow, effective immediately:
 
 ### Architecture (spike §2 is the rule-level record; graduated shape)
 
-**New engine SPI (clean break at P3, per decision 5):**
+**New engine SPI (clean break landed at P3, per decision 5):**
 
 ```swift
 func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize        // PURE QUERY (role change; signature unchanged)
 func _flexibility() -> LayoutFlexibility                         // PURE REPORT (unchanged)
-func _embed(into buffer: inout CellBuffer, at rect: ViewRect)    // NEW — replaces _render(into:at:size:proposal:)
+func _embed(into buffer: inout CellBuffer, at rect: ViewRect)    // replaces _render(into:at:size:proposal:) — deleted
 func _childViews() -> [any View]                                // unchanged (transparency)
 ```
 
 - `ViewRect(origin:size:)` joins `LayoutTypes` (the spike's `SpikeRect`,
-  graduated). The `size:`/`proposal:` duality goes: **the assignment is
-  the allocated rect.** No proposal is carried between passes; there is
-  no fit value to hold equal. `ProposalEchoView` (both test targets) and
-  the echo tests retire at P3.
+  graduated). The `size:`/`proposal:` duality is gone: **the assignment is
+  the allocated rect.** No proposal is carried between passes; there is no
+  fit value to hold equal. `ProposalEchoView` (both test targets) and the
+  A0 echo tests were retired at P3; the test-local `RectEchoView` replaces
+  them, pinning that a child observes its *allocated* rect.
 - Defaults keep body-resolving conformers working: a `body: ViewOutput`
   model is a leaf raster and needs **zero changes** — that is the
   simple-path contract, and the spike ran entirely over such defaults.
@@ -548,19 +550,19 @@ func _childViews() -> [any View]                                // unchanged (tr
   rect through floored by the child query. `ClipView` reserves by the
   same rules, then masks. `Text` wraps at its **allocated** width, with
   the compression floor (decision 4).
-- **Renderer:** `flush()` keeps its two-pass *shape* — but both passes
-  change role: a pure query pass (`_sizeThatFits`, read-only — buffer
-  height, clip reservation) then one allocation walk
-  (`_embed(into:at: full rect)` at the root). Buffer policy, suffix clamp,
-  and the diff/paint machinery are untouched below the buffer.
+- **Renderer (landed at P3):** `flush()` keeps its two-pass *shape* — but
+  both passes changed role: a pure query pass (`_sizeThatFits`, read-only —
+  buffer height, and the inline-vs-terminal height context) then one
+  allocation walk (`_embed(into:at:)` at the root rect). Buffer policy, suffix
+  clamp, and the diff/paint machinery are untouched below the buffer.
 
 ### Milestones (each a PR-sized slice, TDD, zero warnings including test targets)
 
 | # | Deliverable | Exit criteria |
 |---|---|---|
 | P1 | **Allocation kernel + SPI** — `ViewRect`; `_embed` on all conformers (spike rules ported; per-conformer dispatch); `Text` compression floor; **simple-path contract suite**; corpus additions (the two `Fill`-in-`HStack` cases) | corpus green through the new `_embed` path with the live engine untouched (side-by-side harness); zero warnings — ✅ landed |
-| P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (every case without a documented allocation delta); no other pin changes — ✅ landed (`ParityEmbedTests`) |
-| P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green unmodified** (the phase's proof point, the M3 precedent); old SPI fully gone |
+| P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (every case without a documented allocation delta); no other pin changes — ✅ landed (window closed at P3; the suite folded into `ParityEngineTests`) |
+| P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green** (the phase's proof point, the M3 precedent); old SPI fully gone — ✅ landed |
 | P4 | **Stage C on the new kernel** — `ModifiedContent`-style wrappers (allocate inset rect, embed child), eager-path retirement (`_resolveToViewOutput`, eager frame/wrap, divergence collapse #4–#10), `Spacer` naming unification, `ViewOutput.frame` retirement, HStack-remaining-width candidate (use-case-gated; now a one-rule change) | wrapper tests; divergence list collapses as predicted; **engine `Spacer` semantics from entry #1 preserved** (exactly N blank rows, never the eager doubling quirk) |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`) | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) |
 | PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
@@ -585,13 +587,16 @@ there):
   `PHASE-4 DELTA: hstack leading Fill shifts its sibling`
   (`expectedEmbedRows`) plus the trailing case as a normal pin, and as unit
   tests in `AllocationRulesTests`.
-- **Consequences scheduled for P3** (old-engine path tests that must be
-  re-pinned to the new placement, documented here so they are not
-  surprises): `FillInStacksTests.fillDisplacesSiblingsInABottomAlignedFrame`
-  (rows become `["   x", "", ""]`) and
-  `RendererEnginePathTests.fillClaimsOfferedHeightThroughEngine` (the "x"
-  moves to col 3 inside the 4-wide frame). `hstackChildClaimsTheOfferedHeight`
-  is unaffected (it queries at a `nil` width).
+- **Consequences, now applied at P3** (old-engine path tests re-pinned to the
+  new placement): `FillInStacksTests.fillDisplacesSiblingsInABottomAlignedFrame`
+  (rows are now `["   x", "", ""]`) and
+  `RendererEnginePathTests.fillClaimsOfferedHeightThroughEngine` ("x" is now
+  at col 3 inside the 4-wide frame; its assertion is substring-based and
+  unchanged). `hstackChildClaimsTheOfferedHeight` is unaffected (it queries at
+  a `nil` width). A second, pixel-identical consequence: the phase-3
+  `ParityEngineTests` (M2) now runs the allocation path — the window's
+  delta-aware expectations are `expectedEmbedRows ?? expectedEngineRows ??
+  expectedRows`.
 - **Compression floor:** no observable delta for positive allocations (the
   wrap kernel already keeps wide characters whole). The P1 clamp is the
   explicit rule plus the degenerate zero-width path; see decision 4.
@@ -603,13 +608,14 @@ there):
   the eager path (the engine-vs-eager *comparison itself* retires with
   it); #1–#3 remain engine semantics.
 - The `Fill`-in-`HStack` rule is an **allocation delta**, not an
-  eager-vs-engine divergence: eager and the phase-3 engine still agree; the
-  corpus carries it in `expectedEmbedRows` (documented above).
+  eager-vs-engine divergence: eager and the (now-deleted) phase-3 engine
+  agreed on those rows; the corpus carries the delta in `expectedEmbedRows`
+  (documented above).
 
 ### Risks & mitigations
 
 - **Custom conformers (Spices users)** rely on query-level semantics —
-  the spike shows them stable at the query level; P2 is the proof point.
+  the spike showed them stable at the query level; P2/P3 held that.
 - **Not-corpus-settleable territory** (painter order under clip, dynamic
   resize, alt-screen/`println` interplay) — corpus growth work, not
   blockers; treat exactly as the phase-2 movers did.

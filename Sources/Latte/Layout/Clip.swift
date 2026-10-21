@@ -14,15 +14,15 @@ import Chai
 ///
 /// - **Measurement is a passthrough.** Clipping is a render-time mask; it never
 ///   changes a size. `.clipped()` reports exactly what its content reports —
-///   including an answer larger than the offer (the proposal is an offer, not a
-///   bound).
-/// - **Rendering draws into a temp buffer, then blits.** The content is
-///   rendered into a temporary ``CellBuffer`` of the assigned `size` (origin
-///   ``ViewOrigin/zero``, with the *same* `proposal` — the A0 fit/render
-///   value-equality contract), and that temp is then blitted onto the shared
-///   buffer at `origin`. Overflow in either axis is dropped by the temp's
-///   bounds; the temp uses the default truncate write policy, so horizontal
-///   overflow is masked rather than reflowed.
+///   including an answer larger than the assigned rect.
+/// - **Rendering reserves, draws into a temp, then blits.** The content's
+///   occupied size is reserved through the pure sizing pass
+///   (``View/_sizeThatFits(_:)`` under the assigned rect's context), the
+///   content is embedded into a temporary ``CellBuffer`` of exactly that size
+///   (origin ``ViewOrigin/zero``), and the temp is blitted onto the shared
+///   buffer at the rect's origin. Overflow in either axis is dropped by the
+///   temp's bounds; the temp uses the default truncate write policy, so
+///   horizontal overflow is masked rather than reflowed.
 /// - **The clipped view owns its assigned rect.** The whole temp — including
 ///   blank cells the child never painted — replaces whatever was beneath it
 ///   (painter's-algorithm semantics). Content under a clip's rect is painted
@@ -67,38 +67,19 @@ public struct ClipView<Content: View>: View {
 
 extension ClipView {
     /// Passthrough: clipping never changes measurement, so the size is exactly
-    /// the content's answer (which may exceed the offer — an offer, not a
-    /// bound).
+    /// the content's answer (which may exceed the assigned rect).
     public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
         content._sizeThatFits(proposal)
     }
 
-    /// Render the content into a temp buffer of the assigned `size` (origin
-    /// zero, same proposal), then blit the whole temp — blanks included — onto
-    /// the shared buffer at `origin`.
-    ///
-    /// The blit uses the public ``CellBuffer/set(col:row:_:)``, which preserves
-    /// the buffer's wide-character invariants as each cell lands. Wide
-    /// *continuation* cells (`width == 0`) are skipped: setting a primary
-    /// already creates its continuation, and setting a continuation directly
-    /// would clear the primary it belongs to. The temp buffer's `write` never
-    /// produces any other zero-width cell (combining marks are skipped at
-    /// write time).
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        var clipped = CellBuffer(width: size.width, height: size.height)
-        content._render(into: &clipped, at: .zero, size: size, proposal: proposal)
-        blit(clipped, into: &buffer, at: origin)
-    }
-
-    /// Mask the content at the rect it occupies (phase 4).
+    /// Mask the content at the rect it occupies.
     ///
     /// The mask size is the child's **reserved** size from the pure sizing
-    /// pass (`_sizeThatFits` under the assigned rect's context) — the same
-    /// number the phase-3 engine received as its assigned size when the clip
-    /// measured as a passthrough. The child is embedded into a temp buffer of
-    /// exactly that size (truncate policy: horizontal overflow and
-    /// wide-character-straddling drops stay unchanged), then the whole temp is
-    /// blitted blank-inclusive at the rect origin (painter order).
+    /// pass (`_sizeThatFits` under the assigned rect's context). The child is
+    /// embedded into a temp buffer of exactly that size (truncate policy:
+    /// horizontal overflow and wide-character-straddling drops stay unchanged),
+    /// then the whole temp is blitted blank-inclusive at the rect origin
+    /// (painter order).
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         let reserved = content._sizeThatFits(
             ProposedSize(width: rect.size.width, height: rect.size.height)

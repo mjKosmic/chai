@@ -40,7 +40,7 @@ struct FlexibleSpacerHStackTests {
         #expect(
             stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
         )
-        #expect(visibleRows(engineBuffer(stack, width: 10)) == ["L        R"])
+        #expect(visibleRows(embedBuffer(stack, width: 10)) == ["L        R"])
     }
 
     @Test func twoEqualSpacersSplitEvenlyAndLeaveTheOddRemainderUnallocated() {
@@ -58,7 +58,7 @@ struct FlexibleSpacerHStackTests {
         #expect(
             stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
         )
-        let buffer = engineBuffer(stack, width: 10)
+        let buffer = embedBuffer(stack, width: 10)
         #expect(visibleRows(buffer) == ["A   B   C"])
         // "C" sits at col 8 (1 + 3 + 1 + 3); col 9 is the unallocated
         // remainder — empty, not part of any child.
@@ -76,7 +76,7 @@ struct FlexibleSpacerHStackTests {
         }
         // Rigid total 3, leftover 5, totalFlex 2 → Int(5 × 0.5) = 2 each.
         // 4 of 5 columns allocated; 1 left unallocated after "C".
-        let buffer = engineBuffer(stack, width: 8)
+        let buffer = embedBuffer(stack, width: 8)
         #expect(visibleRows(buffer) == ["A  B  C"])
         #expect(buffer[6, 0].character == "C")
         #expect(buffer[7, 0] == .empty)
@@ -92,7 +92,7 @@ struct FlexibleSpacerHStackTests {
         }
         // Rigid total 3, leftover 7, totalFlex 3 → Int(7 × 1/3) = 2 and
         // Int(7 × 2/3) = 4 (1 column left unallocated).
-        #expect(visibleRows(engineBuffer(stack, width: 10)) == ["A  B    C"])
+        #expect(visibleRows(embedBuffer(stack, width: 10)) == ["A  B    C"])
     }
 
     @Test func zeroFractionBehavesRigidly() {
@@ -106,7 +106,7 @@ struct FlexibleSpacerHStackTests {
         #expect(
             stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 2, height: 1)
         )
-        #expect(visibleRows(engineBuffer(stack, width: 10)) == ["AB"])
+        #expect(visibleRows(embedBuffer(stack, width: 10)) == ["AB"])
     }
 
     @Test func nilWidthProposalStaysContentSized() {
@@ -177,7 +177,7 @@ struct FlexibleSpacerHStackTests {
         #expect(
             nested._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 2)
         )
-        #expect(visibleRows(engineBuffer(nested, width: 10)) == ["hi", "a        b"])
+        #expect(visibleRows(embedBuffer(nested, width: 10)) == ["hi", "a        b"])
     }
 }
 
@@ -199,15 +199,14 @@ struct FlexibleSpacerVStackTests {
     }
 
     @Test func heightProposalIsFilledAndDistributed() {
-        // Rigid total 2, offer 6, leftover 4 → the spacer's final height is 4.
-        let proposal = ProposedSize(width: nil, height: 6)
-        #expect(stack._sizeThatFits(proposal) == ViewSize(width: 1, height: 6))
+        // Rigid total 2, assigned height 6, leftover 4 → the spacer's final
+        // height is 4.
+        let proposed = ProposedSize(width: nil, height: 6)
+        #expect(stack._sizeThatFits(proposed) == ViewSize(width: 1, height: 6))
         var buffer = CellBuffer(width: 1, height: 6)
-        stack._render(
+        stack._embed(
             into: &buffer,
-            at: .zero,
-            size: ViewSize(width: 1, height: 6),
-            proposal: proposal
+            at: ViewRect(size: ViewSize(width: 1, height: 6))
         )
         #expect(visibleRows(buffer) == ["T", "", "", "", "", "B"])
     }
@@ -222,7 +221,7 @@ struct FlexibleSpacerVStackTests {
         }
         .frame(height: 6)
         #expect(framed._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 6))
-        #expect(visibleRows(engineBuffer(framed, width: 3)) == ["T", "", "", "", "", "B"])
+        #expect(visibleRows(embedBuffer(framed, width: 3)) == ["T", "", "", "", "", "B"])
     }
 
     @Test func twoEqualSpacersSplitEvenlyAndLeaveTheOddRemainderAtTheBottom() {
@@ -236,7 +235,7 @@ struct FlexibleSpacerVStackTests {
             Text("B")
         }
         .frame(height: 10)
-        let buffer = engineBuffer(framed, width: 1)
+        let buffer = embedBuffer(framed, width: 1)
         #expect(visibleRows(buffer) == ["T", "", "", "", "M", "", "", "", "B", ""])
     }
 
@@ -259,7 +258,7 @@ struct FlexibleSpacerVStackTests {
         #expect(FlexibleSpacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
         let framed = FlexibleSpacer().frame(width: 5, height: 4)
         #expect(framed._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 4))
-        #expect(visibleRows(engineBuffer(framed, width: 5)) == ["", "", "", ""])
+        #expect(visibleRows(embedBuffer(framed, width: 5)) == ["", "", "", ""])
     }
 }
 
@@ -274,7 +273,7 @@ struct FlexibilitySPITests {
     private struct HalfFlex: View {
         var body: ViewOutput { ViewOutput("") }
         func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize { .zero }
-        func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {}
+        func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {}
         func _flexibility() -> LayoutFlexibility {
             LayoutFlexibility(width: 0.5, height: 0.5)
         }
@@ -290,7 +289,7 @@ struct FlexibilitySPITests {
         // Rigid total 2, leftover 8, totalFlex 1.5 → Int(8 × 0.5/1.5) = 2 for
         // the custom view and Int(8 × 1/1.5) = 5 for the spacer (1 column
         // unallocated).
-        let buffer = engineBuffer(stack, width: 10)
+        let buffer = embedBuffer(stack, width: 10)
         #expect(visibleRows(buffer) == ["A       B"])
         #expect(buffer[8, 0].character == "B")
         #expect(buffer[9, 0] == .empty)
@@ -308,7 +307,7 @@ struct FlexibilitySPITests {
         #expect(
             stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 2, height: 1)
         )
-        #expect(visibleRows(engineBuffer(stack, width: 10)) == ["AB"])
+        #expect(visibleRows(embedBuffer(stack, width: 10)) == ["AB"])
     }
 }
 
@@ -336,22 +335,24 @@ struct FillInStacksTests {
     }
 
     @Test func fillDisplacesSiblingsInABottomAlignedFrame() {
-        // The frame offers `(4, 3)`; `Fill` makes the HStack 3 tall, so the
-        // bottom-aligned frame places it at the top (no vertical shortage) —
-        // "x" lands on row 0. Without `Fill` the stack is 1 tall and lands on
-        // the bottom row.
+        // The frame offers `(4, 3)`; `Fill` makes the HStack fill the assigned
+        // width, so the bottom-aligned frame has no vertical shortage and "x"
+        // lands on row 0. Phase-4 allocation delta (UPGRADE.md, "Phase 4 —
+        // allocation deltas"): the leading `Fill` also claims the horizontal
+        // remainder (columns 0–2), so "x" shifts to col 3. The phase-3 engine
+        // (which never offered width to HStack children) placed it at col 0.
         let withFill = HStack {
             Fill()
             Text("x")
         }
         .frame(width: 4, height: 3, verticalAlignment: .bottom)
-        #expect(visibleRows(engineBuffer(withFill, width: 4)) == ["x", "", ""])
+        #expect(visibleRows(embedBuffer(withFill, width: 4)) == ["   x", "", ""])
 
         let withoutFill = HStack {
             Text("x")
         }
         .frame(width: 4, height: 3, verticalAlignment: .bottom)
-        #expect(visibleRows(engineBuffer(withoutFill, width: 4)) == ["", "", "x"])
+        #expect(visibleRows(embedBuffer(withoutFill, width: 4)) == ["", "", "x"])
     }
 
     @Test func fillInsideAFixedFrameOccupiesTheFrame() {
@@ -371,7 +372,7 @@ struct FillInStacksTests {
         #expect(
             stack._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
-        #expect(visibleRows(engineBuffer(stack, width: 8)) == ["      ab"])
+        #expect(visibleRows(embedBuffer(stack, width: 8)) == ["      ab"])
         #expect(visibleRows(eagerBuffer(stack, width: 8)) == ["ab"])
     }
 }

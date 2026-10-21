@@ -68,7 +68,7 @@ private func zeroVisibleRows(_ buffer: CellBuffer) -> [String] {
     return rows
 }
 
-/// Measure `view` at `proposal`, render it at its measured size into a buffer
+/// Measure `view` at `proposal`, embed it at its measured rect into a buffer
 /// of `width`×`height`, and return the visible rows.
 private func zeroEngineRows(
     _ view: some View,
@@ -78,7 +78,7 @@ private func zeroEngineRows(
 ) -> [String] {
     let size = view._sizeThatFits(proposal)
     var buffer = CellBuffer(width: width, height: height)
-    view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
+    view._embed(into: &buffer, at: ViewRect(size: size))
     return zeroVisibleRows(buffer)
 }
 
@@ -150,7 +150,7 @@ struct TextMinimumSemanticsTests {
         // The minimum render keeps the style on every character.
         let size = view._sizeThatFits(.zero)
         var buffer = CellBuffer(width: 1, height: 8)
-        view._render(into: &buffer, at: .zero, size: size, proposal: .zero)
+        view._embed(into: &buffer, at: ViewRect(size: size))
         #expect(buffer[0, 0].character == "T")
         #expect(buffer[0, 0].foreground == .red)
         #expect(buffer[0, 7].character == "k")

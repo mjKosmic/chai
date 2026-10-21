@@ -147,7 +147,7 @@ struct EngineMeasurementTests {
 
 // MARK: - Leaf render
 
-@Suite("Engine Render")
+@Suite("Allocation Render")
 struct EngineRenderTests {
 
     /// Extract a row's visible text using the parity convention: zero-width
@@ -166,18 +166,17 @@ struct EngineRenderTests {
 
     @Test func viewOutputRendersAtZeroOrigin() {
         var buffer = CellBuffer(width: 10, height: 1)
-        ViewOutput("Hello")._render(into: &buffer, at: .zero, size: .zero, proposal: .unspecified)
+        ViewOutput("Hello")._embed(into: &buffer, at: .zero)
         #expect(rowText(buffer, row: 0) == "Hello")
         #expect(buffer[0, 0].character == "H")
         #expect(buffer[4, 0].character == "o")
     }
 
     @Test func textRendersThroughOwnImplementation() {
-        // `Text` has its own `_render` (A1); at an unspecified proposal it
-        // writes the content unwrapped, exactly as the body-resolving default
-        // did before A1.
+        // `Text` has its own `_embed`; allocated 10 columns it writes the
+        // content unwrapped (one row).
         var buffer = CellBuffer(width: 10, height: 1)
-        Text("hi")._render(into: &buffer, at: .zero, size: .zero, proposal: .unspecified)
+        Text("hi")._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 10, height: 1)))
         #expect(buffer[0, 0].character == "h")
         #expect(buffer[1, 0].character == "i")
         #expect(buffer[2, 0] == .empty)
@@ -187,11 +186,9 @@ struct EngineRenderTests {
         // Exercises the `CellBuffer.write` fix: the `\n` resets to the
         // write's start column, so every line keeps the 2-column offset.
         var buffer = CellBuffer(width: 6, height: 2)
-        ViewOutput("a\nb")._render(
+        ViewOutput("a\nb")._embed(
             into: &buffer,
-            at: ViewOrigin(col: 2, row: 0),
-            size: ViewSize(width: 2, height: 2),
-            proposal: .unspecified
+            at: ViewRect(origin: ViewOrigin(col: 2, row: 0), size: ViewSize(width: 2, height: 2))
         )
         #expect(buffer[2, 0].character == "a")
         #expect(buffer[2, 1].character == "b")
@@ -204,11 +201,9 @@ struct EngineRenderTests {
 
     @Test func cjkRendersAtColumnOffset() {
         var buffer = CellBuffer(width: 8, height: 2)
-        ViewOutput("你\n好")._render(
+        ViewOutput("你\n好")._embed(
             into: &buffer,
-            at: ViewOrigin(col: 2, row: 0),
-            size: ViewSize(width: 4, height: 2),
-            proposal: .unspecified
+            at: ViewRect(origin: ViewOrigin(col: 2, row: 0), size: ViewSize(width: 4, height: 2))
         )
         // Row 0: two spaces then 你 (wide, with continuation at col 3).
         #expect(buffer[2, 0].character == "你")
@@ -226,18 +221,16 @@ struct EngineRenderTests {
         // Matching `wrapping: false`: a line wider than the buffer is
         // truncated at the right edge, not wrapped onto another row.
         var buffer = CellBuffer(width: 4, height: 1)
-        ViewOutput("abcdef")._render(into: &buffer, at: .zero, size: .zero, proposal: .unspecified)
+        ViewOutput("abcdef")._embed(into: &buffer, at: .zero)
         #expect(rowText(buffer, row: 0) == "abcd")
         #expect(buffer[3, 0].character == "d")
     }
 
     @Test func multilineAtOffsetTruncatesAtBufferWidth() {
         var buffer = CellBuffer(width: 4, height: 2)
-        ViewOutput("abc\ndefgh")._render(
+        ViewOutput("abc\ndefgh")._embed(
             into: &buffer,
-            at: ViewOrigin(col: 2, row: 0),
-            size: ViewSize(width: 2, height: 2),
-            proposal: .unspecified
+            at: ViewRect(origin: ViewOrigin(col: 2, row: 0), size: ViewSize(width: 2, height: 2))
         )
         // "abc" at col 2: cols 0–1 empty, "ab" at 2–3, "c" truncated.
         #expect(rowText(buffer, row: 0) == "  ab")
@@ -248,7 +241,7 @@ struct EngineRenderTests {
         // Blank cells are the buffer default — a spacer draws nothing, and
         // pre-existing cells are left untouched.
         var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
-        Spacer(columns: 4)._render(into: &buffer, at: .zero, size: ViewSize(width: 4, height: 1), proposal: .unspecified)
+        Spacer(columns: 4)._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 4, height: 1)))
         #expect(rowText(buffer, row: 0) == "xxxx")
     }
 }

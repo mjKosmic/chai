@@ -181,18 +181,9 @@ public struct HStack<Content: View>: View {
 // verified by the corpus in Tests/LatteTests/LayoutParity.
 //
 // Phase 4 adds the allocation entrance (`_embed`): the stack computes one
-// shape, allocates each child a row rect, and embeds it. The phase-3
-// `_render` implementation remains as the transition path (the renderer still
-// drives it until P3) and keeps its A0 fit/render proposal forwarding
-// semantics unchanged — the block below describes that path.
-//
-// Proposal semantics are identical between the fit and render passes: the
-// render pass carries the incoming proposal (A0) and proposes the stack's
-// width with height ideal to every child, exactly as the fit pass did — so a
-// child measures the same in both passes even when its assigned size differs
-// from the proposed width. This consistency is a hard requirement: M4's
-// `frame()` renders a stack at an assigned size wider than its ideal and
-// relies on the child measuring identically in both passes.
+// shape, allocates each child a rect, and embeds it. `_sizeThatFits` is the
+// pure query kernel (report only — used for buffer sizing and clip
+// reservation).
 
 extension VStack {
     /// The stack's allocation shape under an assigned width/height context.
@@ -253,41 +244,6 @@ extension VStack {
                 into: &buffer,
                 at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
             )
-            row += childSize.height
-        }
-    }
-
-    /// Phase-3 engine path (deleted at P3): place each child at the alignment
-    /// fraction of the horizontal shortage — mirroring `aligned(toWidth:_:)`'s
-    /// `leftPad = Int(shortage * fraction)` formula and `max(0, ...)` guard —
-    /// then advance the row by the child's height. Empty children measure 0×0
-    /// and advance nothing, carrying the eager skip-empty semantics.
-    ///
-    /// Each child is re-measured and rendered with the same proposal the fit
-    /// pass used — `ProposedSize(width: proposal.width, height: nil)` — so a
-    /// proposal-consuming child measures identically in both passes even when
-    /// the assigned `size.width` differs from the incoming proposal width (the
-    /// renderer-root case). The assigned `size` still drives placement:
-    /// shortage is computed against `size.width`, not the proposal.
-    ///
-    /// A flexible child is rendered at its FINAL height (rigid + its share of
-    /// the leftover) and the row advances by that final height, so the
-    /// distribution is identical to the fit pass.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        var row = origin.row
-        let childProposal = ProposedSize(width: proposal.width, height: nil)
-        let children = content._childViews()
-        let sizes = children.map { $0._sizeThatFits(childProposal) }
-        let heights = distributedMainAxis(
-            rigidSizes: sizes.map(\.height),
-            fractions: children.map { $0._flexibility().height },
-            assigned: proposal.height
-        )?.childSizes ?? sizes.map(\.height)
-        for index in children.indices {
-            let childSize = ViewSize(width: sizes[index].width, height: heights[index])
-            let shortage = max(0, size.width - childSize.width)
-            let col = origin.col + Int(Double(shortage) * alignment.fraction)
-            children[index]._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
             row += childSize.height
         }
     }
@@ -369,36 +325,6 @@ extension HStack {
                 into: &buffer,
                 at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
             )
-            col += childSize.width
-        }
-    }
-
-    /// Phase-3 engine path (deleted at P3): place each child at the alignment
-    /// fraction of the vertical shortage — mirroring `extendLines`'
-    /// `topPad = Int(shortage * fraction)` formula — then advance the column
-    /// by the child's width.
-    ///
-    /// Each child is re-measured and rendered with the same proposal the fit
-    /// pass used — `ProposedSize(width: nil, height: proposal.height)`.
-    ///
-    /// A flexible child is rendered at its FINAL width (rigid + its share of
-    /// the leftover) and the column advances by that final width, so the
-    /// distribution is identical to the fit pass.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        var col = origin.col
-        let childProposal = ProposedSize(width: nil, height: proposal.height)
-        let children = content._childViews()
-        let sizes = children.map { $0._sizeThatFits(childProposal) }
-        let widths = distributedMainAxis(
-            rigidSizes: sizes.map(\.width),
-            fractions: children.map { $0._flexibility().width },
-            assigned: proposal.width
-        )?.childSizes ?? sizes.map(\.width)
-        for index in children.indices {
-            let childSize = ViewSize(width: widths[index], height: sizes[index].height)
-            let shortage = max(0, size.height - childSize.height)
-            let row = origin.row + Int(Double(shortage) * alignment.fraction)
-            children[index]._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
             col += childSize.width
         }
     }

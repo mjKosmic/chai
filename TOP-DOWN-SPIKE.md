@@ -4,7 +4,7 @@
 evidence of record for phase 4. Its walker and corpus copy
 (`Tests/ChaiTests/Spike/`) were **deleted in P1** when the rules graduated
 into production `_embed` implementations; the production suites
-(`Tests/LatteTests/LayoutParity/ParityEmbedTests.swift`,
+(`Tests/LatteTests/LayoutParity/ParityEngineTests.swift`,
 `AllocationRulesTests.swift`, `Tests/ChaiTests/EmbedKernelTests.swift`) now
 carry the assertions this spike ran as diagnostics. The spike's five probes are
 assertions in `AllocationRulesTests`.

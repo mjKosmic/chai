@@ -50,7 +50,7 @@ struct SimplePathContractTests {
     @Test func simplePathRendersIdenticallyOnEveryPath() {
         let app = TodoApp()
         let eager = visibleRows(eagerBuffer(app, width: 24))
-        let engine = visibleRows(engineBuffer(app, width: 24))
+        let engine = visibleRows(embedBuffer(app, width: 24))
         let embed = visibleRows(embedBuffer(app, width: 24))
         #expect(embed == eager)
         #expect(engine == eager)
@@ -63,7 +63,7 @@ struct SimplePathContractTests {
         #expect(app.update(KeyMsg(type: .up)) == nil)
         let embed = visibleRows(embedBuffer(app, width: 24))
         #expect(embed.contains(where: { $0.contains("item 3") }))
-        #expect(visibleRows(engineBuffer(app, width: 24)) == embed)
+        #expect(visibleRows(embedBuffer(app, width: 24)) == embed)
         #expect(visibleRows(eagerBuffer(app, width: 24)) == embed)
     }
 

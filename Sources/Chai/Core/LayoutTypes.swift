@@ -12,7 +12,7 @@
 /// would destroy information the parent needs (a scroll viewport must know
 /// its content extends past the visible area even though the visible area
 /// is all it can show). Enforcement happens downstream — the parent's
-/// placement decision (`size:` in ``View/_render(into:at:size:proposal:)``)
+/// placement decision (the rect in ``View/_embed(into:at:)``)
 /// and, finally, the ``CellBuffer`` bounds. See ARCHITECTURE.md
 /// "An offer, not a box".
 ///

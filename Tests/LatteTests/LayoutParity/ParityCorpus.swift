@@ -66,6 +66,17 @@ struct ParityCase {
     }
 }
 
+extension ParityCase {
+
+    /// The rows every live engine path must produce.
+    ///
+    /// An allocation delta (`expectedEmbedRows`) wins when on record; otherwise
+    /// the engine expectation, which for non-divergent cases is the eager pin.
+    var documentedRows: [String] {
+        expectedEmbedRows ?? expectedEngineRows ?? expectedRows
+    }
+}
+
 // MARK: - Corpus
 
 extension ParityCase {

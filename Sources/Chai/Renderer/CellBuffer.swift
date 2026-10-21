@@ -50,7 +50,7 @@ public struct CellBuffer: Sendable, Equatable {
     /// `false` (the default) truncates characters that overflow the right
     /// edge; `true` wraps them onto the next row. Truncate is the
     /// behavior-preserving default: the engine's leaf rasterizer
-    /// (``ViewOutput/_render(into:at:size:proposal:)``) and the parity harness
+    /// (``ViewOutput/_embed(into:at:)``) and the parity harness
     /// construct buffers without an explicit policy and pin **truncation** on
     /// them (inline-mode semantics). The renderer and the free
     /// ``layout(_:width:height:wrapping:)`` function always pass an explicit

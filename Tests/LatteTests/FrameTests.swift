@@ -79,7 +79,7 @@ struct FramePlacementTests {
         var buffer = CellBuffer(width: width, height: height)
         let proposal = ProposedSize(width: width, height: height)
         let size = view._sizeThatFits(proposal)
-        view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
+        view._embed(into: &buffer, at: ViewRect(size: size))
         return visibleRows(buffer)
     }
 
@@ -207,7 +207,7 @@ struct FrameOverflowTests {
         let frame = Raster("abcd\nef").frame(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
         #expect(size == ViewSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
+        frame._embed(into: &buffer, at: ViewRect(size: size))
 
         // Shortage is clamped: the child renders from offset 0.
         #expect(buffer[0, 0].character == "a")
@@ -225,7 +225,7 @@ struct FrameOverflowTests {
         let frame = Raster("abcd\nef").frame(width: 2, height: 1)
         var buffer = CellBuffer(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
+        frame._embed(into: &buffer, at: ViewRect(size: size))
         #expect(visibleRows(buffer) == ["ab"])
     }
 
@@ -236,7 +236,7 @@ struct FrameOverflowTests {
         var buffer = CellBuffer(width: 4, height: 2)
         let frame = Raster("abcd\nef").frame(width: 2, height: 1, horizontalAlignment: .right)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
+        frame._embed(into: &buffer, at: ViewRect(size: size))
         #expect(buffer[0, 0].character == "a")
         #expect(visibleRows(buffer) == ["abcd", "ef"])
     }
@@ -252,7 +252,7 @@ struct FrameOverflowTests {
         let frame = Text("abcd\nef").frame(width: 2, height: 1)
         let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
         #expect(size == ViewSize(width: 2, height: 1))
-        frame._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 2, height: 1))
+        frame._embed(into: &buffer, at: ViewRect(size: size))
         // "abcd" wraps to "ab"/"cd"; "ef" stays; all three rows land below the
         // 1-tall frame's bounds (no clipping).
         #expect(visibleRows(buffer) == ["ab", "cd", "ef"])
@@ -265,7 +265,7 @@ struct FrameOverflowTests {
 struct FrameNestingTests {
 
     @Test func fixedHeightFrameInsideVStackContributesExactlyItsRows() {
-        let buffer = engineBuffer(
+        let buffer = embedBuffer(
             VStack {
                 Text("a").frame(width: 5, height: 2, horizontalAlignment: .center)
                 Text("b")
@@ -278,7 +278,7 @@ struct FrameNestingTests {
     }
 
     @Test func frameAroundHStackWithForLoop() {
-        let buffer = engineBuffer(
+        let buffer = embedBuffer(
             HStack {
                 for item in ["a", "b", "c"] {
                     Text(item)
@@ -292,7 +292,7 @@ struct FrameNestingTests {
     }
 
     @Test func frameOfFrame() {
-        let buffer = engineBuffer(
+        let buffer = embedBuffer(
             Text("x")
                 .frame(width: 5, height: 1, horizontalAlignment: .center)
                 .frame(width: 9, height: 3, horizontalAlignment: .right, verticalAlignment: .middle),
@@ -355,7 +355,7 @@ struct FrameDegenerateTests {
         // wide, 4 rows — one character per row); the flexible height then
         // forwards the child's ideal height, 4.
         #expect(size == ViewSize(width: 0, height: 4))
-        frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
+        frame._embed(into: &buffer, at: ViewRect(size: size))
         // No clipping: the 1-wide child renders past the 0-wide frame's bounds
         // (col 0), clipped only at the 4-wide buffer. Only the first row lands
         // (the buffer is 1 tall).
@@ -369,7 +369,7 @@ struct FrameDegenerateTests {
         let frame = Text("abcd").frame(height: 0)
         let size = frame._sizeThatFits(.unspecified)
         #expect(size == ViewSize(width: 4, height: 0))
-        frame._render(into: &buffer, at: .zero, size: size, proposal: .unspecified)
+        frame._embed(into: &buffer, at: ViewRect(size: size))
         // The child renders at row 0 (shortage clamped), clipped only at the
         // buffer.
         #expect(buffer[0, 0].character == "a")
@@ -377,31 +377,29 @@ struct FrameDegenerateTests {
     }
 }
 
-// MARK: - Fit proposal reconstruction (A0)
+// MARK: - Allocation assignment (phase 4)
 
-@Suite("Frame Proposal Reconstruction")
-struct FrameProposalReconstructionTests {
+@Suite("Frame Allocation Assignment")
+struct FrameAllocationAssignmentTests {
 
-    @Test func flexibleAxisFrameProposesIncomingWidthToChild() {
-        // FrameView(width: nil) at an 8-column proposal: the flexible axis
-        // proposes the incoming 8 in BOTH passes (A0 reconstructs the fit
-        // proposal), so the echo renders "W:8". Pre-A0 the render pass
-        // proposed ideal on flexible axes → the echo saw nil → "W:-1".
-        let buffer = engineBuffer(
+    @Test func flexibleAxisFramePassesTheAssignedWidthToChild() {
+        // FrameView(width: nil) in an 8-column root rect: the flexible axis
+        // passes the assigned 8 through, so the echo is allocated 8.
+        let buffer = embedBuffer(
             FrameView(width: nil) {
-                ProposalEchoView()
+                RectEchoView()
             },
             width: 8
         )
         #expect(visibleRows(buffer) == ["W:8"])
     }
 
-    @Test func fixedAxisFrameStillProposesFixedWidthToChild() {
-        // A fixed-width frame proposes its fixed width in both passes
-        // regardless of the incoming proposal.
-        let buffer = engineBuffer(
+    @Test func fixedAxisFrameAllocatesItsFixedWidthToChild() {
+        // A fixed-width frame allocates its fixed width regardless of the
+        // incoming assignment.
+        let buffer = embedBuffer(
             FrameView(width: 4) {
-                ProposalEchoView()
+                RectEchoView()
             },
             width: 8
         )

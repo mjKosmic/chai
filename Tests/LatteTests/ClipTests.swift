@@ -29,7 +29,7 @@ import Latte
 @Suite("ClipView")
 struct ClipViewTests {
 
-    /// Measure `view` at `proposal`, render at its measured size into a
+    /// Measure `view` at `proposal`, embed it at its measured rect into a
     /// `width`×`height` buffer, and extract visible rows (parity convention).
     private func rows(
         _ view: some View,
@@ -39,7 +39,7 @@ struct ClipViewTests {
     ) -> [String] {
         let size = view._sizeThatFits(proposal)
         var buffer = CellBuffer(width: width, height: height)
-        view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
+        view._embed(into: &buffer, at: ViewRect(size: size))
         return visibleRows(buffer)
     }
 
@@ -98,7 +98,7 @@ struct ClipViewTests {
         var buffer = CellBuffer(width: 6, height: 1, fill: Cell(character: "x"))
         let view = VStack { ViewOutput("ab") }.frame(width: 3, height: 1).clipped()
         let size = view._sizeThatFits(.unspecified)
-        view._render(into: &buffer, at: ViewOrigin(col: 1, row: 0), size: size, proposal: .unspecified)
+        view._embed(into: &buffer, at: ViewRect(origin: ViewOrigin(col: 1, row: 0), size: size))
         #expect(visibleRows(buffer) == ["xab xx"])
     }
 
@@ -143,7 +143,7 @@ struct ClipViewTests {
         var buffer = CellBuffer(width: 4, height: 1)
         let view = ViewOutput("a你b").frame(width: 2).clipped()
         let size = view._sizeThatFits(ProposedSize(width: 4, height: nil))
-        view._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 4, height: nil))
+        view._embed(into: &buffer, at: ViewRect(size: size))
         #expect(buffer[0, 0].character == "a")
         #expect(buffer[1, 0].character == "b")
         #expect(buffer[2, 0] == .empty)
@@ -156,23 +156,23 @@ struct ClipViewTests {
         var buffer = CellBuffer(width: 4, height: 1)
         let view = ViewOutput("你好").frame(width: 4).clipped()
         let size = view._sizeThatFits(ProposedSize(width: 4, height: nil))
-        view._render(into: &buffer, at: .zero, size: size, proposal: ProposedSize(width: 4, height: nil))
+        view._embed(into: &buffer, at: ViewRect(size: size))
         #expect(buffer[0, 0].width == 2)
         #expect(buffer[1, 0].width == 0)
         #expect(visibleRows(buffer) == ["你好"])
     }
 
-    // MARK: Fit/render consistency (A0)
+    // MARK: Mask reservation (phase 4)
 
-    @Test func fitAndRenderUseTheSameProposal() {
-        // The clip is measured at (10, nil) → (3, 1); rendering at that
-        // assigned size with the SAME proposal produces the measured rows.
+    @Test func maskIsTheReservedRect() {
+        // The clip is queried at (10, nil) → (3, 1); its mask is the content's
+        // reserved rect (3 wide), independent of the 10-column buffer.
         let view = ViewOutput("abcdef").frame(width: 3).clipped()
         let proposal = ProposedSize(width: 10, height: nil)
         let size = view._sizeThatFits(proposal)
         #expect(size == ViewSize(width: 3, height: 1))
         var buffer = CellBuffer(width: 10, height: 1)
-        view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
+        view._embed(into: &buffer, at: ViewRect(size: size))
         #expect(visibleRows(buffer) == ["abc"])
     }
 

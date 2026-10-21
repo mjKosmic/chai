@@ -400,14 +400,14 @@ select(stdin, cancelPipe)
 `flush()` builds the frame through the layout engine; see [The Layout Engine](#the-layout-engine) for the measure/render flow in detail.
 
 1. Handle cursor visibility: show the cursor when `pendingCursor` is set (and it was hidden), hide it in alt-screen mode when no cursor is set.
-2. Propose the terminal size: `view._sizeThatFits(ProposedSize(width: w, height: altScreenActive ? h : nil))` — inline mode proposes width only (the buffer is content-sized), alt-screen mode proposes the fixed terminal size. The same proposal value is held in a local and passed to the root render call (step 6) — the fit/render value-equality contract (A0).
-3. Decide the buffer height from the measured size:
+2. Query the terminal size: `view._sizeThatFits(ProposedSize(width: w, height: altScreenActive ? h : nil))` — inline mode queries width only (the buffer is content-sized), alt-screen mode queries the fixed terminal size. The answer is a **report**: it sizes the buffer and nothing else.
+3. Decide the buffer height from the reported size:
    - Empty content (`height == 0`) → a single-row buffer (keeps cursor-position tracking; `Cell.empty` is a space cell so the extra row renders invisibly).
    - Alt screen → fixed `termHeight`.
    - Inline → clamped to `termHeight` (suffix lines win, reproducing the old `content.suffix(lines:)` behavior).
 4. Allocate the buffer with the renderer's wrap-vs-truncate policy: **truncate** inline (the height is content-derived; wrapping would steal rows), **wrap** in alt screen. The mode decision stays renderer-level; the leaf SPI carries no mode flags.
-5. Inline suffix clamp: when the measured height exceeds `termHeight`, render at a negative row origin (`bufferHeight - measured.height`) so only the bottom `bufferHeight` rows land in the buffer — byte-identical to the eager suffix. Alt screen renders from the top; out-of-bounds rows are dropped by the buffer's bounds guards.
-6. `view._render(into: &newBuffer, at: origin, size: measured, proposal: proposal)` — the cascade places every view into the buffer; the root gets the same proposal it was measured with.
+5. Inline suffix clamp: when the measured height exceeds `termHeight`, embed at a negative row origin (`bufferHeight - measured.height`) so only the bottom `bufferHeight` rows land in the buffer — byte-identical to the eager suffix. Alt screen renders from the top; out-of-bounds rows are dropped by the buffer's bounds guards.
+6. `view._embed(into: &newBuffer, at: ViewRect(origin: origin, size: (w, measured.height)))` — ONE allocation walk places every view into the buffer; each container decides its children's rects.
 7. Diff `newBuffer` against `lastBuffer` (per-cell changes + `eraseBelow`).
 8. Move the cursor back to the top of the previous render, flush queued `println` lines (normal screen only), then paint each changed row (`row` + `ESC[K`), emitting `\n` for unchanged rows. On the first render (empty `lastBuffer`) force a full repaint so blank padding rows are not skipped and stale content cannot ghost through.
 9. If the previous frame had more rows than the new frame, emit `ESC[J` (erase screen below).
@@ -488,7 +488,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 
 **Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Latte/Layout/Stacks.swift`, `Sources/Latte/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
 
-The layout engine is the phase-2 rendering path (UPGRADE.md, "Phase 2"). Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — but *rendered* it by eagerly resolving the tree to a ``ViewOutput`` string (`View._resolveToViewOutput()`). The engine replaces that eager resolution for the renderer with a SwiftUI-style **proposal-driven layout**: measure first, then place, with containers inspecting the *views* their children expose rather than flattened output strings.
+The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"). Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_sizeThatFits` is a pure query (used for buffer sizing and clip reservation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. The proposal model survives only as the **query language** (`ProposedSize`), not as render-pass bookkeeping.
 
 ### The measure/render flow
 
@@ -498,12 +498,13 @@ renderer.write(model.body)          stores the tree: pendingView: any View
         ▼  (every 1/fps seconds)
 renderer.flush()
         │
-        ├─ 1. propose the terminal size:
+        ├─ 1. query the tree (pure, read-only):
         │       view._sizeThatFits(ProposedSize(width: w, height: altScreen ? h : nil))
         │       (width only inline — the buffer is content-sized; fixed size in alt screen)
         │
-        ├─ 2. the _sizeThatFits cascade: every view answers with a ViewSize,
-        │       delegating through `body` by default, overriding in containers/leaves
+        ├─ 2. the query cascade: every view reports a ViewSize, delegating
+        │       through `body` by default, overriding in containers/leaves
+        │       (the report never binds — it sizes the buffer, nothing else)
         │
         ├─ 3. allocate the CellBuffer with the renderer's policies:
         │       empty content → 1-row buffer (invisible, keeps cursor tracking)
@@ -511,33 +512,37 @@ renderer.flush()
         │       inline        → measured height clamped to termHeight, truncate policy;
         │                       suffix clamp via a negative row origin
         │
-        ├─ 4. view._render(into: &buffer, at: origin, size: measured, proposal: proposal)
-        │       the cascade places every view into the CellBuffer
-        │       (leaf write follows the buffer's wrap/truncate policy)
+        ├─ 4. view._embed(into: &buffer,
+        │           at: ViewRect(origin: origin, size: (w, measured.height)))
+        │       ONE allocation walk: containers decide child rects, leaves paint
+        │       at their rect's origin (leaf write follows the buffer's
+        │       wrap/truncate policy)
         │
         └─ 5. diff against lastBuffer (per-cell + eraseBelow) → paint changed rows
 ```
 
-The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls `body` until a ``ViewOutput`` leaf is reached. It remains the rendering path for the legacy modifier family (`.bordered()`, `.padded()`, `.beside()`, ``ViewOutput.width(_:align:)``, ...) and for the structural views' own `body` implementations, and it is the **parity spec** the engine is verified against (see [The parity discipline](#the-parity-discipline) below). Phase 3 retires it.
+The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls `body` until a ``ViewOutput`` leaf is reached. It remains the rendering path for the legacy modifier family (`.bordered()`, `.padded()`, `.beside()`, ``ViewOutput.width(_:align:)``, ...) and for the structural views' own `body` implementations, and it is the **parity spec** the engine is verified against (see [The parity discipline](#the-parity-discipline) below). Phase 4 (P4, Stage C) retires it.
 
 ### Who the engine SPI is for
 
 The engine surface is four methods on ``View``:
 
 ```swift
-func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
-func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize)
+func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize   // pure query (report)
+func _embed(into buffer: inout CellBuffer, at rect: ViewRect)  // allocation entrance
 func _childViews() -> [any View]
 func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_render` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Only structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and only ``FlexibleSpacer`` overrides `_flexibility()`.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Only structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and only ``FlexibleSpacer`` overrides `_flexibility()`.
 
 `_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis proposal, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
 ### Proposal semantics
 
-Three properties of the proposal model are load-bearing. They were settled in design review; treat them as the engine's contract.
+**Phase-4 note (P3):** the render pass no longer takes a proposal — the assignment is the rect (``View/_embed(into:at:)``), and the proposal survives as the query language only. The three subsections below describe the phase-2/3 negotiation engine; they are retained as migration history until the PD docs rewrite. The current contract, in one line each: *queries are reports* (never binding), *the rect is the decision* (allocated top-down), *the buffer is the only hard wall*.
+
+Three properties of the proposal model were load-bearing in phases 2–3. They were settled in design review; the parts that survive are marked.
 
 **1. An offer, not a box.**
 
@@ -567,7 +572,7 @@ A container must propose **identically in `_sizeThatFits` and `_render`** — th
 
 - `VStack` re-measures and renders each child with `ProposedSize(width: proposal.width, height: nil)` — the fit pass's child proposal, even when the stack's assigned `size.width` differs from its incoming proposal width (the renderer-root case).
 - `HStack` dually with `ProposedSize(width: nil, height: proposal.height)`.
-- `FrameView` reconstructs its fit proposal exactly — `ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)`: fixed dimensions constant, flexible axes pass the incoming offer through. This closes the phase-2 limitation (render-time ideal on flexible axes) and is pinned by the test-local `ProposalEchoView` (a proposal-*consuming* child used only by tests).
+- `FrameView` reconstructs its fit proposal exactly — `ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)`: fixed dimensions constant, flexible axes pass the incoming offer through. This closed the phase-2 limitation (render-time ideal on flexible axes) and was pinned by the test-local `ProposalEchoView` (retired at P3; `RectEchoView` now pins the allocation analogue).
 - The renderer's root is no longer an exception: `flush()` holds the fit proposal in a local and passes the *same value* to the root render call.
 
 The contract is enforced by convention (containers forward the proposal) and pinned by the echo tests — a container that drops the proposal will misplace proposal-consuming children.
@@ -576,7 +581,7 @@ The contract is enforced by convention (containers forward the proposal) and pin
 
 SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `ProposedSize.zero` is the offer a container makes when it wants a child's **narrowest producible** form; like every proposal it is an offer, not a bound — the answer is never clamped.
 
-Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero offer), `Spacer` answers its rigid size, `FlexibleSpacer`/`Empty` answer 0×0, and `Fill` answers the offered rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width proposal it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). Measurement and rendering resolve the minimum through the same function, so the fit/render value-equality contract holds.
+Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero offer), `Spacer` answers its rigid size, `FlexibleSpacer`/`Empty` answer 0×0, and `Fill` answers the offered rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width proposal it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
 
 Containers follow their normal proposal rules at `.zero` — no special-casing. `VStack` proposes `(0, nil)` to its children, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` proposes `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child answers its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed". `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero offer on flexible axes.
 
@@ -622,7 +627,7 @@ The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAl
 | Semantics | minimum-enforcing (`.enforceWidth`/`.enforceHeight` via `transformContent`) | proposal semantics (`FrameView`: fixed dims answered verbatim, `nil` fills the parent's offer) |
 | Returns | `ViewOutput` (eager styled text) | `FrameView<Content>` (stays in the tree) |
 
-Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 3 may retire the eager one once the engine is the only path.
+Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 4 (P4) retires the eager one; the engine is now the only render path (P3).
 
 ### Scope: what the engine deliberately does not do
 
@@ -790,7 +795,7 @@ renderer.flush()
         │
         ├─ cursor visibility (show/hide)
         │
-        ├─ propose terminal size:
+        ├─ query terminal size (report only):
         │     view._sizeThatFits(ProposedSize(width: w, height: altScreen ? h : nil))
         │
         ├─ allocate CellBuffer by policy:
@@ -799,8 +804,9 @@ renderer.flush()
         │     inline?          → measured height clamped to termHeight, truncate policy
         │                      → suffix clamp via negative row origin
         │
-        ├─ view._render(into: &buffer, at: origin, size: measured, proposal: proposal)
-        │     (the fit proposal — the same value used for measurement)
+        ├─ view._embed(into: &buffer,
+        │       at: ViewRect(origin: origin, size: (w, measured.height)))
+        │     (one allocation walk — the root rect is the assignment)
         │
         ├─ diff vs lastBuffer (per-cell changes + eraseBelow)
         │     no changes?      →  skip content flush
@@ -941,7 +947,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1108 t
 | `RendererTests.swift` | Renderer via `MockTerminalOutput` (a `TerminalOutput` conformance that captures written strings): initial render, cell-diff skipping, alt screen enter/exit, cursor hide/show, window title, `println`, `repaint`, terminal size clamping, synchronized output markers, ANSI-aware width truncation, cursor shape |
 | `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
-| `LayoutEngineTests.swift` | M1/M2 engine units: `_sizeThatFits`/`_render`/`_childViews` on leaves and Latte containers, proposal handling, fraction math |
+| `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_sizeThatFits`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
 | `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the `FlexibleSpacer`/`Fill` primitives (rigid 0×0 measurement, no-op render, empty eager body) |
 | `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
 | `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
@@ -1140,11 +1146,11 @@ The phase-1 renderer resolved children to `ViewOutput` strings before composing 
 
 ### Why is the engine SPI underscored-but-public?
 
-`_sizeThatFits(_:)`, `_render(into:at:size:proposal:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
+`_sizeThatFits(_:)`, `_embed(into:at:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
 
 ### Why proposal *arguments* rather than clamped constraints?
 
-A proposal is advice, not a wall: the child answers its truthful size, the parent decides the assigned size, and only the ``CellBuffer`` enforces anything. Clamping at measurement is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. The cost is that proposal-*responsive* children (wrapping `Text`) cannot exist until phase 3; the render pass has received the proposal since A0 (`_render(into:at:size:proposal:)`), so the remaining work is the consumer itself (A1).
+A query is a report, not a wall: the child answers its truthful size, the parent decides the allocated rect, and only the ``CellBuffer`` enforces anything. Clamping at query time is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. Proposal-*responsive* children exist since phase 3 (wrapping `Text`), and in phase 4 they respond to the width they were **allocated** (`Text` wraps at `rect.size.width`, with the compression floor).
 
 ### Why assemble the entire frame into one `String` before writing?
 

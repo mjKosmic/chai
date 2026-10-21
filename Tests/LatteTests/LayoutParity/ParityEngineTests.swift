@@ -2,54 +2,59 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - M2 engine parity suite
+// MARK: - Engine parity suite (phase 4: the allocation path)
 //
-// Milestone M2 of the phase-2 layout engine: the container overrides
-// (`VStack`/`HStack` `_sizeThatFits`/`_render`) running the full M0 corpus.
+// The phase-2 M2 suite, re-roled in P3: the engine path is now the single
+// phase-4 allocation walk (`_embed`), so every corpus case asserts its
+// **documented** rows (`expectedEmbedRows ?? expectedEngineRows ??
+// expectedRows`).
 //
-// Every corpus case is asserted on the engine path:
-// - Non-divergent cases must reproduce BOTH the pinned eager spec
-//   (`expectedRows`) and the live eager buffer (`eagerBuffer`).
+// - Non-divergent cases must also reproduce the pinned eager spec and the live
+//   eager buffer, except for cases carrying a documented **allocation delta**
+//   (UPGRADE.md, "Phase 4 — allocation deltas") — the delta is asserted
+//   explicitly, never tolerated silently.
 // - `isKnownDivergent` cases must reproduce their documented engine rows
-//   (`expectedEngineRows`): the closed divergence list #1–#9 (UPGRADE.md) —
+//   (`expectedEngineRows`): the closed divergence list #1–#10 (UPGRADE.md) —
 //   #1 Spacer doubling, #3 multi-line VStack children aligned as blocks, #4
 //   flexible-axis fill, #5/#6 proposal-consuming `Text` wraps, #7
-//   `FlexibleSpacer`, #8 `Fill`, #9 `.clipped()`. No case is skipped: every
-//   divergent case has a positive engine-side expectation.
+//   `FlexibleSpacer`, #8 `Fill`, #9 `.clipped()`, #10 newline-only `Text`.
+//   No case is skipped.
 
-@Suite("Layout Parity — M2 engine path")
+@Suite("Layout Parity — engine path")
 struct ParityEngineTests {
 
-    /// Assert that a buffer's visible rows equal a case's expected rows.
+    /// Assert that a buffer's visible rows equal a case's documented rows.
     private func assertVisibleRows(
         _ parityCase: ParityCase,
         build: (ParityCase) -> CellBuffer
     ) {
         let rows = visibleRows(build(parityCase))
-        let expected = parityCase.expectedEngineRows ?? parityCase.expectedRows
         #expect(
-            rows == expected,
-            "Case '\(parityCase.name)': expected \(expected), got \(rows)"
+            rows == parityCase.documentedRows,
+            "Case '\(parityCase.name)': expected \(parityCase.documentedRows), got \(rows)"
         )
     }
 
-    /// The engine must reproduce every non-divergent case's pinned spec.
-    @Test("Engine path matches pinned spec for every corpus case")
+    /// Every corpus case — divergent or not — asserts its documented output
+    /// through the allocation engine.
+    @Test("Engine path matches the documented rows for every corpus case")
     func engineMatchesPinnedSpec() {
-        for parityCase in ParityCase.allCases where !parityCase.isKnownDivergent {
+        for parityCase in ParityCase.allCases {
             assertVisibleRows(parityCase) { item in
-                engineBuffer(item.view, width: item.width, height: item.explicitHeight)
+                embedBuffer(item.view, width: item.width, height: item.explicitHeight)
             }
         }
     }
 
     /// The engine must reproduce today's eager output for every non-divergent
-    /// case (engine-vs-eager parity, independent of the pinned rows).
+    /// case without an allocation delta (engine-vs-eager parity, independent
+    /// of the pinned rows).
     @Test("Engine path matches eager path for every corpus case")
     func engineMatchesEager() {
-        for parityCase in ParityCase.allCases where !parityCase.isKnownDivergent {
+        for parityCase in ParityCase.allCases
+        where !parityCase.isKnownDivergent && parityCase.expectedEmbedRows == nil {
             let engine = visibleRows(
-                engineBuffer(parityCase.view, width: parityCase.width, height: parityCase.explicitHeight)
+                embedBuffer(parityCase.view, width: parityCase.width, height: parityCase.explicitHeight)
             )
             let eager = visibleRows(
                 eagerBuffer(parityCase.view, width: parityCase.width, height: parityCase.explicitHeight)
@@ -71,8 +76,29 @@ struct ParityEngineTests {
                 "Case '\(parityCase.name)': divergent case must document engine rows"
             )
             assertVisibleRows(parityCase) { item in
-                engineBuffer(item.view, width: item.width, height: item.explicitHeight)
+                embedBuffer(item.view, width: item.width, height: item.explicitHeight)
             }
+        }
+    }
+
+    /// Documented allocation deltas are on record with explicit rows and
+    /// actually differ from the eager path (the delta is the point).
+    @Test("Documented allocation deltas are on record")
+    func allocationDeltasAreOnRecord() {
+        let deltas = ParityCase.allCases.filter { $0.expectedEmbedRows != nil }
+        #expect(!deltas.isEmpty, "expected at least one documented allocation delta")
+        for parityCase in deltas {
+            let engine = visibleRows(
+                embedBuffer(parityCase.view, width: parityCase.width, height: parityCase.explicitHeight)
+            )
+            #expect(
+                engine == parityCase.expectedEmbedRows,
+                "Case '\(parityCase.name)': expected \(parityCase.expectedEmbedRows ?? []), got \(engine)"
+            )
+            #expect(
+                engine != parityCase.expectedRows,
+                "Case '\(parityCase.name)': expected an allocation delta, but the path matched the eager pin"
+            )
         }
     }
 }
