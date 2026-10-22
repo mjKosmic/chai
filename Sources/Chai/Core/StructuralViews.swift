@@ -11,13 +11,23 @@
 /// reach this function.
 func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffer, at rect: ViewRect) {
     var row = rect.origin.row
+    let bottom = rect.origin.row + rect.size.height
     for child in children {
+        guard row < bottom else { break }
+        let remaining = bottom - row
         let size = child._sizeThatFits(ProposedSize(width: rect.size.width, height: nil))
-        child._embed(
-            into: &buffer,
-            at: ViewRect(origin: ViewOrigin(col: rect.origin.col, row: row), size: size)
-        )
-        row += size.height
+        let childRect = ViewRect(
+            origin: ViewOrigin(col: rect.origin.col, row: row),
+            size: ViewSize(
+                width: min(size.width, rect.size.width),
+                height: min(size.height, remaining)
+            )
+        ).intersection(rect)
+        guard childRect.size.height > 0 else { continue }
+        if childRect.size.width > 0 {
+            buffer.embed(child, at: childRect)
+        }
+        row += childRect.size.height
     }
 }
 

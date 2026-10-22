@@ -15,8 +15,8 @@ import Chai
 func engineRows(_ view: some View, width: Int = 80) -> [String] {
     let size = view._sizeThatFits(ProposedSize(width: width, height: nil))
     var buffer = CellBuffer(width: width, height: size.height)
-    view._embed(
-        into: &buffer,
+    buffer.embed(
+        view,
         at: ViewRect(origin: .zero, size: ViewSize(width: width, height: size.height))
     )
 

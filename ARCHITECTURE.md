@@ -482,7 +482,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 - **Pure functions:** Layout functions are stateless — they take a string and configuration, and return a new string. No side effects.
 - **Chainable API:** `String+Layout.swift` provides method-chaining extensions that mirror the free functions, enabling `"hello".padded(1).bordered().margined(1)`.
 - **Styling via `Style?`:** Border rendering accepts optional ``Style`` parameters for styling border characters. Because `Style` lives in Latte itself, no extra imports or closure adapters are needed at the call site.
-- **One API generation:** the declarative containers (`HStack`/`VStack`/`FrameView`) and the tree modifiers (`.padded`, `.bordered`, `.frame`, `.clipped`) render through the layout engine. The phase-1 eager ``ViewOutput`` modifier family retired in phase-4 P4b; only the raster clamping helpers remain on ``ViewOutput`` (see [The Layout Engine](#the-layout-engine)).
+- **One API generation:** the declarative containers (`HStack`/`VStack`/`FrameView`) and the tree modifiers (`.padded`, `.bordered`, `.frame`) render through the layout engine. The phase-1 eager ``ViewOutput`` modifier family retired in phase-4 P4b; only the raster clamping helpers remain on ``ViewOutput`` (see [The Layout Engine](#the-layout-engine)).
 
 ---
 
@@ -490,7 +490,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 
 **Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Latte/Layout/Stacks.swift`, `Sources/Latte/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
 
-The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"). Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_sizeThatFits` is a pure query (used for buffer sizing and clip reservation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. The proposal model survives only as the **query language** (`ProposedSize`), not as render-pass bookkeeping.
+The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_sizeThatFits` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. The proposal model survives only as the **query language** (`ProposedSize`), not as render-pass bookkeeping.
 
 ### The measure/render flow
 
@@ -514,11 +514,11 @@ renderer.flush()
         │       inline        → measured height clamped to termHeight, truncate policy;
         │                       suffix clamp via a negative row origin
         │
-        ├─ 4. view._embed(into: &buffer,
-        │           at: ViewRect(origin: origin, size: (w, measured.height)))
-        │       ONE allocation walk: containers decide child rects, leaves paint
-        │       at their rect's origin (leaf write follows the buffer's
-        │       wrap/truncate policy)
+        ├─ 4. buffer.embed(view,
+        │           at: ViewRect(origin: origin, size: (w, rootHeight)))
+        │       ONE allocation walk: containers clamp child rects and embed via
+        │       buffer.embed (hard-box clip); leaves paint at their rect's
+        │       origin and are clipped to it
         │
         └─ 5. diff against lastBuffer (per-cell + eraseBelow) → paint changed rows
 ```
@@ -548,24 +548,25 @@ counterparts.
 
 **1. A report, not a bound; the rect is the box.**
 
-"Hardness" lives at four distinct stages, and only the last one is actually hard:
+"Hardness" lives at four distinct stages, and the third is the hard box:
 
 | Stage | Who decides | Nature |
 |-------|-------------|--------|
 | The query (`ProposedSize`) | the parent | **context** — the size the parent is asking about |
 | The report (`ViewSize`) | the child | the child's **truthful size** — may exceed the query context |
-| The allocated `ViewRect` in `_embed` | the parent | the **decision** — where/how big the child is placed |
-| The `CellBuffer` bounds | the renderer | the **only hard wall** — writes outside are dropped |
+| The allocated `ViewRect` in `_embed` | the parent | the **decision** — the child's layout *and painting* box (phase 5) |
+| The `CellBuffer` bounds | the renderer | the final backstop — writes outside the buffer are dropped |
 
 Nothing clamps a report. A clamped answer destroys information a parent needs:
 a scroll viewport must know that its content extends past the visible area even
 though the visible area is all it can show. The parent may overrule a report
-when it allocates (`Fill`-by-type, clip reservation, the `Text` compression
-floor), but the report itself stays honest. The buffer's bounds guards
-(`CellBuffer.set(col:row:_:)` returning for out-of-range positions) are what
-actually stop a view from painting outside the terminal; a child may also
-overflow its allocated rect visually — the rect is a placement decision, not a
-second wall.
+when it allocates (`Fill`-by-type, the `Text` compression floor), but the report
+itself stays honest.
+
+**Phase 5 made the rect a hard box.** Containers clamp child rects to their own
+allocation, and the kernel intersects a clip with every `_embed` (``CellBuffer``
+→ `embed(_:at:)`), so nothing a view paints can land outside its rect. The
+buffer is now the final backstop, not the mechanism that bounded overflow.
 
 **2. Query context, not a limit.**
 
@@ -581,7 +582,8 @@ Views fall into a taxonomy by how they treat it:
 **3. The rect is the contract.**
 
 There is no second pass to keep in sync: the rect passed to a child's
-``View/_embed(into:at:)`` **is** the parent's decision. The consequences are
+``View/_embed(into:at:)`` **is** the parent's decision — and, since phase 5, the
+child's painting bound. The consequences are
 the AGENTS.md engine pitfalls:
 
 - `_sizeThatFits` is a **pure report** — never treat an answer as binding; a
@@ -635,14 +637,14 @@ The allocation engine is the only renderer; the corpus is its mechanical spec. T
   6. A fixed-width `frame()` around `Text` wraps instead of overflowing (A1). Retired in P4b.
   7. `FlexibleSpacer` distributed leftover space only in the engine (A2); now `Spacer()`. Retired in P4b.
   8. `Fill` claims the proposed dimensions only in the engine (A2). Retired in P4b.
-  9. `.clipped()` masks overflow only in the engine (A3). Retired in P4b.
+  9. `.clipped()` masked overflow only in the engine (A3). Retired in P4b; phase 5 made clipping the default (the rect is the box) and removed `.clipped()`.
   10. Newline-only `Text` collapses to nothing (pinned during the PR #21 review). Retired in P4b.
 
 The suites: `ParityEngineTests` (every corpus case against `expectedRows`) and `ParityHarnessTests` (pins the comparison semantics themselves). `ParitySpecTests` and `eagerBuffer` retired with the eager path in P4b.
 
 ### `frame()` — one modifier
 
-The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`` (minimum-enforcing, returning a raster) and the tree-based ``View.frame(width:height:horizontalAlignment:verticalAlignment:)`` coexisted during phase 2. **P4b retired the eager overload**: every receiver — including `ViewOutput` — now uses the tree-based frame, whose fixed dimensions are exact allocations (content wider than the frame overflows; use ``View/clipped()`` to mask it). See ``FrameView``.
+The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`` (minimum-enforcing, returning a raster) and the tree-based ``View.frame(width:height:horizontalAlignment:verticalAlignment:)`` coexisted during phase 2. **P4b retired the eager overload**: every receiver — including `ViewOutput` — now uses the tree-based frame, whose fixed dimensions are exact allocations. Since phase 5, the frame is also a **hard box**: content larger than the frame is clipped to it. See ``FrameView``.
 
 ### Scope: what the engine deliberately does not do
 
@@ -989,7 +991,8 @@ Covers the string-level layout/styling modules plus the phase-2 engine:
 | `StringExtensionTests.swift` | Chainable string extensions, composition chains |
 | `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
 | `StackTests.swift` / `StacksEngineTests.swift` | Engine measure/render of `VStack`/`HStack` through the allocation walk, alignment, skip-empty, styling survival |
-| `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, overflow (no clipping), degenerate sizes |
+| `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, hard-box clipping, degenerate sizes |
+| `HardBoxTests.swift` | Phase-5 containment: frame clips a wrapped status line, custom views cannot paint outside their rect, child rects are clamped to the parent, wide-char clip boundaries, clip restoration, nested boxes |
 | `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis assignment, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil assignment content-sized) and `Fill` in stacks/frames |
 | `LayoutParity/` | The corpus-based discipline: `ParityHarness.swift` (`embedBuffer` + `visibleRows`), `ParityCorpus.swift` (the single-spec engine corpus), `ParityEngineTests` (every case against `expectedRows`), `ParityHarnessTests` (comparison semantics) |
 | `ModifierWrapperTests.swift` | P4a tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
@@ -1058,7 +1061,9 @@ chai/
 │   │   │   ├── Inline.swift             # First-line extraction
 │   │   │   ├── Stacks.swift             # VStack/HStack (allocation engine impl)
 │   │   │   ├── Frame.swift              # FrameView + View.frame(...) modifier
-│   │   │   └── Clip.swift               # ClipView + View.clipped() modifier
+│   │   │   ├── PaddingView.swift        # .padded / .margined wrapper
+│   │   │   ├── BorderView.swift         # .bordered wrapper
+│   │   │   └── CompositionWrappers.swift # .beside / .above stack sugar
 │   │   ├── Composition/
 │   │   │   ├── Join.swift               # Horizontal/vertical block joining
 │   │   │   └── Compositor.swift         # Z-ordered Layer canvas placement

@@ -89,6 +89,6 @@
 /// | **Utilities** | ``expandTabs(_:tabWidth:)``, ``inline(_:)``, ``wrap(_:width:breakCharacter:)`` |
 /// | **Composition** | ``joinHorizontal(_:_:)-5h7fk``, ``joinVertical(_:_:)-3zco8`` |
 /// | **String Extensions** | Chainable versions of all the above: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |
-/// | **View Modifiers** | Tree-based layout: `.padded()`, `.margined()`, `.bordered()`, `.frame()`, `.clipped()`, `.beside()`, `.above()` |
+/// | **View Modifiers** | Tree-based layout: `.padded()`, `.margined()`, `.bordered()`, `.frame()`, `.beside()`, `.above()` |
 /// | **ViewOutput Extensions** | Raster helpers: `.clampedWidth()`, `.clampedHeight()` |
 public enum Latte {}

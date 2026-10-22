@@ -506,13 +506,11 @@ extension ParityCase {
         // ── Clipping ───────────────────────────────────────────────────────
 
         ParityCase(
-            name: "clipped frame masks overflow",
+            name: "frame clips overflow to its allocation",
             view: ViewOutput("abcd")
-                .frame(width: 2)
-                .clipped(),
+                .frame(width: 2),
             width: 4,
-            // The frame answers width 2; the 4-wide raster overflows it and the
-            // clip masks it.
+            // The frame answers width 2; the 4-wide raster is clipped to it.
             expectedRows: ["ab"]
         ),
 

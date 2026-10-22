@@ -97,21 +97,30 @@ extension PaddingView {
     }
 
     /// Embed the child at the inset origin, at the size it reports under the
-    /// inset query. The wrapper does not stretch the child to fill the
-    /// assignment; the parent's rect is a bound on the query, and `frame()`
-    /// is the opt-in that fills.
+    /// inset query, clamped to the inset area. The wrapper does not stretch
+    /// the child to fill the assignment; `frame()` is the opt-in that fills,
+    /// and the hard-box contract keeps every write inside the allocation.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
-        let childSize = content._sizeThatFits(childProposal(for: ProposedSize(
-            width: rect.size.width,
-            height: rect.size.height
-        )))
-        content._embed(
-            into: &buffer,
-            at: ViewRect(
-                origin: ViewOrigin(col: rect.origin.col + left, row: rect.origin.row + top),
-                size: childSize
+        let inset = ViewRect(
+            origin: ViewOrigin(col: rect.origin.col + left, row: rect.origin.row + top),
+            size: ViewSize(
+                width: max(0, rect.size.width - left - right),
+                height: max(0, rect.size.height - top - bottom)
             )
+        ).intersection(rect)
+        guard !inset.isEmpty else { return }
+
+        let reported = content._sizeThatFits(
+            ProposedSize(width: inset.size.width, height: inset.size.height)
         )
+        let childSize = ViewSize(
+            width: min(reported.width, inset.size.width),
+            height: min(reported.height, inset.size.height)
+        )
+        let childRect = ViewRect(origin: inset.origin, size: childSize).intersection(inset)
+        if !childRect.isEmpty {
+            buffer.embed(content, at: childRect)
+        }
     }
 
     /// Forward the child's flexibility: padding is transparent to a stack's

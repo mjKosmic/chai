@@ -26,8 +26,8 @@ import Latte
 /// `(width, nil)`). The buffer height is `height ?? measured height`; an
 /// explicit height only pads/limits the buffer, it does not change the root
 /// assignment. Leaves anchor at their rect origin (no stretching — phase-4
-/// decision 2), containers allocate child rects per their rules, and a
-/// `ClipView` reserves through the pure sizing pass.
+/// decision 2), containers clamp child rects to their own allocation, and the
+/// kernel clips every `_embed` to its rect (hard-box contract).
 ///
 /// The buffer's width is only a truncation bound — each view's **allocated**
 /// rect drives placement (leaf writes use `wrapping: false` and clip at the
@@ -37,8 +37,8 @@ import Latte
 func embedBuffer(_ view: some View, width: Int, height: Int? = nil) -> CellBuffer {
     let measured = view._sizeThatFits(ProposedSize(width: width, height: nil))
     var buffer = CellBuffer(width: width, height: height ?? measured.height)
-    view._embed(
-        into: &buffer,
+    buffer.embed(
+        view,
         at: ViewRect(origin: .zero, size: ViewSize(width: width, height: measured.height))
     )
     return buffer

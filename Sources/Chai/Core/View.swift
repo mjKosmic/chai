@@ -59,10 +59,12 @@ public protocol View: Sendable {
     /// Embed this view into the rect its parent assigned.
     ///
     /// This is the **allocation** entrance: `rect` is what the parent decided,
-    /// not a value to negotiate. The default resolves through ``body``; leaf
-    /// views rasterize at the rect's origin, and containers override this with
-    /// their allocation rules (children report, parents decide — see
-    /// `UPGRADE.md`, "Phase 4 — Top-down allocation engine").
+    /// not a value to negotiate. Under the hard-box contract the rect is also
+    /// the painting bound: the kernel clips every write in this subtree to it.
+    /// The default resolves through ``body``; leaf views rasterize at the
+    /// rect's origin, and containers override this with their allocation
+    /// rules (children report, parents decide — see `UPGRADE.md`, "Phase 4 —
+    /// Top-down allocation engine").
     ///
     /// - Parameters:
     ///   - buffer: The buffer to draw into.
@@ -115,9 +117,8 @@ extension ViewOutput: View {
     ///
     /// A `ViewOutput` is a fully-formed raster: it renders at its intrinsic
     /// size anchored top-left in the rect (leaves do not stretch — the phase-4
-    /// decision), and the rect's size is a bound for the parent's placement,
-    /// not a reflow instruction. The buffer's write policy keeps its existing
-    /// truncate-vs-wrap behavior at the buffer edge.
+    /// decision). The hard-box contract clips the write to the rect, so the
+    /// raster can never paint outside its allocation.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         buffer.write(content, at: rect.origin.col, row: rect.origin.row)
     }
@@ -239,9 +240,8 @@ extension Text {
 
     /// Render at the allocated width (phase 4): the content wraps at the
     /// width the container decided, with the compression floor applied (see
-    /// ``resolvedContent(width:)``). The rect's height is a placement
-    /// bound, not a reflow instruction; content taller than the rect overflows
-    /// it (the buffer is the backstop).
+    /// ``resolvedContent(width:)``). Content taller than the rect is clipped
+    /// to the rect (hard-box contract); the buffer is the final backstop.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         buffer.write(
             resolvedContent(width: rect.size.width),

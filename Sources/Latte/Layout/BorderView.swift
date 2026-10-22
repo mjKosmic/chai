@@ -67,25 +67,35 @@ extension BorderView {
     }
 
     /// Draw the box at the wrapper's allocated origin and embed the child one
-    /// cell inside, at the size the child reports under the inset query.
+    /// cell inside, clamped to the available area. Under the hard-box
+    /// contract the box and child are additionally clipped to the allocation.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
-        let childSize = content._sizeThatFits(childProposal(for: ProposedSize(
-            width: rect.size.width,
-            height: rect.size.height
-        )))
+        let inset = ViewRect(
+            origin: ViewOrigin(col: rect.origin.col + 1, row: rect.origin.row + 1),
+            size: ViewSize(
+                width: max(0, rect.size.width - 2),
+                height: max(0, rect.size.height - 2)
+            )
+        ).intersection(rect)
+
+        let reported = content._sizeThatFits(
+            ProposedSize(width: inset.size.width, height: inset.size.height)
+        )
         drawBox(
-            width: childSize.width + 2,
-            height: childSize.height + 2,
+            width: reported.width + 2,
+            height: reported.height + 2,
             into: &buffer,
             at: rect.origin
         )
-        content._embed(
-            into: &buffer,
-            at: ViewRect(
-                origin: ViewOrigin(col: rect.origin.col + 1, row: rect.origin.row + 1),
-                size: childSize
-            )
+
+        let childSize = ViewSize(
+            width: min(reported.width, inset.size.width),
+            height: min(reported.height, inset.size.height)
         )
+        let childRect = ViewRect(origin: inset.origin, size: childSize).intersection(inset)
+        if !childRect.isEmpty {
+            buffer.embed(content, at: childRect)
+        }
     }
 
     /// Forward the child's flexibility: the border is transparent to a

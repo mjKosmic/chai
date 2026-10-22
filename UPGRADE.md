@@ -12,8 +12,10 @@ Stages B/C were re-scoped onto the phase-4 kernel. **Phase 4 (top-down
 allocation engine) has landed** — P0–P3 (plan, kernel + side-by-side corpus,
 renderer flip/clean break), P4a (Stage-C wrapper family), P4b (eager
 retirement, corpus collapse, `Spacer` unification), PB (`AnyView`) and PD
-(docs/rules) are all closed. A design spike validated the direction
-(`TOP-DOWN-SPIKE.md` — walker == engine, 38/38 corpus cases).
+(docs/rules). **Phase 5 (hard-box containment) has landed**: the allocated
+rect is now the painting bound, and `.clipped()` is gone. A design spike
+validated the phase-4 direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
+corpus cases).
 
 ---
 
@@ -515,7 +517,7 @@ result-builder view layer. Two guardrails follow, effective immediately:
 | # | Decision | Settled |
 |---|---|---|
 | 1 | Stack occupancy at width | **Shrink-wrap** — a stack occupies `max` child width; filling an assigned rect is `FlexibleSpacer`/`Fill`/`frame`'s job. Today's effective rule; corpus pins hold. |
-| 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect; stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
+| 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect (clipped to it since phase 5); stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
 | 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as today's `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
 | 4 | `Text` compression floor | **Adopt** — and it applies to the **query as well as the allocation** (the PR #22 review caught the split): a positive width wraps at `max(width, minimumWrapWidth())`, so a narrow offer containing a wide character reports the minimum form's line count *and* paints it. Without the query-side floor, a report could claim more rows than the allocation painted (e.g. `Text("ab你")` offered 1: wrap-at-1 gives 3 rows, wrap-at-2 gives 2). The zero/negative path uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the floor guarantees a `Text` is never allocated below its narrowest producible width and that its write never splits a wide character. |
 | 5 | SPI break mode | **Clean break** — `_embed(into:at:rect:)` replaces `_render(into:at:size:proposal:)`; no permanent coexistence. The old SPI survives only as a transition artifact across P1–P2 on the phase branch and is deleted in P3; nothing merges with dual render SPIs. |
@@ -542,21 +544,21 @@ func _childViews() -> [any View]                                // unchanged (tr
   simple-path contract, and the spike ran entirely over such defaults.
 - **Queries are honest, never binding:** a `ViewSize` answer still leaks
   overflow signals (e.g. `ViewOutput`'s raster width) — a container may
-  overrule them (`Fill`-by-type, clip reservation). "An offer, not a box"
+  overrule them (`Fill`-by-type, hard-box clamping). "An offer, not a box"
   becomes "a report, not a bound; the rect is the box."
 - **Authority rules** (spike §2, verbatim-grade): `VStack` assigns row
-  rects — cross axis queried at the assigned width, rows never
-  compressed; leftover height via `_flexibility` shares (same
-  normalized-share/truncation-remainder math, byte-equal per the probes).
-  `HStack` measures columns at **ideal width** (the
+  rects — cross axis queried at the assigned width; leftover height via
+  `_flexibility` shares (same normalized-share/truncation-remainder math,
+  byte-equal per the probes). `HStack` measures columns at **ideal width** (the
   `hstackNeverProposesWidthSoTextCannotWrapInsideIt` pin becomes the
   allocator rule "columns measure at ideal width"), flexible shares
   first, then `Fill`-by-type absorbs the remainder — a case today's
   engine cannot express (`Fill` under an `HStack`, spike probe 4).
   `FrameView`: fixed dims are allocations (data), flexible dims pass the
-  rect through floored by the child query. `ClipView` reserves by the
-  same rules, then masks. `Text` wraps at its **allocated** width, with
-  the compression floor (decision 4).
+  rect through. `Text` wraps at its **allocated** width, with
+  the compression floor (decision 4). *(Phase 5 later made all of these
+  allocation boxes hard: child rects are clamped and painted content is
+  clipped to them; `ClipView` was removed.)*
 - **Renderer (landed at P3):** `flush()` keeps its two-pass *shape* — but
   both passes changed role: a pure query pass (`_sizeThatFits`, read-only —
   buffer height, and the inline-vs-terminal height context) then one
@@ -804,6 +806,59 @@ matched the engine on all 38.
 
 ---
 
+## Phase 5 — Hard-box containment (landed)
+
+**Scope (decided):** a child may never paint outside the rect its parent
+allocated. The allocated rect becomes both the layout box and the painting
+bound; the buffer is no longer the mechanism that bounds overflow.
+
+**Why:** phase 4's "overflow stays visual; the buffer is the only hard wall"
+was unintuitive at composition boundaries — a fixed 10×1 status box could
+paint its second wrapped row into the row below, and the result depended on
+painter order. The hard-box contract replaces that with one invariant:
+**paint ⊆ allocated rect**.
+
+### Decisions
+
+1. **Containers clamp child rects to their own allocation.** `VStack` rows,
+   `HStack` columns, structural stacks, frames, and wrappers intersect every
+   child rect with the parent's rect (and use the remaining sequential space).
+   Alignment is measured against the *visible* box, so an overflowing child is
+   not pushed outside by alignment math.
+2. **The kernel clips every `_embed` to its rect.** `CellBuffer.embed(_:at:)`
+   intersects the active clip with the child's rect; `CellBuffer.set` refuses
+   writes outside it. A custom conformer cannot bleed even if it ignores its
+   rect. Every container calls the helper (never `child._embed` directly).
+3. **`.clipped()` and `ClipView` are removed.** Clipping is the default; the
+   raster clamping helpers (`ViewOutput.clampedWidth/clampedHeight`) remain for
+   *content* truncation, which is a different operation.
+4. **Root allocation is the buffer.** Alt-screen assigns the full screen to the
+   root (so the wrap policy applies inside); inline assigns the content-sized
+   height, with the suffix clamp expressed as a negative origin.
+5. **Reports stay unclamped.** `_sizeThatFits` may exceed the query; that is
+   measurement, not painting. Containers may clamp the allocation, never the
+   report.
+6. **Wide characters follow the box.** A width-2 character that would straddle
+   a clip edge is dropped whole; the buffer never holds half a glyph.
+
+### Consequences
+
+- `Text("…long…").frame(width: 10, height: 1)` shows the first wrapped row and
+  nothing below it; no `.clipped()` call.
+- `frame()` is now a true box (this reverses the phase-2 "frame does not clip"
+  decision).
+- The phase-4 no-clip divergence/`ClipView` machinery and the "overflow is
+  visual" docs are gone. `HardBoxTests` pins the new contract; the old
+  `ClipTests` suite retired.
+- `HStack`'s ideal-width **query** still guides allocation (the remaining-width
+  candidate stays deferred), but its **paint** is contained: a wide column is
+  clamped to the remaining allocation and wraps there.
+
+**Baseline at phase 5 close:** `swift build --build-tests` zero warnings;
+`swift test` **1266 tests / 109 suites**.
+
+---
+
 ## Breaking changes (vs. `main`)
 
 - `func view() -> ViewOutput` became `var body` (any `View`). All ready-made
@@ -832,17 +887,18 @@ matched the engine on all 38.
   tree-based `View.frame(width:height:horizontalAlignment:verticalAlignment:)`
   (`Int?` dimensions, proposal semantics, returns `FrameView`). **Phase-4 P4b
   retired the eager overload**: every receiver now uses the tree-based frame,
-  whose fixed dimensions are exact allocations (content wider than the frame
-  overflows; it no longer minimum-pads a raster). `ViewOutput(...).frame(...)`
-  calls with both dimensions change semantics accordingly — use `.clamped*`
-  or String helpers if raster behavior is intended.
+  whose fixed dimensions are exact allocations. Since **phase 5** the frame is
+  also a hard box: content larger than the frame is clipped to it (see below).
+  `ViewOutput(...).frame(...)` calls with both dimensions change semantics
+  accordingly — use `.clamped*` or String helpers if raster truncation is
+  intended.
 - **Phase-4 P4b breaking changes (pre-alpha clean breaks):**
   - `View._resolveToViewOutput()` is gone. The eager render path no longer
     exists; nothing may resolve a tree to a `ViewOutput`.
   - `ViewOutput` lost the modifier family `.padded/.margined/.bordered/
     .beside/.above/.width/.height/.size/.frame`. Use the tree modifiers on
-    `View` (`.padded`, `.bordered`, `.frame`, `.clipped`, `.beside`,
-    `.above`), or String-level helpers when a `body: ViewOutput` is wanted.
+    `View` (`.padded`, `.bordered`, `.frame`, `.beside`, `.above`), or
+    String-level helpers when a `body: ViewOutput` is wanted.
     `ViewOutput.clampedWidth(_:)` and `.clampedHeight(_:)` remain as raster
     helpers.
   - Containers, structural views, wrappers, spacers, and `Fill` no longer
@@ -855,3 +911,15 @@ matched the engine on all 38.
   - The parity corpus carries a single `expectedRows`; the
     `isKnownDivergent`/`expectedEngineRows`/`expectedEmbedRows` fields and
     `ParitySpecTests` are gone.
+- **Phase-5 breaking changes (pre-alpha clean breaks):**
+  - **`View.clipped()` and `ClipView` are removed.** Every allocated rect
+    clips automatically; there is no opt-in.
+  - **`frame()` now clips.** A fixed frame is a hard box; content larger than
+    it is masked. Previously it overflowed visually and required `.clipped()`.
+  - **No view may paint outside its allocated rect.** Containers clamp child
+    rects to their own allocation, and the kernel clips every `_embed`.
+    Overflow no longer bleeds into siblings; the buffer is the final backstop,
+    not the primary mask.
+  - **Custom `_embed` conformers are clipped too.** Paint through
+    `CellBuffer.set`/`write` and the kernel contains it; there is no way to
+    draw outside the rect.

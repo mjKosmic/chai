@@ -133,10 +133,11 @@ struct ModifierWrapperTests {
     }
 
     @Test func wrappersSurviveADegenerateAssignment() {
-        // A 1×1 frame around a bordered view: the box overflows and the
-        // buffer clips it — no negative sizes, no trap.
+        // A 1×1 frame around a bordered view: the border box is clipped to the
+        // frame, leaving only its top-left corner — no negative sizes, no
+        // trap.
         let view = Text("ab").bordered(.ascii).frame(width: 1, height: 1)
-        #expect(visibleRows(embedBuffer(view, width: 10)) == ["+-+"])
+        #expect(visibleRows(embedBuffer(view, width: 10)) == ["+"])
     }
 
     // MARK: Composition

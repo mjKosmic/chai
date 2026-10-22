@@ -142,10 +142,10 @@ public struct LayoutFlexibility: Sendable, Equatable {
 /// A rect within a ``CellBuffer``: an origin plus a size.
 ///
 /// This is the phase-4 **assignment** — the value a container hands a child
-/// in ``View/_embed(into:at:)``. It is a bound, unlike ``ProposedSize``: the
-/// child renders inside the rect it was given (and may overflow it visually;
-/// the buffer remains the only hard wall). See `UPGRADE.md`, "Phase 4 —
-/// Top-down allocation engine".
+/// in ``View/_embed(into:at:)``. Under the hard-box contract it is both the
+/// layout box and the painting bound: the kernel clips every write in the
+/// child's subtree to it, and containers clamp child rects to their own
+/// allocation. See `UPGRADE.md`, "Phase 5 — Hard-box containment".
 public struct ViewRect: Sendable, Equatable {
 
     /// The top-left corner of the rect.
@@ -166,6 +166,27 @@ public struct ViewRect: Sendable, Equatable {
 
     /// A zero-origin, zero-size rect.
     public static let zero = ViewRect(origin: .zero, size: .zero)
+
+    /// The overlap of this rect with `other`.
+    ///
+    /// Returns a zero-sized rect when the two do not overlap. This is the
+    /// clamping primitive of the hard-box contract: a container intersects
+    /// each child rect with its own before handing it down.
+    public func intersection(_ other: ViewRect) -> ViewRect {
+        let col = max(origin.col, other.origin.col)
+        let row = max(origin.row, other.origin.row)
+        let right = min(origin.col + size.width, other.origin.col + other.size.width)
+        let bottom = min(origin.row + size.height, other.origin.row + other.size.height)
+        return ViewRect(
+            origin: ViewOrigin(col: col, row: row),
+            size: ViewSize(width: max(0, right - col), height: max(0, bottom - row))
+        )
+    }
+
+    /// Whether this rect has no area.
+    public var isEmpty: Bool {
+        size.width <= 0 || size.height <= 0
+    }
 }
 
 /// A position within a ``CellBuffer``, in display columns and rows.

@@ -236,9 +236,14 @@ actor Renderer {
             origin = .zero
         }
 
-        view._embed(
-            into: &newBuffer,
-            at: ViewRect(origin: origin, size: ViewSize(width: w, height: measured.height))
+        // The root's allocation: alt screen assigns the whole screen (the
+        // root may fill it and the buffer's wrap policy applies inside);
+        // inline assigns the content-sized height, with the suffix clamp
+        // expressed as a negative origin.
+        let rootHeight = altScreenActive ? bufferHeight : measured.height
+        newBuffer.embed(
+            view,
+            at: ViewRect(origin: origin, size: ViewSize(width: w, height: rootHeight))
         )
 
         // ── Determine what needs updating ─────────────────────────────────

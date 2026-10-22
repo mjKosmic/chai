@@ -18,8 +18,8 @@ struct AllocationRulesTests {
 
     private func embed(_ view: some View, width: Int, height: Int) -> [String] {
         var buffer = CellBuffer(width: width, height: height)
-        view._embed(
-            into: &buffer,
+        buffer.embed(
+            view,
             at: ViewRect(size: ViewSize(width: width, height: height))
         )
         return visibleRows(buffer)
@@ -188,13 +188,13 @@ struct AllocationRulesTests {
         #expect(buffer[9, 0] == .empty)
     }
 
-    @Test func narrowFrameAllocatesTheMinimumTextForm() {
+    @Test func narrowFrameCannotShowTheMinimumTextForm() {
         let tree = Text("ab你").frame(width: 1)
-        // The frame answers width 1, but the `Text`'s report (2 wide, 2 rows)
-        // is its minimum form; the allocation paints exactly those two rows —
-        // no stray blank row from a differently-measured report.
+        // The frame answers width 1; the hard-box contract clips the Text's
+        // minimum form (2 wide) to the 1-column box. Row 0 shows "a" only;
+        // the wide character cannot fit in one column and is dropped.
         #expect(tree._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
-        #expect(embed(tree, width: 2, height: 2) == ["ab", "你"])
+        #expect(embed(tree, width: 2, height: 2) == ["a", ""])
     }
 
     // MARK: Frame (fixed dims are allocations)
@@ -225,51 +225,11 @@ struct AllocationRulesTests {
         #expect(embed(tree, width: 4, height: 5) == ["t", "", "", "", ""])
     }
 
-    @Test func frameDoesNotClipOverflow() {
+    @Test func frameClipsOverflow() {
         let tree = ViewOutput("abcd")
             .frame(width: 2)
-        // The frame occupies 2 columns but its raster child overflows to the
-        // right; no clip (the pinned no-clip decision).
-        #expect(embed(tree, width: 4, height: 1) == ["abcd"])
-    }
-
-    // MARK: Clip (masks at the reserved rect)
-
-    @Test func clipMasksAtTheReservedRect() {
-        let tree = ViewOutput("abcd")
-            .frame(width: 2)
-            .clipped()
+        // The frame occupies 2 columns; the 4-wide raster is clipped to it.
         #expect(embed(tree, width: 4, height: 1) == ["ab"])
-    }
-
-    @Test func clipBlitsBlanksOverContentBeneath() {
-        var buffer = CellBuffer(width: 4, height: 1)
-        ViewOutput("wxyz")._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 4, height: 1))
-        )
-        // `Spacer(columns: 2)` reserves 2×1 and paints nothing; the clip's
-        // blank cells still replace 'w' and 'x' (blank-inclusive blit,
-        // painter order) — only the reserved rect is overwritten.
-        Spacer(columns: 2).clipped()._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 2, height: 1))
-        )
-        #expect(visibleRows(buffer) == ["  yz"])
-    }
-
-    @Test func clipReplacesOnlyItsReservedRect() {
-        var buffer = CellBuffer(width: 4, height: 1)
-        ViewOutput("wxyz")._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 4, height: 1))
-        )
-        ViewOutput("a").clipped()._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 2, height: 1))
-        )
-        // Reserved 1×1: 'a' replaces 'w'; 'x' is outside the mask and stays.
-        #expect(visibleRows(buffer) == ["axyz"])
     }
 
     // MARK: Structural roots

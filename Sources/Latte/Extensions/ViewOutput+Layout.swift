@@ -10,9 +10,9 @@ import Chai
 //
 // The two clamping helpers below are deliberately kept: they are *raster*
 // operations on a fully-formed `ViewOutput`, not modifiers. They have no
-// tree-based equivalent (a frame sets an exact size and a clip masks overflow,
-// but neither truncates a raster in place), and the simple path may use them
-// without touching the layout engine.
+// tree-based equivalent (a frame sets an exact size; allocation clips to a
+// rect; neither truncates the raster content itself), and the simple path may
+// use them without touching the layout engine.
 //
 // Terminal state is managed separately from views: alt screen via
 // ``Program/Option/withAltScreen``, window title via
@@ -23,8 +23,8 @@ extension ViewOutput {
     /// Truncate each line to at most `max` display columns.
     ///
     /// This is a raster helper: it transforms the styled content in place and
-    /// never enters the layout engine. Use ``View/clipped()`` when the mask
-    /// should be an allocation-time decision instead.
+    /// never enters the layout engine. (Allocation already clips a view to
+    /// its rect; this is for truncating the content itself.)
     ///
     /// - Parameter max: The maximum column width.
     public func clampedWidth(_ max: Int) -> ViewOutput {
