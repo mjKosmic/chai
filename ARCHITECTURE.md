@@ -521,7 +521,7 @@ renderer.flush()
         └─ 5. diff against lastBuffer (per-cell + eraseBelow) → paint changed rows
 ```
 
-The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls `body` until a ``ViewOutput`` leaf is reached. It remains the rendering path for the legacy modifier family (`.bordered()`, `.padded()`, `.beside()`, ``ViewOutput.width(_:align:)``, ...) and for the structural views' own `body` implementations, and it is the **parity spec** the engine is verified against (see [The parity discipline](#the-parity-discipline) below). Phase 4 (P4, Stage C) retires it.
+The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls `body` until a ``ViewOutput`` leaf is reached. It remains the rendering path for the legacy modifier family (`.bordered()`, `.padded()`, `.beside()`, ``ViewOutput.width(_:align:)``, ...) and for the structural views' own `body` implementations, and it is the **parity spec** the engine is verified against (see [The parity discipline](#the-parity-discipline) below). Phase 4 (P4b, Stage C) retires it.
 
 ### Who the engine SPI is for
 
@@ -627,7 +627,7 @@ The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAl
 | Semantics | minimum-enforcing (`.enforceWidth`/`.enforceHeight` via `transformContent`) | proposal semantics (`FrameView`: fixed dims answered verbatim, `nil` fills the parent's offer) |
 | Returns | `ViewOutput` (eager styled text) | `FrameView<Content>` (stays in the tree) |
 
-Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 4 (P4) retires the eager one; the engine is now the only render path (P3).
+Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 4 (P4b) retires the eager one; the engine is now the only render path (P3).
 
 ### Scope: what the engine deliberately does not do
 

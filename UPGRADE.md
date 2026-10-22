@@ -10,7 +10,8 @@ Phase 2 (proposal-driven layout engine) **has landed** on
 this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
 Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
 allocation engine) is in progress** — P0–P3 landed (plan, kernel +
-side-by-side corpus, renderer flip/clean break); P4/PB/PD remain. A design
+side-by-side corpus, renderer flip/clean break), and **P4a landed** (the
+Stage-C wrapper family on the new kernel); P4b/PB/PD remain. A design
 spike validated the direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
 corpus cases).
 
@@ -465,16 +466,17 @@ Also resolved by A0: carry the proposal into `_render`. `FrameView._render` prev
 
 ---
 
-## Phase 4 — Top-down allocation engine (in progress — P0–P3 landed)
+## Phase 4 — Top-down allocation engine (in progress — P0–P3 and P4a landed)
 
 **Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
-re-scoped onto this phase's kernel (P4/PB below). **P0 (plan), P1/P2 (kernel +
-side-by-side) and P3 (renderer flip, clean break) have landed.** Evidence of
-record: `TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
-reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
-semantic probes byte-identical — the prediction this plan was built on). The
-spike suite was retired in P1 when its rules graduated into production
-`_embed` implementations; its five probes are now assertions in
+re-scoped onto this phase's kernel (P4a/P4b/PB below). **P0 (plan), P1/P2
+(kernel + side-by-side), P3 (renderer flip, clean break) and P4a (Stage-C
+wrapper family) have landed.** Evidence of record: `TOP-DOWN-SPIKE.md` (a
+top-down allocation walker over the phase-3 SPI reproduced the live engine
+**bug-for-bug, 38/38 corpus cases**, all five semantic probes byte-identical
+— the prediction this plan was built on). The spike suite was retired in P1
+when its rules graduated into production `_embed` implementations; its five
+probes are now assertions in
 `Tests/LatteTests/AllocationRulesTests.swift`.
 
 **Scope (decided):** replace **measurement-as-authority** with
@@ -556,6 +558,43 @@ func _childViews() -> [any View]                                // unchanged (tr
   allocation walk (`_embed(into:at:)` at the root rect). Buffer policy, suffix
   clamp, and the diff/paint machinery are untouched below the buffer.
 
+### P4a — Stage-C wrapper family (landed)
+
+The modifier family now has tree-based wrappers on the allocation kernel.
+These are **additive** in P4a: the eager `ViewOutput` modifiers and their
+legacy `body` implementations still exist for the simple path and the parity
+spec, and are deleted in P4b.
+
+- **`PaddingView`** (`Sources/Latte/Layout/PaddingView.swift`) backs
+  ``View/padded(top:right:bottom:left:)`` (and its 1- and 2-value forms) and
+  `.margined(...)` (margin is padding at the raster level, matching the eager
+  helper).
+- **`BorderView`** (`Sources/Latte/Layout/BorderView.swift`) backs
+  `.bordered(_:)`: one cell reserved on every side, glyphs painted at the
+  allocated origin, child embedded one cell inside.
+- **`.beside(_:align:)` / `.above(_:align:)`** (`CompositionWrappers.swift`)
+  are container sugar: `HStack` / `VStack` with the pair as children, so each
+  side keeps its own engine behavior instead of being flattened to a raster.
+- **Wrapper contract (pinned in `Tests/LatteTests/ModifierWrapperTests.swift`):**
+  - *Report* = child report + insets; the wrapper shrink-wraps (decision 1).
+    A larger assignment (the renderer's terminal-width root rect) stays blank
+    — `frame()` is the fill opt-in.
+  - *The assignment bounds the child query* (width/height minus the insets),
+    so a wrapping `Text` composes with padding/border; the child's report —
+    not the assigned rect — decides the painted extent.
+  - *Flexibility is forwarded* (`_flexibility()` returns the child's), so a
+    flexible child inside a wrapper still absorbs a stack's leftover.
+  - *`_childViews()` stays opaque* (default `[self]`): containers treat the
+    wrapper as one child, and its insets are part of its report.
+  - *`Fill`-by-type is not forwarded*: an `HStack`'s `Fill` rule inspects its
+    **direct** children, so `Fill()` nested inside a wrapper is rigid to the
+    stack (it still fills the rect a `frame()` allocates the wrapper). This is
+    the same "type rule sees the direct child" boundary as any other wrapper;
+    revisit only with a use case (feature freeze).
+- Legacy `body` implementations on the new wrappers reproduce the eager
+  output exactly (`pad`/`bordered` on the resolved raster), so P4a changes no
+  existing output and no corpus pin.
+
 ### Milestones (each a PR-sized slice, TDD, zero warnings including test targets)
 
 | # | Deliverable | Exit criteria |
@@ -563,46 +602,71 @@ func _childViews() -> [any View]                                // unchanged (tr
 | P1 | **Allocation kernel + SPI** — `ViewRect`; `_embed` on all conformers (spike rules ported; per-conformer dispatch); `Text` compression floor; **simple-path contract suite**; corpus additions (the two `Fill`-in-`HStack` cases) | corpus green through the new `_embed` path with the live engine untouched (side-by-side harness); zero warnings — ✅ landed |
 | P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (every case without a documented allocation delta); no other pin changes — ✅ landed (window closed at P3; the suite folded into `ParityEngineTests`) |
 | P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green** (the phase's proof point, the M3 precedent); old SPI fully gone — ✅ landed |
-| P4 | **Stage C on the new kernel** — `ModifiedContent`-style wrappers (allocate inset rect, embed child), eager-path retirement (`_resolveToViewOutput`, eager frame/wrap, divergence collapse #4–#10), `Spacer` naming unification, `ViewOutput.frame` retirement, HStack-remaining-width candidate (use-case-gated; now a one-rule change) | wrapper tests; divergence list collapses as predicted; **engine `Spacer` semantics from entry #1 preserved** (exactly N blank rows, never the eager doubling quirk) |
+| P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
+| P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | wrapper-based simple-path contract holds; divergence list collapses as predicted; **engine `Spacer` semantics from entry #1 preserved** (exactly N blank rows, never the eager doubling quirk) |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`) | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) |
 | PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
 
 Ordering: P1 → P2 → P3 are strictly sequential (P2's coexistence is
-transition-only; P3 deletes the old SPI — decision 5). PB may land any
-time after P1 (it forwards, it does not allocate). P4 requires P3 —
-**do not build Stage C on the old SPI**; that was the trap the spike was
-started in time to avoid. PD closes the phase.
+transition-only; P3 deletes the old SPI — decision 5). **P4a → P4b**: the
+wrapper family must exist and be tested before the eager modifiers it
+replaces are deleted, or the simple path loses its Latte helpers. P4b
+requires P3 — **do not build Stage C on the old SPI**; that was the trap the
+spike was started in time to avoid. PB may land any time after P1 (it
+forwards, it does not allocate). PD closes the phase.
 
 ### Pickup notes for the remaining milestones
 
 The plan above is self-contained for *what* remains; these are the concrete
 entry points for a cold start.
 
-**P4 (Stage C) — working inventory.**
+**P4a (Stage C wrappers) — landed.**
+
+- The wrapper family lives in `Sources/Latte/Layout/PaddingView.swift`,
+  `BorderView.swift`, and `CompositionWrappers.swift`; the contract and its
+  pins are in the "P4a — Stage-C wrapper family" section above and
+  `Tests/LatteTests/ModifierWrapperTests.swift`.
+- Eager `body` implementations on the wrappers exist only for the parity spec
+  and are deleted in P4b with the rest of the eager path.
+
+**P4b (eager retirement) — working inventory.**
 
 - **Retire the eager path:** `View._resolveToViewOutput()`
   (`Sources/Chai/Core/View.swift`), the `ViewOutput` eager modifiers
   (`Sources/Latte/Extensions/ViewOutput+Layout.swift`:
-  `.bordered/.padded/.beside/.above/.width/.height`), the eager string wrapper
-  (`Sources/Latte/Layout/Wrap.swift`, see the A1 "Wrapping-wrapper overlap"
-  note above), the legacy `body` implementations on
-  `FrameView`/`ClipView`/`VStack`/`HStack`/structural views, and the
-  `ViewOutput.frame` eager overload.
-- **Rebuild modifiers as wrappers:** a `ModifiedContent`-style wrapper's
-  `_embed` allocates an inset rect (borders/padding are rect insets) and
-  embeds its child; alignment and composition stay container rules.
+  `.bordered/.padded/.margined/.beside/.above` and the `.frame` overload),
+  the eager string wrapper (`Sources/Latte/Layout/Wrap.swift`, see the A1
+  "Wrapping-wrapper overlap" note above), the legacy `body` implementations on
+  `FrameView`/`ClipView`/`VStack`/`HStack`/structural views **and on the P4a
+  wrappers**, and `ViewOutput.frame`. The minimum/maximum raster helpers
+  (`.width/.height/.size/.clampedWidth/.clampedHeight`) need an explicit
+  keep-or-retire decision — see the migrate bullet below.
+- **Migrate the simple path:** `SimplePathContractTests` still composes
+  `ViewOutput(...).padded(1).bordered(.rounded)`; with the eager modifiers
+  gone, those calls resolve to the P4a wrappers, so the contract suite keeps
+  passing through the engine with no app changes. `ViewOutput.width/height/
+  size` (minimum-enforcing) have no wrapper yet: either map them to
+  `frame()`-based wrappers or keep them as raster helpers — decide when the
+  eager family is removed. `clampedWidth/clampedHeight` are maximum-enforcing
+  raster helpers; if they stay, they stay as `ViewOutput` methods, not
+  modifiers.
+- **`Spacer` unification (source-breaking, per the seed list):** make
+  `Spacer()` / `Spacer(fraction:)` flexible and `Spacer(lines:)` /
+  `Spacer(columns:)` the fixed variants; retire `FlexibleSpacer` into
+  `Spacer`. **Preserve entry #1's engine `Spacer` semantics** (exactly N blank
+  rows, never the eager doubling quirk).
 - **Corpus/tests:** the eager leg is `eagerBuffer` + `ParitySpecTests`
   (`eagerMatchesPinnedSpec`) and the divergences' `expectedRows`/
   `isKnownDivergent` fields. #4–#10 self-retire with the eager path; #1–#3
-  remain engine semantics. **Preserve entry #1's engine `Spacer` semantics**
-  (exactly N blank rows, never the eager doubling quirk).
-- **Source-breaking seed:** the `Spacer` unification shape, the
-  `ViewOutput.frame` overload trap, and the HStack-remaining-width rationale
-  are detailed in "Deferred to phase 3" above — that seed list is still the
-  detailed spec; the phase-4 rules here are what is in force. The
-  HStack-remaining-width change is now a one-rule change (the column query
-  context) plus corpus growth, and remains use-case-gated by the feature
-  freeze.
+  remain engine semantics. Retire `ParitySpecTests` (the engine-vs-eager
+  comparison itself goes); keep `ParityEngineTests` as the engine spec.
+- **Source-breaking seed:** the `ViewOutput.frame` overload trap and the
+  HStack-remaining-width rationale are detailed in "Deferred to phase 3"
+  above — that seed list is still the detailed spec; the phase-4 rules here
+  are what is in force. The HStack-remaining-width change is now a one-rule
+  change (the column query context) plus corpus growth, and remains
+  use-case-gated by the feature freeze — it is **not** part of P4b's
+  minimum.
 
 **PB (`AnyView`).**
 
@@ -621,15 +685,15 @@ entry points for a cold start.
   `engineBuffer`/`ProposalEchoView` references in them.
 - AGENTS.md and CLAUDE.md are synced on pitfall #2 today; keep them in
   lockstep when editing either.
-- UPGRADE.md: flip the phase-4 status to landed when P4/PB/PD close.
+- UPGRADE.md: flip the phase-4 status to landed when P4b/PB/PD close.
 - **Known nuance to document** (PR #22 review, remaining coverage gap): in an
   HStack, a custom child that both reports height-flexibility and paints
   observes the allocation-time height context (`rect.size.height`) rather than
   the top-level query context (`nil`). Built-ins are unaffected (spacers and
   `Fill` paint nothing); the allocation-time context is the accurate one.
 
-**Baseline at P3 + review:** `swift build --build-tests` zero warnings (known
-SpicesTests `viewAs` deprecations only); `swift test` **1283 tests / 109
+**Baseline at P4a:** `swift build --build-tests` zero warnings (known
+SpicesTests `viewAs` deprecations only); `swift test` **1305 tests / 110
 suites**. Gates: zero warnings includes test targets; corpus additions must
 carry explicit expectations (`expectedEmbedRows` for allocation-only deltas).
 
@@ -681,7 +745,7 @@ there):
 ### Divergence list & corpus fate
 
 - The list does **not** shrink automatically — the walker reproduced
-  today's semantics deliberately. Entries #4–#10 self-retire at P4 with
+  today's semantics deliberately. Entries #4–#10 self-retire at P4b with
   the eager path (the engine-vs-eager *comparison itself* retires with
   it); #1–#3 remain engine semantics.
 - The `Fill`-in-`HStack` rule is an **allocation delta**, not an
