@@ -573,6 +573,66 @@ time after P1 (it forwards, it does not allocate). P4 requires P3 —
 **do not build Stage C on the old SPI**; that was the trap the spike was
 started in time to avoid. PD closes the phase.
 
+### Pickup notes for the remaining milestones
+
+The plan above is self-contained for *what* remains; these are the concrete
+entry points for a cold start.
+
+**P4 (Stage C) — working inventory.**
+
+- **Retire the eager path:** `View._resolveToViewOutput()`
+  (`Sources/Chai/Core/View.swift`), the `ViewOutput` eager modifiers
+  (`Sources/Latte/Extensions/ViewOutput+Layout.swift`:
+  `.bordered/.padded/.beside/.above/.width/.height`), the eager string wrapper
+  (`Sources/Latte/Layout/Wrap.swift`, see the A1 "Wrapping-wrapper overlap"
+  note above), the legacy `body` implementations on
+  `FrameView`/`ClipView`/`VStack`/`HStack`/structural views, and the
+  `ViewOutput.frame` eager overload.
+- **Rebuild modifiers as wrappers:** a `ModifiedContent`-style wrapper's
+  `_embed` allocates an inset rect (borders/padding are rect insets) and
+  embeds its child; alignment and composition stay container rules.
+- **Corpus/tests:** the eager leg is `eagerBuffer` + `ParitySpecTests`
+  (`eagerMatchesPinnedSpec`) and the divergences' `expectedRows`/
+  `isKnownDivergent` fields. #4–#10 self-retire with the eager path; #1–#3
+  remain engine semantics. **Preserve entry #1's engine `Spacer` semantics**
+  (exactly N blank rows, never the eager doubling quirk).
+- **Source-breaking seed:** the `Spacer` unification shape, the
+  `ViewOutput.frame` overload trap, and the HStack-remaining-width rationale
+  are detailed in "Deferred to phase 3" above — that seed list is still the
+  detailed spec; the phase-4 rules here are what is in force. The
+  HStack-remaining-width change is now a one-rule change (the column query
+  context) plus corpus growth, and remains use-case-gated by the feature
+  freeze.
+
+**PB (`AnyView`).**
+
+- `ViewBuilder.buildArray` currently requires one homogeneous `V`
+  (`Sources/Chai/Core/ViewBuilder.swift`).
+- `AnyView` must forward **all four** SPI methods: `_sizeThatFits`, `_embed`,
+  `_childViews`, `_flexibility`. `_flexibility` is the silent failure
+  (PR #21 review): a non-forwarding wrapper is rigid, so flexible children
+  inside it stop absorbing leftover. Test that explicitly.
+
+**PD (docs).**
+
+- ARCHITECTURE.md: rewrite the three proposal-semantics subsections around
+  allocation (the phase-4 banner currently marks them historical), preserve
+  the buffer-as-only-hard-wall and overflow semantics, and drop the
+  `engineBuffer`/`ProposalEchoView` references in them.
+- AGENTS.md and CLAUDE.md are synced on pitfall #2 today; keep them in
+  lockstep when editing either.
+- UPGRADE.md: flip the phase-4 status to landed when P4/PB/PD close.
+- **Known nuance to document** (PR #22 review, remaining coverage gap): in an
+  HStack, a custom child that both reports height-flexibility and paints
+  observes the allocation-time height context (`rect.size.height`) rather than
+  the top-level query context (`nil`). Built-ins are unaffected (spacers and
+  `Fill` paint nothing); the allocation-time context is the accurate one.
+
+**Baseline at P3 + review:** `swift build --build-tests` zero warnings (known
+SpicesTests `viewAs` deprecations only); `swift test` **1283 tests / 109
+suites**. Gates: zero warnings includes test targets; corpus additions must
+carry explicit expectations (`expectedEmbedRows` for allocation-only deltas).
+
 ### Allocation deltas (P1 findings, on record)
 
 The allocation path reproduces every corpus pin except one documented
