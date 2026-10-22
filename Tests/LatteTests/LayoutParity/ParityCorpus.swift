@@ -1,13 +1,14 @@
 import Chai
 import Latte
 
-// MARK: - M0 parity corpus
+// MARK: - Parity corpus
 //
-// A named corpus of view trees, each pinned with the *visible rows* produced
-// by today's eager rendering path (see `eagerBuffer`/`visibleRows` in
-// `ParityHarness.swift`). In Milestone M2 the layout engine runs the same
-// corpus and must reproduce these rows, with the closed list of allowed
-// divergences from UPGRADE.md.
+// A named corpus of view trees, each pinned with the visible rows produced by
+// the phase-4 allocation engine (`embedBuffer` + `visibleRows` in
+// `ParityHarness.swift`). This is the engine spec: after P4b retired the eager
+// `_resolveToViewOutput()` path, there is no second renderer to compare
+// against, and the historical eager-vs-engine divergence list (#1–#10 in
+// UPGRADE.md) is closed. `expectedRows` is the single source of truth.
 //
 // Expected rows were derived by actually running the code — never hand-computed
 // (CJK widths and alignment padding are pinned from observed output).
@@ -20,60 +21,24 @@ struct ParityCase {
     let view: any View
     /// Buffer width in columns.
     let width: Int
-    /// Optional explicit buffer height. When `nil`, the height is derived
-    /// from the resolved content's `lineCount()` (inline-mode rendering).
+    /// Optional explicit buffer height. When `nil`, the height is the view's
+    /// reported query height (inline-mode rendering).
     let explicitHeight: Int?
-    /// Pinned expected visible rows for today's eager path.
+    /// Pinned expected visible rows — the engine spec.
     let expectedRows: [String]
-    /// Whether the M2 engine's output is expected to legitimately diverge
-    /// from these pinned rows (see UPGRADE.md "Allowed divergences").
-    let isKnownDivergent: Bool
-    /// Pinned expected visible rows for the M2 engine path. `nil` means the
-    /// engine must reproduce ``expectedRows`` (every non-divergent case).
-    /// Every `isKnownDivergent` case carries an explicit engine expectation
-    /// here so no case is ever skipped by the engine parity suite.
-    let expectedEngineRows: [String]?
-
-    /// Pinned expected visible rows for the phase-4 **allocation** (`_embed`)
-    /// path. `nil` means the allocation path must reproduce the engine rows
-    /// (`expectedEngineRows ?? expectedRows`).
-    ///
-    /// This field exists for **allocation deltas** — cases where the phase-4
-    /// allocation rules deliberately change output relative to the phase-3
-    /// engine (documented in UPGRADE.md, "Phase 4 — allocation deltas"). They
-    /// are distinct from the closed eager-vs-engine divergence list; an
-    /// allocation delta may exist on a non-divergent case.
-    let expectedEmbedRows: [String]?
 
     init(
         name: String,
         view: any View,
         width: Int,
         explicitHeight: Int? = nil,
-        expectedRows: [String],
-        isKnownDivergent: Bool = false,
-        expectedEngineRows: [String]? = nil,
-        expectedEmbedRows: [String]? = nil
+        expectedRows: [String]
     ) {
         self.name = name
         self.view = view
         self.width = width
         self.explicitHeight = explicitHeight
         self.expectedRows = expectedRows
-        self.isKnownDivergent = isKnownDivergent
-        self.expectedEngineRows = expectedEngineRows
-        self.expectedEmbedRows = expectedEmbedRows
-    }
-}
-
-extension ParityCase {
-
-    /// The rows every live engine path must produce.
-    ///
-    /// An allocation delta (`expectedEmbedRows`) wins when on record; otherwise
-    /// the engine expectation, which for non-divergent cases is the eager pin.
-    var documentedRows: [String] {
-        expectedEmbedRows ?? expectedEngineRows ?? expectedRows
     }
 }
 
@@ -117,25 +82,24 @@ extension ParityCase {
         ),
 
         ParityCase(
-            name: "vstack center alignment pads every line to max width",
+            name: "vstack center alignment places children as blocks",
             view: VStack(alignment: .center) {
                 Text("ab")
                 Text("cdef")
             },
             width: 8,
-            // Joined = " ab \ncdef" (4-col max). Right padding is stripped by
-            // `visibleRows`, so the first row keeps only its leading space.
+            // The 2-wide child sits at col 1 of the 4-wide stack
+            // (shortage 2 → Int(2 × 0.5) = 1); trailing padding is stripped.
             expectedRows: [" ab", "cdef"]
         ),
 
         ParityCase(
-            name: "vstack right alignment pads every line to max width",
+            name: "vstack right alignment places children as blocks",
             view: VStack(alignment: .right) {
                 Text("ab")
                 Text("cdef")
             },
             width: 8,
-            // Joined = "  ab\ncdef".
             expectedRows: ["  ab", "cdef"]
         ),
 
@@ -153,14 +117,13 @@ extension ParityCase {
         ),
 
         ParityCase(
-            name: "hstack differing heights pads shorter child rows",
+            name: "hstack differing heights anchors shorter child",
             view: HStack {
                 Text("a\nb")
                 Text("1")
             },
             width: 8,
-            // Per-column normalization: the right child is extended with blank
-            // rows (which extract as "") → "a1", "b".
+            // Top alignment (the default): the 1-row child sits at row 0.
             expectedRows: ["a1", "b"]
         ),
 
@@ -260,7 +223,8 @@ extension ParityCase {
                 Text("ok")
             },
             width: 8,
-            // Joined = "err\nok " (3-col max); trailing pad stripped.
+            // The stack is 3 wide; "ok" (2 wide) has a center shortage of 1,
+            // which truncates to 0 — the block stays at col 0.
             expectedRows: ["err", "ok"]
         ),
 
@@ -335,121 +299,64 @@ extension ParityCase {
             expectedRows: ["a", "b", "", ""]
         ),
 
-        // ── Truncation policy pin (spec discovery from the probe) ───────────
-        //
-        // The eager inline path derives the buffer height from `lineCount()`
-        // and rasterizes with `wrapping: false`, so a line wider than the
-        // buffer width is TRUNCATED, not wrapped — the overflow columns are
-        // dropped and no extra row appears. Pinned here so M2's inline-mode
-        // buffer policy (truncate) is verified against it.
-        //
-        // !!! ALLOWED DIVERGENCE #5 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // A1 made `Text` a proposal consumer: it now WRAPS its content to a
-        // positive non-nil width proposal (measure and render use the same
-        // `StyledText.wrappedToWidth(_:)`). The engine therefore wraps the
-        // 8-column first line into two rows at the 5-column proposal, while
-        // the eager path still truncates at the buffer edge (it has no
-        // proposal context). Pinned below is TODAY's eager output; the engine
-        // must produce the wrapped rows.
+        // ── Text wrapping (A1) ──────────────────────────────────────────────
+
         ParityCase(
-            name: "DIVERGENT: vstack wide Text line wraps (A1) instead of truncating",
+            name: "vstack wide Text line wraps instead of truncating",
             view: VStack {
                 Text("abcdefgh")
                 Text("x")
             },
             width: 5,
-            // TODAY's eager output: the 8-column line is truncated at the
-            // 5-column buffer edge → ["abcde", "x"].
-            expectedRows: ["abcde", "x"],
-            isKnownDivergent: true,
-            // Engine (A1): `Text("abcdefgh")` wraps to "abcde"/"fgh" (char-level
-            // fallback at the 5-column proposal) → ["abcde", "fgh", "x"].
-            expectedEngineRows: ["abcde", "fgh", "x"]
+            // `Text("abcdefgh")` wraps at the 5-column allocated width:
+            // "abcde"/"fgh" (char-level fallback), then "x".
+            expectedRows: ["abcde", "fgh", "x"]
         ),
 
-        // ── Known divergence ────────────────────────────────────────────────
-        //
-        // !!! ALLOWED DIVERGENCE #1 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // `Spacer(lines: 2)` inside a VStack resolves today (eager path) to a
-        // `ViewOutput("\n\n")` which `joinVertically` glues with an *extra*
-        // separator newline on top of the spacer's own newlines. The result is
-        // "a\n\n\n\nb" — **3** blank rows between "a" and "b" instead of the
-        // requested 2. This doubling quirk is unpinned by tests and is
-        // considered a bug in the eager path.
-        //
-        // The M2 engine will produce exactly 2 blank rows ("a\n\n\nb" →
-        // ["a", "", "", "b"]), so this case MUST be excluded when the parity
-        // test flips to engine-vs-eager comparison in M2 (the
-        // `isKnownDivergent` flag exists for exactly that). Pinned below is
-        // TODAY's eager output.
+        // ── Spacer (engine semantics) ───────────────────────────────────────
+
         ParityCase(
-            name: "DIVERGENT: vstack with spacer lines 2 doubles blank rows",
+            name: "vstack with spacer lines 2 reserves exactly two blank rows",
             view: VStack {
                 Text("a")
                 Spacer(lines: 2)
                 Text("b")
             },
             width: 8,
-            // TODAY's eager output: "a\n\n\n\nb" → 3 blank rows between "a"
-            // and "b". The M2 engine must produce exactly 2.
-            expectedRows: ["a", "", "", "", "b"],
-            isKnownDivergent: true,
-            // Engine: exactly 2 blank rows — "a\n\n\nb" → ["a", "", "", "b"].
-            expectedEngineRows: ["a", "", "", "b"]
+            // The engine measures the spacer's requested count directly —
+            // exactly 2 blank rows (the retired eager join double-counted the
+            // spacer's newlines; that bug is not preserved).
+            expectedRows: ["a", "", "", "b"]
         ),
 
-        // ── M2 additions ─────────────────────────────────────────────────────
-        //
-        // Pinned by running the code (see the M2 report); expected rows below
-        // are not hand-computed.
-
-        // !!! ALLOWED DIVERGENCE #3 (UPGRADE.md) — DO NOT "FIX" THESE CASES !!!
-        //
-        // Multi-line children under a non-left `VStack` alignment: today's
-        // eager `body` aligns every LINE of the joined text, while the engine
-        // aligns each CHILD as a block (a child is one layout unit; per-line
-        // alignment is an artifact of text joining). Child `Text("a\nbb")`
-        // measures 2×2; under `.center` the shortage 1 yields
-        // `Int(1 × 0.5)` = 0 → the block stays at col 0, so the engine rows
-        // are unpadded. SwiftUI-consistent; unpinned by pre-existing tests
-        // (StackTests alignment cases use single-line children).
+        // ── Multi-line children align as blocks ─────────────────────────────
 
         ParityCase(
-            name: "DIVERGENT: vstack center aligns multiline child as block",
+            name: "vstack center aligns multiline child as block",
             view: VStack(alignment: .center) {
                 Text("a\nbb")
                 Text("ccc")
             },
             width: 8,
-            // TODAY's eager output: every line aligned to width 3 →
-            // " a \nbb \nccc" → [" a", "bb", "ccc"].
-            expectedRows: [" a", "bb", "ccc"],
-            isKnownDivergent: true,
-            // Engine: the 2×2 child block stays at col 0 (shortage 1,
-            // Int(1 × 0.5) = 0) → ["a", "bb", "ccc"].
-            expectedEngineRows: ["a", "bb", "ccc"]
+            // The 2×2 child block stays at col 0 (shortage 1,
+            // Int(1 × 0.5) = 0); alignment applies per child, not per line.
+            expectedRows: ["a", "bb", "ccc"]
         ),
 
         ParityCase(
-            name: "DIVERGENT: vstack right aligns multiline child as block",
+            name: "vstack right aligns multiline child as block",
             view: VStack(alignment: .right) {
                 Text("a\nbb")
                 Text("ccc")
             },
             width: 8,
-            // TODAY's eager output: every line aligned to width 3 →
-            // "  a\n bb\nccc" → ["  a", " bb", "ccc"].
-            expectedRows: ["  a", " bb", "ccc"],
-            isKnownDivergent: true,
-            // Engine: the 2×2 child block sits at col 1 (shortage 1,
+            // The 2×2 child block sits at col 1 (shortage 1,
             // Int(1 × 1.0) = 1). Row 0 is "a" at col 1 → visible " a": the
-            // block's own right edge is flush, not the per-line "  a" padding.
-            expectedEngineRows: [" a", " bb", "ccc"]
+            // block's own right edge is flush.
+            expectedRows: [" a", " bb", "ccc"]
         ),
 
-        // ── Cross-container nesting (parity — engine must match eager) ───────
+        // ── Cross-container nesting ─────────────────────────────────────────
 
         ParityCase(
             name: "hstack bottom nests vstack inside",
@@ -486,7 +393,7 @@ extension ParityCase {
             expectedRows: ["ab z", "cde"]
         ),
 
-        // ── All-empty children────────────────────────────────────────────────
+        // ── All-empty children ──────────────────────────────────────────────
 
         ParityCase(
             name: "hstack all empty children",
@@ -499,12 +406,7 @@ extension ParityCase {
             expectedRows: []
         ),
 
-        // ── M4 additions: frame() ──────────────────────────────────────────
-        //
-        // Fixed-dimension frames are PARITY cases: the legacy `body`'s
-        // `.width()`/`.height()` composition agrees with the engine for fixed
-        // dims (both enforce minimums, aligned by the same fraction math).
-        // The flexible-axis case is the one divergence (see below).
+        // ── frame() ────────────────────────────────────────────────────────
 
         ParityCase(
             name: "fixed frame left top around small vstack",
@@ -514,8 +416,8 @@ extension ParityCase {
             }
             .frame(width: 6, height: 3),
             width: 6,
-            // Eager: width-pad "a"/"b" to 6 (left), then height-pad 1 blank
-            // row at the bottom → rows ["a", "b", ""].
+            // The frame owns a 6×3 rect; the child is top-left → one blank row
+            // below the content.
             expectedRows: ["a", "b", ""]
         ),
 
@@ -527,8 +429,7 @@ extension ParityCase {
             }
             .frame(width: 8, height: 4, horizontalAlignment: .right, verticalAlignment: .bottom),
             width: 8,
-            // Eager: width-pad to 8 (right) → "       a","       b"; then
-            // height-pad 2 blank rows on top.
+            // Right-aligned to col 7; bottom-aligned with 2 blank rows above.
             expectedRows: ["", "", "       a", "       b"]
         ),
 
@@ -537,9 +438,8 @@ extension ParityCase {
             view: Text("ab")
                 .frame(width: 8, height: 3, horizontalAlignment: .center, verticalAlignment: .middle),
             width: 8,
-            // Eager: width-pad "ab" to 8 (center) → "   ab   "; height-pad 1
-            // blank row each side (odd remainder goes bottom) → row 1 has the
-            // content.
+            // Centered horizontally (col 3); one blank row each side (the odd
+            // remainder goes bottom).
             expectedRows: ["", "   ab", ""]
         ),
 
@@ -551,168 +451,83 @@ extension ParityCase {
             }
             .frame(width: 6, height: 2, horizontalAlignment: .center, verticalAlignment: .middle),
             width: 6,
-            // Eager: "ab" padded to 6 (center) → "  ab  "; height-pad 1 blank
-            // row at the bottom (odd remainder goes bottom).
+            // "ab" centered (col 2); one blank row at the bottom.
             expectedRows: ["  ab", ""]
         ),
 
-        // !!! ALLOWED DIVERGENCE #6 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // A1 made `Text` a proposal consumer, so a fixed-width frame now WRAPS
-        // its Text child to the frame's width. The engine's child is "ab"/"cd"
-        // (2×2) inside the 2-wide frame — no horizontal overflow — while the
-        // eager `body` (no proposal context) keeps the 4-wide raster and the
-        // derived 2-wide buffer truncates it to "ab". The frame still does not
-        // clip (pinned); the divergence is the wrap itself. Pinned below is
-        // TODAY's eager output; the engine must produce the wrapped rows.
         ParityCase(
-            name: "DIVERGENT: fixed frame smaller than Text wraps (A1); eager truncates at buffer",
+            name: "fixed frame smaller than Text wraps it",
             view: Text("abcd")
                 .frame(width: 2, horizontalAlignment: .center),
             width: 2,
-            // TODAY's eager output: the 4-wide raster is truncated at the
-            // 2-wide buffer edge → ["ab"].
-            expectedRows: ["ab"],
-            isKnownDivergent: true,
-            // Engine (A1): `Text("abcd")` wraps to the frame's 2-column
-            // proposal → ["ab", "cd"].
-            expectedEngineRows: ["ab", "cd"]
+            // The frame's 2-column width reaches the Text as its allocation;
+            // the text wraps rather than overflowing.
+            expectedRows: ["ab", "cd"]
         ),
 
-        // !!! ALLOWED DIVERGENCE #4 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // Flexible-axis fill exists only in the engine. The eager `body` has
-        // no proposal context: with no fixed dimensions it resolves to the
-        // content's ideal width ("ab", 2 columns). The engine is proposed 8
-        // columns by the harness, fills the offer (answers 8), and centers
-        // the 2-wide child within it → "   ab". Default `.left` would make
-        // the fill invisible at the visible-rows level (content at col 0
-        // either way), so the case uses `.center` to pin the fill + placement
-        // in one observable row.
-
         ParityCase(
-            name: "DIVERGENT: flexible width frame fills proposal and centers",
+            name: "flexible width frame fills the assignment and centers",
             view: Text("ab")
                 .frame(horizontalAlignment: .center),
             width: 8,
-            // TODAY's eager output: no proposal context → ideal "ab".
-            expectedRows: ["ab"],
-            isKnownDivergent: true,
-            // Engine: fills the 8-column offer, centers the child at col 3.
-            expectedEngineRows: ["   ab"]
+            // The flexible frame keeps the 8-column assignment and centers the
+            // 2-wide child at col 3.
+            expectedRows: ["   ab"]
         ),
 
-        // ── A2 additions: FlexibleSpacer ───────────────────────────────────
-        //
-        // !!! ALLOWED DIVERGENCE #7 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // `FlexibleSpacer` distributes leftover main-axis space, which only
-        // exists in the engine: the eager path has no proposal context, so its
-        // `body` resolves to empty content and the eager HStack join SKIPS the
-        // empty component (the phase-1 skip-empty semantics) → "LR". The
-        // engine sees the 10-column offer, the spacer reports a positive
-        // fraction, and the stack fills the offer and hands the spacer the 8
-        // leftover columns → "L        R".
-        //
-        // A `Fill` corpus case would be invisible under the harness's
-        // `(width, nil)` proposal (an HStack offers `nil` width to its
-        // children), so `Fill` is covered by unit tests instead —
-        // `Tests/ChaiTests/FlexibilityTests.swift` and
-        // `Tests/LatteTests/FlexibleSpacerTests.swift`.
+        // ── Flexible spacer ────────────────────────────────────────────────
+
         ParityCase(
-            name: "DIVERGENT: hstack FlexibleSpacer distributes leftover (A2); eager skips empty spacer",
+            name: "hstack flexible spacer distributes leftover",
             view: HStack {
                 Text("L")
-                FlexibleSpacer()
+                Spacer()
                 Text("R")
             },
             width: 10,
-            // TODAY's eager output: the spacer's body is empty and the eager
-            // join skips it → "LR".
-            expectedRows: ["LR"],
-            isKnownDivergent: true,
-            // Engine (A2): the spacer absorbs the 8-column leftover → "L" +
-            // 8 spaces + "R".
-            expectedEngineRows: ["L        R"]
+            // The spacer absorbs the 8-column leftover.
+            expectedRows: ["L        R"]
         ),
 
-        // !!! ALLOWED DIVERGENCE #8 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // `Fill` answers the proposal dimensions, so in a non-left-aligned
-        // VStack it widens the stack to the offer (Fill claims the proposed
-        // width) and shifts its sibling to the alignment offset. The eager
-        // path resolves Fill's empty `body` and skips it (skip-empty
-        // semantics), so the stack stays content-sized. Pinned below is
-        // TODAY's eager output; the engine must produce the shifted row.
+        // ── Fill (consumer semantics) ──────────────────────────────────────
+
         ParityCase(
-            name: "DIVERGENT: vstack right-aligned Fill claims proposed width (A2)",
+            name: "vstack right-aligned Fill claims the proposed width",
             view: VStack(alignment: .right) {
                 Text("ab")
                 Fill()
             },
             width: 8,
-            // TODAY's eager output: Fill's empty body is skipped → "ab".
-            expectedRows: ["ab"],
-            isKnownDivergent: true,
-            // Engine (A2): Fill claims the 8-column proposal; the stack is
-            // 8 wide and the right-aligned Text sits at offset 6 →
-            // "      ab".
-            expectedEngineRows: ["      ab"]
+            // Fill claims the 8-column proposal, so the stack is 8 wide and the
+            // right-aligned Text sits at offset 6.
+            expectedRows: ["      ab"]
         ),
 
-        // !!! ALLOWED DIVERGENCE #9 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // `.clipped()` masks overflow only in the engine (A3). The eager path
-        // has no assigned rect, so `ClipView.body` resolves its content
-        // unchanged — clipping is a render-time mask. The receiver here is a
-        // `ViewOutput`, so `.frame(width: 2)` resolves to the NEW `View.frame`
-        // (the eager overload requires `height`), producing
-        // `FrameView<ViewOutput>`. The eager frame's `.width()` modifier PADS
-        // to a minimum and never truncates — "abcd" is already wider than 2, so
-        // it is unchanged. The engine's frame answers width 2, the 4-wide
-        // raster overflows it, and the clip masks it to "ab".
+        // ── Clipping ───────────────────────────────────────────────────────
+
         ParityCase(
-            name: "DIVERGENT: clipped frame masks overflow in the engine (A3); eager no-op",
+            name: "clipped frame masks overflow",
             view: ViewOutput("abcd")
                 .frame(width: 2)
                 .clipped(),
             width: 4,
-            // TODAY's eager output: `.width(2)` pads to a minimum (a no-op for
-            // the already-4-wide "abcd") and `.clipped()` cannot clip →
-            // ["abcd"].
-            expectedRows: ["abcd"],
-            isKnownDivergent: true,
-            // Engine (A3): the frame answers width 2; the clip masks the
-            // 4-wide raster to the 2-wide rect → ["ab"].
-            expectedEngineRows: ["ab"]
+            // The frame answers width 2; the 4-wide raster overflows it and the
+            // clip masks it.
+            expectedRows: ["ab"]
         ),
 
-        // !!! ALLOWED DIVERGENCE #10 (UPGRADE.md) — DO NOT "FIX" THIS CASE !!!
-        //
-        // Newline-only `Text` collapses to 0x0 in the engine: content with
-        // no visible character (whitespace- or newline-only) wraps to empty
-        // — the A1 blank-line rule preserves hard lines only when the
-        // content has a visible character. The eager path resolves
-        // `Text("\n")` to `ViewOutput("\n")` and measures `lineCount()` = 2
-        // blank rows. Pinned below is TODAY's eager output; the engine
-        // renders nothing.
+        // ── Text whitespace ────────────────────────────────────────────────
+
         ParityCase(
-            name: "DIVERGENT: newline-only Text collapses to nothing (A1); eager measures two blank rows",
+            name: "newline-only Text collapses to nothing",
             view: Text("\n"),
             width: 8,
-            // TODAY's eager output: "\n" is two blank lines.
-            expectedRows: ["", ""],
-            isKnownDivergent: true,
-            // Engine: no visible character → wraps to empty → 0x0 → no rows.
-            expectedEngineRows: []
+            // Content with no visible character wraps to empty and measures
+            // 0×0 (A1 blank-line rule).
+            expectedRows: []
         ),
 
-        // ── Phase-4 additions: allocation-path pins ─────────────────────────
-        //
-        // The allocation (`_embed`) path runs every case above; these two
-        // cases additionally pin the `Fill`-under-`HStack` rule that the
-        // phase-3 engine cannot express (it never offers a width to HStack
-        // children, so `Fill` reports 0 there).
+        // ── HStack Fill rule (phase-4 allocation) ──────────────────────────
 
         ParityCase(
             name: "hstack trailing Fill claims the remaining width",
@@ -721,43 +536,26 @@ extension ParityCase {
                 Fill()
             },
             width: 8,
-            // All paths agree on the visible row: the trailing `Fill` paints
-            // nothing, and the text sits at col 0. The Fill still grows the
-            // stack's OCCUPIED width (1 → 8) — invisible here, pinned by
-            // `AllocationRulesTests.trailingFillDoesNotShiftTheSibling` and by
-            // the parent-alignment case below.
+            // The trailing Fill paints nothing and the text sits at col 0. The
+            // Fill grows the stack's OCCUPIED width (1 → 8) — invisible here,
+            // pinned by `AllocationRulesTests` and by the parent-alignment case
+            // below.
             expectedRows: ["x"]
         ),
 
-        // PHASE-4 ALLOCATION DELTA (UPGRADE.md, "Phase 4 — allocation deltas")
-        // — not an eager-vs-engine divergence: eager == engine here.
-        //
-        // Under allocation authority a *leading* `Fill` claims the assigned
-        // remainder, so its sibling shifts right. The phase-3 engine never
-        // offers a width to HStack children, so `Fill` reports 0 and "x" stays
-        // at col 0. The allocation path allocates `Fill` 7 columns and places
-        // "x" at col 7. This is the visible consequence of the occupied-width
-        // delta (the HStack reports 8 wide instead of 1).
         ParityCase(
-            name: "PHASE-4 DELTA: hstack leading Fill shifts its sibling",
+            name: "hstack leading Fill shifts its sibling",
             view: HStack {
                 Fill()
                 Text("x")
             },
             width: 8,
-            // Eager and phase-3 engine: the empty `Fill` is skipped / reports
-            // nothing, so "x" is at col 0.
-            expectedRows: ["x"],
-            // Allocation path: `Fill` claims columns 0–6, "x" at col 7.
-            expectedEmbedRows: ["       x"]
+            // A leading Fill claims columns 0–6, placing "x" at col 7.
+            expectedRows: ["       x"]
         ),
 
-        // PHASE-4 ALLOCATION DELTA (supplement): the trailing `Fill` does not
-        // move its own sibling, but it does grow the HStack's *occupied* width
-        // (1 → 8), which a parent's alignment math observes. Pinned here so the
-        // consequence is on record, not just the sibling-free row.
         ParityCase(
-            name: "PHASE-4 DELTA: trailing Fill grows the stack's occupied width",
+            name: "trailing Fill grows the stack's occupied width",
             view: VStack(alignment: .right) {
                 HStack {
                     Text("x")
@@ -766,12 +564,29 @@ extension ParityCase {
                 Text("y")
             },
             width: 8,
-            // Eager: the HStack resolves to "x" and the stack aligns to its
-            // own 1-column width → both rows flush left.
-            expectedRows: ["x", "y"],
-            // Allocation: the HStack occupies the assigned 8 columns, so the
-            // right-aligned sibling "y" sits at col 7.
-            expectedEmbedRows: ["x", "       y"]
+            // The HStack occupies the assigned 8 columns, so the right-aligned
+            // sibling "y" sits at col 7.
+            expectedRows: ["x", "       y"]
+        ),
+
+        // ── Stage-C wrappers (P4a) ─────────────────────────────────────────
+
+        ParityCase(
+            name: "padded text shrink-wraps its content",
+            view: Text("x").padded(1),
+            width: 8,
+            expectedRows: ["", " x", ""]
+        ),
+
+        ParityCase(
+            name: "bordered vstack draws a content-sized box",
+            view: VStack {
+                Text("a")
+                Text("bb")
+            }
+            .bordered(.ascii),
+            width: 8,
+            expectedRows: ["+--+", "|a |", "|bb|", "+--+"]
         ),
     ]
 }

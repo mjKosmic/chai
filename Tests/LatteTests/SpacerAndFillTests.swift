@@ -2,7 +2,7 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - Phase-3 A2: FlexibleSpacer in stacks + Fill in the engine
+// MARK: - Phase-3 A2: Spacer in stacks + Fill in the engine
 //
 // Milestone A2 of the phase-3 Stage A plan (UPGRADE.md): a stack whose main
 // axis has at least one positively-flexible child fills a non-`nil` main-axis
@@ -26,13 +26,13 @@ import Latte
 
 // MARK: - HStack
 
-@Suite("FlexibleSpacer in HStack")
-struct FlexibleSpacerHStackTests {
+@Suite("Spacer in HStack")
+struct SpacerHStackTests {
 
     @Test func singleSpacerAbsorbsTheLeftover() {
         let stack = HStack {
             Text("L")
-            FlexibleSpacer()
+            Spacer()
             Text("R")
         }
         // Rigid total 2; the flexing stack fills the 10-column offer; the
@@ -46,9 +46,9 @@ struct FlexibleSpacerHStackTests {
     @Test func twoEqualSpacersSplitEvenlyAndLeaveTheOddRemainderUnallocated() {
         let stack = HStack {
             Text("A")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
-            FlexibleSpacer()
+            Spacer()
             Text("C")
         }
         // Rigid total 3, leftover 7, totalFlex 2 → Int(7 × 0.5) = 3 each.
@@ -69,9 +69,9 @@ struct FlexibleSpacerHStackTests {
     @Test func oddLeftoverRemainderIsUnallocatedAtTheTrailingEnd() {
         let stack = HStack {
             Text("A")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
-            FlexibleSpacer()
+            Spacer()
             Text("C")
         }
         // Rigid total 3, leftover 5, totalFlex 2 → Int(5 × 0.5) = 2 each.
@@ -85,9 +85,9 @@ struct FlexibleSpacerHStackTests {
     @Test func normalizedFractionsShareProportionally() {
         let stack = HStack {
             Text("A")
-            FlexibleSpacer(fraction: 1)
+            Spacer(fraction: 1)
             Text("B")
-            FlexibleSpacer(fraction: 2)
+            Spacer(fraction: 2)
             Text("C")
         }
         // Rigid total 3, leftover 7, totalFlex 3 → Int(7 × 1/3) = 2 and
@@ -100,7 +100,7 @@ struct FlexibleSpacerHStackTests {
         // it does not fill and the spacer occupies nothing.
         let stack = HStack {
             Text("A")
-            FlexibleSpacer(fraction: 0)
+            Spacer(fraction: 0)
             Text("B")
         }
         #expect(
@@ -113,7 +113,7 @@ struct FlexibleSpacerHStackTests {
         // No offer → no leftover to distribute: the spacer contributes 0.
         let stack = HStack {
             Text("L")
-            FlexibleSpacer()
+            Spacer()
             Text("R")
         }
         #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 1))
@@ -128,7 +128,7 @@ struct FlexibleSpacerHStackTests {
         // at the rigid total even when the offer is smaller.
         let stack = HStack {
             Text("aaaa")
-            FlexibleSpacer()
+            Spacer()
             Text("bbbb")
         }
         #expect(
@@ -141,7 +141,7 @@ struct FlexibleSpacerHStackTests {
         // (no other view does that — Text clamps negatives to the minimum).
         let stack = HStack {
             Text("aaaa")
-            FlexibleSpacer()
+            Spacer()
             Text("bbbb")
         }
         #expect(
@@ -170,7 +170,7 @@ struct FlexibleSpacerHStackTests {
             Text("hi")
             HStack {
                 Text("a")
-                FlexibleSpacer()
+                Spacer()
                 Text("b")
             }
         }
@@ -183,13 +183,13 @@ struct FlexibleSpacerHStackTests {
 
 // MARK: - VStack
 
-@Suite("FlexibleSpacer in VStack")
-struct FlexibleSpacerVStackTests {
+@Suite("Spacer in VStack")
+struct SpacerVStackTests {
 
-    private var stack: VStack<TupleView<Text, FlexibleSpacer, Text>> {
+    private var stack: VStack<TupleView<Text, Spacer, Text>> {
         VStack {
             Text("T")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
         }
     }
@@ -216,7 +216,7 @@ struct FlexibleSpacerVStackTests {
         // `ProposedSize(width: 3, height: 6)`.
         let framed = VStack {
             Text("T")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
         }
         .frame(height: 6)
@@ -229,9 +229,9 @@ struct FlexibleSpacerVStackTests {
         // unallocated remainder is the last row (the trailing end).
         let framed = VStack {
             Text("T")
-            FlexibleSpacer()
+            Spacer()
             Text("M")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
         }
         .frame(height: 10)
@@ -246,7 +246,7 @@ struct FlexibleSpacerVStackTests {
         // height offer (a VStack proposes `nil` height to its children).
         let nested = VStack {
             VStack {
-                FlexibleSpacer()
+                Spacer()
             }
         }
         #expect(nested._sizeThatFits(ProposedSize(width: nil, height: 7)) == .zero)
@@ -255,8 +255,8 @@ struct FlexibleSpacerVStackTests {
     @Test func outsideAStackTheSpacerIsZeroSized() {
         // As a root view, and inside a frame, nothing distributes leftover
         // space — the spacer measures 0×0 and the frame's fixed rect is blank.
-        #expect(FlexibleSpacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
-        let framed = FlexibleSpacer().frame(width: 5, height: 4)
+        #expect(Spacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
+        let framed = Spacer().frame(width: 5, height: 4)
         #expect(framed._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 4))
         #expect(visibleRows(embedBuffer(framed, width: 5)) == ["", "", "", ""])
     }
@@ -279,11 +279,11 @@ struct FlexibilitySPITests {
         }
     }
 
-    @Test func customFlexibleViewSharesWithFlexibleSpacer() {
+    @Test func customFlexibleViewSharesWithSpacer() {
         let stack = HStack {
             Text("A")
             HalfFlex()
-            FlexibleSpacer(fraction: 1)
+            Spacer(fraction: 1)
             Text("B")
         }
         // Rigid total 2, leftover 8, totalFlex 1.5 → Int(8 × 0.5/1.5) = 2 for
@@ -301,7 +301,7 @@ struct FlexibilitySPITests {
         // than letting `NaN` reach `Int(_:)` (which would trap).
         let stack = HStack {
             Text("A")
-            FlexibleSpacer(fraction: .infinity)
+            Spacer(fraction: .infinity)
             Text("B")
         }
         #expect(
@@ -373,6 +373,5 @@ struct FillInStacksTests {
             stack._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
         #expect(visibleRows(embedBuffer(stack, width: 8)) == ["      ab"])
-        #expect(visibleRows(eagerBuffer(stack, width: 8)) == ["ab"])
     }
 }

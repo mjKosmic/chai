@@ -175,13 +175,4 @@ struct ClipViewTests {
         view._embed(into: &buffer, at: ViewRect(size: size))
         #expect(visibleRows(buffer) == ["abc"])
     }
-
-    // MARK: Legacy body (eager path)
-
-    @Test func legacyBodyResolvesTheContentUnchanged() {
-        // The eager path has no assigned rect, so it cannot clip: `.clipped()`
-        // is a no-op there (allowed divergence #9).
-        let resolved = ViewOutput("abcd").frame(width: 2).clipped()._resolveToViewOutput()
-        #expect(resolved.content.plainText == "abcd")
-    }
 }

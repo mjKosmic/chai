@@ -32,11 +32,6 @@ import Chai
 ///   character whose second column would fall outside the rect is not painted,
 ///   by the temp buffer's wide-character write rules.
 ///
-/// ## Legacy body
-///
-/// The eager path has no assigned rect, so it cannot clip: `body` resolves the
-/// content unchanged. This is allowed divergence #9 in UPGRADE.md.
-///
 /// ```swift
 /// Text("a very long line")
 ///     .frame(width: 4)
@@ -51,15 +46,6 @@ public struct ClipView<Content: View>: View {
     /// - Parameter content: A ``ViewBuilder`` closure providing the content.
     public init(@ViewBuilder content: () -> Content) {
         self.content = content()
-    }
-
-    // MARK: Legacy body (eager path)
-
-    /// The eager path cannot clip — it has no assigned rect — so it resolves
-    /// the content unchanged. Clipping exists only in the engine (allowed
-    /// divergence #9 in UPGRADE.md).
-    public var body: ViewOutput {
-        content._resolveToViewOutput()
     }
 }
 

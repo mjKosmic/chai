@@ -108,20 +108,6 @@ public struct VStack<Content: View>: View {
         self.alignment = alignment
         self.content = content()
     }
-
-    public var body: ViewOutput {
-        // A `ViewBuilder` closure's default join is vertical, so the
-        // content's resolved output is already the children stacked
-        // top-to-bottom.
-        let joined = content._resolveToViewOutput()
-
-        guard alignment != .left else { return joined }
-
-        let lines = joined.content.splitLines()
-        let maxWidth = lines.map(\.columnWidth).max() ?? 0
-        let aligned = lines.map { $0.aligned(toWidth: maxWidth, alignment) }
-        return ViewOutput(StyledText.fromLines(aligned))
-    }
 }
 
 // MARK: - HStack
@@ -154,36 +140,14 @@ public struct HStack<Content: View>: View {
         self.alignment = alignment
         self.content = content()
     }
-
-    public var body: ViewOutput {
-        let parts = content._childViews().map { $0._resolveToViewOutput() }
-        return Self.joinHorizontally(parts, align: alignment)
-    }
-
-    private static func joinHorizontally(_ components: [ViewOutput], align: VerticalAlignment) -> ViewOutput {
-        guard !components.isEmpty else { return ViewOutput("") }
-        guard components.count > 1 else { return components[0] }
-
-        var result = components[0].content
-        for component in components.dropFirst() {
-            if !component.content.isEmpty {
-                result = result.beside(component.content, align: align)
-            }
-        }
-        return ViewOutput(result)
-    }
 }
 
 // MARK: - VStack engine implementation
 //
-// Phase-2 layout engine (UPGRADE.md): the container renders children instead
-// of joining their resolved outputs. Parity with the eager `body` above is
-// verified by the corpus in Tests/LatteTests/LayoutParity.
-//
-// Phase 4 adds the allocation entrance (`_embed`): the stack computes one
-// shape, allocates each child a rect, and embeds it. `_sizeThatFits` is the
-// pure query kernel (report only — used for buffer sizing and clip
-// reservation).
+// Phase 4: the stack computes one shape (query + allocation), allocates each
+// child a rect, and embeds it. `_sizeThatFits` is the pure query kernel
+// (report only — used for buffer sizing and clip reservation). The corpus in
+// Tests/LatteTests/LayoutParity is the mechanical spec.
 
 extension VStack {
     /// The stack's allocation shape under an assigned width/height context.

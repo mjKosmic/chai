@@ -36,7 +36,7 @@ Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `Fram
    - [Who the engine SPI is for](#who-the-engine-spi-is-for)
    - [Proposal semantics](#proposal-semantics)
    - [The parity discipline](#the-parity-discipline)
-   - [Two `frame()`s coexisting](#two-frames-coexisting)
+   - [`frame()` — one modifier](#frame--one-modifier)
 7. [Spices — Component Library](#spices--component-library)
 8. [Data Flow](#data-flow)
 9. [Concurrency Model](#concurrency-model)
@@ -472,7 +472,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 | **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
 | **Static** | `ListRenderer.swift`, `TreeRenderer.swift` | Static list and tree renderers for non-interactive output. |
 | **Utilities** | `TabExpansion.swift`, `StringLines.swift` | Tab-to-spaces expansion with configurable tab width, line splitting utilities. |
-| **Extensions** | `String+Layout.swift`, `StyledText+Layout.swift`, `ViewOutput+Layout.swift` | Chainable extensions: `String` (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.placed()`, `.clamped()`, `.enforced()`, `.truncated()`, `.inlined()`, `.tabsExpanded()`), `StyledText` layout, and the legacy eager ``ViewOutput`` modifiers (`.width()`, `.height()`, `.frame()`, `.beside()`, `.above()`, ...). |
+| **Extensions** | `String+Layout.swift`, `StyledText+Layout.swift`, `ViewOutput+Layout.swift` | Chainable extensions: `String` (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.placed()`, `.clamped()`, `.enforced()`, `.truncated()`, `.inlined()`, `.tabsExpanded()`), `StyledText` layout, and the ``ViewOutput`` raster helpers (`.clampedWidth()`, `.clampedHeight()`). |
 
 ### Design Notes
 
@@ -480,7 +480,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 - **Pure functions:** Layout functions are stateless — they take a string and configuration, and return a new string. No side effects.
 - **Chainable API:** `String+Layout.swift` provides method-chaining extensions that mirror the free functions, enabling `"hello".padded(1).bordered().margined(1)`.
 - **Styling via `Style?`:** Border rendering accepts optional ``Style`` parameters for styling border characters. Because `Style` lives in Latte itself, no extra imports or closure adapters are needed at the call site.
-- **Two API generations:** the phase-1 declarative containers (`HStack`/`VStack`/`FrameView`) render through the layout engine; the eager ``ViewOutput`` modifiers resolve to styled text immediately and remain as the engine's parity spec (see [The Layout Engine](#the-layout-engine)).
+- **One API generation:** the declarative containers (`HStack`/`VStack`/`FrameView`) and the tree modifiers (`.padded`, `.bordered`, `.frame`, `.clipped`) render through the layout engine. The phase-1 eager ``ViewOutput`` modifier family retired in phase-4 P4b; only the raster clamping helpers remain on ``ViewOutput`` (see [The Layout Engine](#the-layout-engine)).
 
 ---
 
@@ -521,7 +521,7 @@ renderer.flush()
         └─ 5. diff against lastBuffer (per-cell + eraseBelow) → paint changed rows
 ```
 
-The eager bridge still exists: ``View/_resolveToViewOutput()`` recursively calls `body` until a ``ViewOutput`` leaf is reached. It remains the rendering path for the legacy modifier family (`.bordered()`, `.padded()`, `.beside()`, ``ViewOutput.width(_:align:)``, ...) and for the structural views' own `body` implementations, and it is the **parity spec** the engine is verified against (see [The parity discipline](#the-parity-discipline) below). Phase 4 (P4b, Stage C) retires it.
+The eager bridge is gone (phase-4 P4b): ``View/_resolveToViewOutput()`` was deleted, and `body` is no longer a render path. Engine-implemented views (containers, structural views, wrappers, spacers, `Fill`) declare no body — `View.Body` defaults to ``Empty`` — while user composites keep `var body: some View`, whose engine defaults resolve through it. The allocation walk is the only renderer; see [The parity discipline](#the-parity-discipline) below for how the corpus became its mechanical spec.
 
 ### Who the engine SPI is for
 
@@ -534,7 +534,7 @@ func _childViews() -> [any View]
 func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Only structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and only ``FlexibleSpacer`` overrides `_flexibility()`.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
 
 `_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis proposal, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
@@ -564,7 +564,7 @@ The proposal is an *argument* to the child's layout function, not a limit on its
 - **Ignorers** — today's leaves (`ViewOutput`, ``Spacer``). They answer their ideal size regardless of the offer. A `ViewOutput` is a fully-formed raster; the engine measures it unwrapped.
 - **Passers** — the stacks (`VStack`/`HStack`). They propagate context down: each child gets the stack's proposal on the stacking axis, `nil` (ideal) on the cross axis, and the stack sizes itself from the answers.
 - **Generators** — `frame()` (`FrameView`). It answers fixed dimensions verbatim no matter what the child says, and forces those dimensions down as the child's proposal. `frame()` cannot be implemented without proposals — answering a size you were never offered requires the offer machinery.
-- **Consumers** — the phase-3 wrapping ``Text`` and fill views. Their answer is *undefined* without an offer: a wrapping paragraph has no ideal width, so it must be asked "how wide may you be?" before it can answer "how tall you get." A1 landed wrapping `Text` (it wraps to a positive non-`nil` width proposal) and A2 landed ``Fill`` (it answers `proposal.width ?? 0` × `proposal.height ?? 0` — exactly the offered rect). ``FlexibleSpacer`` is a consumer of a different kind: it is rigid on its own (0×0) and reports a positive `_flexibility()` fraction so an enclosing stack can hand it a share of the leftover.
+- **Consumers** — the phase-3 wrapping ``Text`` and fill views. Their answer is *undefined* without an offer: a wrapping paragraph has no ideal width, so it must be asked "how wide may you be?" before it can answer "how tall you get." A1 landed wrapping `Text` (it wraps to a positive non-`nil` width proposal) and A2 landed ``Fill`` (it answers `proposal.width ?? 0` × `proposal.height ?? 0` — exactly the offered rect). A flexible ``Spacer()`` is a consumer of a different kind: it is rigid on its own (0×0) and reports a positive `_flexibility()` fraction so an enclosing stack can hand it a share of the leftover.
 
 **3. Fit/render consistency (value equality).**
 
@@ -581,7 +581,7 @@ The contract is enforced by convention (containers forward the proposal) and pin
 
 SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `ProposedSize.zero` is the offer a container makes when it wants a child's **narrowest producible** form; like every proposal it is an offer, not a bound — the answer is never clamped.
 
-Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero offer), `Spacer` answers its rigid size, `FlexibleSpacer`/`Empty` answer 0×0, and `Fill` answers the offered rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width proposal it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
+Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero offer), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the offered rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width proposal it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
 
 Containers follow their normal proposal rules at `.zero` — no special-casing. `VStack` proposes `(0, nil)` to its children, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` proposes `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child answers its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed". `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero offer on flexible axes.
 
@@ -592,42 +592,33 @@ The third SwiftUI special case is deliberately absent, for two independent reaso
 | Reason | Detail |
 |--------|--------|
 | No representation | A proposal dimension is `Int?`; there is no value for "infinity". |
-| No faithful answer | `ViewSize` is `Int`-based, so a view could never answer a maximum faithfully — a `FlexibleSpacer`'s maximum is "whatever the container decides is left", which is a *container-level* fact the child does not know. |
+| No faithful answer | `ViewSize` is `Int`-based, so a view could never answer a maximum faithfully — a flexible `Spacer()`'s maximum is "whatever the container decides is left", which is a *container-level* fact the child does not know. |
 
 The functionality maps onto mechanisms that already exist: "expand to fill" ≙ `_flexibility()` + the stack's leftover distribution; "measure the maximum" ≙ the container's own leftover math. `.infinity` would add a third proposal case with no way to answer it — so it stays out.
 
 ### The parity discipline
 
-The engine must reproduce the eager path, and the repo holds it to that with a harness rather than hope:
+The allocation engine is the only renderer; the corpus is its mechanical spec. That discipline is why the phase-4 rearchitecture could be an internals rewrite with no user-facing break:
 
-- **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()` — each pinned with the *visible rows* its eager rendering produces. The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. The harness lands first (M0) so every subsequent engine change is verified against a mechanical spec, never against hand-waving.
-- **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: eager line alignment writes space cells where the engine leaves cells `.empty` — both render identically under `eraseLineRight`.
-- **The divergence list is closed.** Ten divergences are documented; nine are corpus-pinned with explicit engine-side expectations (`isKnownDivergent` + `expectedEngineRows`) — #2 is invisible at the visible-row level by construction and needs no corpus case; *no corpus case is skipped*:
-  1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubles them (a join quirk pinned as an eager-path bug).
-  2. `.empty` vs space cells in alignment padding — invisible by construction (no corpus case needed).
+- **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()`, wrappers — each pinned with the *visible rows* the engine produces (`expectedRows`). The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. Every engine change is verified against this mechanical spec, never against hand-waving; no case is skipped.
+- **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: alignment writes space cells where a leaf leaves cells `.empty` — both render identically under `eraseLineRight`.
+- **The historical divergence list is closed (P4b).** The ten entries below recorded where the phase-2/3 engine legitimately differed from the eager `body` join. When P4b deleted the eager path, the comparison itself retired: entries #4–#10 are gone with it, and #1–#3 are simply engine semantics, pinned by the corpus. Kept here as history:
+  1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubled them (a join quirk; the engine semantics are preserved).
+  2. `.empty` vs space cells in alignment padding — invisible by construction.
   3. Multi-line children block-aligned under non-left `VStack` alignment: the engine aligns each child as one layout unit; the eager path aligned each line (an artifact of text joining). SwiftUI-consistent.
-  4. `frame()` flexible-fill exists only in the engine: a `nil` frame dimension fills a non-`nil` proposal, which the proposal-less eager `body` cannot express. Self-retires when the eager path is removed (phase 3).
-  5. Proposal-consuming `Text` wraps instead of truncating (A1): the eager path has no proposal context. Self-retires in Stage C.
-  6. A fixed-width `frame()` around `Text` wraps instead of overflowing (A1). Self-retires in Stage C.
-  7. `FlexibleSpacer` distributes leftover space only in the engine (A2): the eager join skips the spacer's empty `body`. Self-retires in Stage C.
-  8. `Fill` claims the proposed dimensions only in the engine (A2): in a non-left-aligned `VStack` it widens the stack to the proposal and shifts its siblings; the eager path skips its empty `body`. Self-retires in Stage C.
-  9. `.clipped()` masks overflow only in the engine (A3): the eager path has no assigned rect, so `ClipView.body` resolves its content unchanged. Corpus case `ViewOutput("abcd").frame(width: 2).clipped()`: eager `["abcd"]` (the eager `.width()` modifier pads, never truncates), engine `["ab"]`. Self-retires in Stage C.
-  10. Newline-only `Text` collapses to nothing in the engine (pinned during the PR #21 review): content with no visible character wraps to empty and measures 0×0, while the eager path measures `Text("\n")` as two blank rows. Self-retires in Stage C.
+  4. `frame()` flexible-fill existed only in the engine: a `nil` frame dimension fills a non-`nil` proposal, which the proposal-less eager `body` could not express. Retired in P4b.
+  5. Proposal-consuming `Text` wraps instead of truncating (A1). Retired in P4b.
+  6. A fixed-width `frame()` around `Text` wraps instead of overflowing (A1). Retired in P4b.
+  7. `FlexibleSpacer` distributed leftover space only in the engine (A2); now `Spacer()`. Retired in P4b.
+  8. `Fill` claims the proposed dimensions only in the engine (A2). Retired in P4b.
+  9. `.clipped()` masks overflow only in the engine (A3). Retired in P4b.
+  10. Newline-only `Text` collapses to nothing (pinned during the PR #21 review). Retired in P4b.
 
-The parity suites run the corpus through both paths: `ParitySpecTests` (eager golden spec), `ParityEngineTests` (engine vs pinned spec, engine vs live eager, divergent cases vs documented engine rows), `ParityHarnessTests` (pins the comparison semantics themselves).
+The suites: `ParityEngineTests` (every corpus case against `expectedRows`) and `ParityHarnessTests` (pins the comparison semantics themselves). `ParitySpecTests` and `eagerBuffer` retired with the eager path in P4b.
 
-### Two `frame()`s coexisting
+### `frame()` — one modifier
 
-The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`` (in `Sources/Latte/Extensions/ViewOutput+Layout.swift`) and the phase-2 tree-based ``View.frame(width:height:horizontalAlignment:verticalAlignment:)`` (in `Sources/Latte/Layout/Frame.swift`) currently coexist:
-
-| | `ViewOutput.frame(...)` | `View.frame(...)` |
-|--|--------------------------|---------------------|
-| Receiver | `ViewOutput` | any `View` (incl. `ViewOutput`) |
-| Dimensions | non-optional `Int` | `Int?` (`nil` = flexible) |
-| Semantics | minimum-enforcing (`.enforceWidth`/`.enforceHeight` via `transformContent`) | proposal semantics (`FrameView`: fixed dims answered verbatim, `nil` fills the parent's offer) |
-| Returns | `ViewOutput` (eager styled text) | `FrameView<Content>` (stays in the tree) |
-
-Overload resolution sends `ViewOutput` receivers to the old one (the concrete type wins over the `View` protocol extension), so existing code keeps working unchanged. Phase 4 (P4b) retires the eager one; the engine is now the only render path (P3).
+The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`` (minimum-enforcing, returning a raster) and the tree-based ``View.frame(width:height:horizontalAlignment:verticalAlignment:)`` coexisted during phase 2. **P4b retired the eager overload**: every receiver — including `ViewOutput` — now uses the tree-based frame, whose fixed dimensions are exact allocations (content wider than the frame overflows; use ``View/clipped()`` to mask it). See ``FrameView``.
 
 ### Scope: what the engine deliberately does not do
 
@@ -948,7 +939,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1108 t
 | `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
 | `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_sizeThatFits`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
-| `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the `FlexibleSpacer`/`Fill` primitives (rigid 0×0 measurement, no-op render, empty eager body) |
+| `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the unified `Spacer`/`Fill` primitives (flexible 0×0 measurement with a fraction, fixed cell counts, no-op render) |
 | `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
 | `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
 | `StructuralViewTests.swift` | `TupleView`/`ForEachView`/`ConditionalContent`/`OptionalView` flattening and `_childViews()` transparency |
@@ -972,11 +963,12 @@ Covers the string-level layout/styling modules plus the phase-2 engine:
 | `CompositorTests.swift` | Z-ordered `Layer` canvas placement |
 | `StringExtensionTests.swift` | Chainable string extensions, composition chains |
 | `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
-| `StackTests.swift` / `StacksEngineTests.swift` | The eager join behavior *and* the engine measure/render of `VStack`/`HStack`, alignment, skip-empty |
-| `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, overflow (no clipping), legacy body |
-| `FlexibleSpacerTests.swift` | A2 leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis offer, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil proposal content-sized) and `Fill` in stacks/frames |
-| `LayoutParity/` | The M0–M2 parity discipline: `ParityHarness.swift` (eager/engine buffers + `visibleRows`), `ParityCorpus.swift` (the pinned corpus), `ParitySpecTests` (golden spec), `ParityEngineTests` (engine vs spec/eager + divergent cases), `ParityHarnessTests` (comparison semantics) |
-| `ViewOutputLayoutTests.swift` | The legacy eager `ViewOutput` modifiers (`.width()`, `.height()`, `.frame()`, `.beside()`, `.above()`, ...) |
+| `StackTests.swift` / `StacksEngineTests.swift` | Engine measure/render of `VStack`/`HStack` through the allocation walk, alignment, skip-empty, styling survival |
+| `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, overflow (no clipping), degenerate sizes |
+| `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis offer, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil proposal content-sized) and `Fill` in stacks/frames |
+| `LayoutParity/` | The corpus-based discipline: `ParityHarness.swift` (`embedBuffer` + `visibleRows`), `ParityCorpus.swift` (the single-spec engine corpus), `ParityEngineTests` (every case against `expectedRows`), `ParityHarnessTests` (comparison semantics) |
+| `ModifierWrapperTests.swift` | P4a tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
+| `ViewOutputLayoutTests.swift` | The `ViewOutput` raster helpers (`.clampedWidth()`, `.clampedHeight()`), including wide characters and multi-line content |
 | `StyleTests.swift`, `StyleFlagTests.swift`, `UnderlineStyleTests.swift`, `ColorUtilitiesTests.swift`, `HyperlinkTests.swift`, `ListRendererTests.swift`, `TreeRendererTests.swift` | Styling, color utilities, hyperlinks, static renderers |
 
 ### SpicesTests (Tests/SpicesTests/)
@@ -1006,7 +998,7 @@ chai/
 │   │   │   ├── Command.swift            # Command enum + convenience factories
 │   │   │   ├── Program.swift            # Program<M>, ProgramRunner, SignalHandler
 │   │   │   ├── Program+Options.swift    # Program.Option (withAltScreen, withLogger, ...)
-│   │   │   ├── View.swift               # View protocol + layout engine SPI + Text/Spacer/FlexibleSpacer/Fill/Empty
+│   │   │   ├── View.swift               # View protocol + layout engine SPI + Text/Spacer/Fill/Empty
 │   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
 │   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
 │   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
@@ -1038,7 +1030,7 @@ chai/
 │   │   │   ├── Size.swift               # Width/height enforcement and clamping
 │   │   │   ├── Wrap.swift               # ANSI-aware word wrapping
 │   │   │   ├── Inline.swift             # First-line extraction
-│   │   │   ├── Stacks.swift             # VStack/HStack (eager body + engine impl)
+│   │   │   ├── Stacks.swift             # VStack/HStack (allocation engine impl)
 │   │   │   ├── Frame.swift              # FrameView + View.frame(...) modifier
 │   │   │   └── Clip.swift               # ClipView + View.clipped() modifier
 │   │   ├── Composition/
@@ -1055,7 +1047,7 @@ chai/
 │   │   └── Extensions/
 │   │       ├── String+Layout.swift      # Chainable String extensions
 │   │       ├── StyledText+Layout.swift  # StyledText layout extensions
-│   │       └── ViewOutput+Layout.swift  # Legacy eager ViewOutput modifiers (frame, beside, ...)
+│   │       └── ViewOutput+Layout.swift  # ViewOutput raster clamping helpers
 │   │
 │   └── Spices/                          # Component library (depends on Chai, Latte)
 │       ├── Spices.swift                 # Module entry point

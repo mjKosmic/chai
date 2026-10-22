@@ -47,14 +47,6 @@ public struct BorderView<Content: View>: View {
         self.style = style
         self.content = content()
     }
-
-    // MARK: Legacy body (eager path)
-
-    /// The eager resolution path, retired with the rest of the eager family
-    /// in P4b. It reproduces the pre-wrapper behavior exactly.
-    public var body: ViewOutput {
-        ViewOutput(content._resolveToViewOutput().content.bordered(style))
-    }
 }
 
 // MARK: - BorderView engine implementation

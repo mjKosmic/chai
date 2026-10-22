@@ -190,7 +190,7 @@ struct LeafAllocationTests {
         var buffer = CellBuffer(width: 4, height: 2)
         let rect = ViewRect(size: ViewSize(width: 4, height: 2))
         Spacer(lines: 1)._embed(into: &buffer, at: rect)
-        FlexibleSpacer()._embed(into: &buffer, at: rect)
+        Spacer()._embed(into: &buffer, at: rect)
         Fill()._embed(into: &buffer, at: rect)
         #expect(embedRows(buffer) == ["", ""])
     }

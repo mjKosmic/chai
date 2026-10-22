@@ -72,23 +72,6 @@ public struct PaddingView<Content: View>: View {
         self.left = max(0, left)
         self.content = content()
     }
-
-    // MARK: Legacy body (eager path)
-
-    /// The eager resolution path, retired with the rest of the eager family
-    /// in P4b. It reproduces the pre-wrapper behavior exactly (the raster is
-    /// padded after resolution), so the parity spec keeps its reference while
-    /// both paths coexist.
-    public var body: ViewOutput {
-        ViewOutput(
-            content._resolveToViewOutput().content.pad(
-                top: top,
-                right: right,
-                bottom: bottom,
-                left: left
-            )
-        )
-    }
 }
 
 // MARK: - PaddingView engine implementation

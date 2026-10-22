@@ -4,9 +4,9 @@ import Latte
 
 // MARK: - Parity harness utility tests
 //
-// These pin the comparison semantics that the M0 golden spec relies on:
-// zero-width cell skipping (wide-char continuations and combining marks),
-// wide cells counting as one character, and trailing-space normalization.
+// These pin the comparison semantics the engine spec relies on: zero-width
+// cell skipping (wide-char continuations and combining marks), wide cells
+// counting as one character, and trailing-space normalization.
 
 @Suite("Layout Parity — visibleRows semantics")
 struct VisibleRowsTests {
@@ -75,12 +75,12 @@ struct VisibleRowsTests {
     }
 }
 
-@Suite("Layout Parity — eagerBuffer behavior")
-struct EagerBufferTests {
+@Suite("Layout Parity — embedBuffer behavior")
+struct EmbedBufferTests {
 
-    @Test("height derives from resolved lineCount matching inline mode")
-    func heightDerivesFromLineCount() {
-        let buf = eagerBuffer(
+    @Test("height derives from the view's query report")
+    func heightDerivesFromReport() {
+        let buf = embedBuffer(
             VStack {
                 Text("a")
                 Text("b")
@@ -88,34 +88,27 @@ struct EagerBufferTests {
             width: 4
         )
         #expect(buf.width == 4)
-        #expect(buf.height == 2) // "a\nb" → lineCount 2
+        #expect(buf.height == 2)
         #expect(visibleRows(buf) == ["a", "b"])
     }
 
-    @Test("explicit height overrides lineCount")
-    func explicitHeightOverridesLineCount() {
-        let buf = eagerBuffer(VStack { Text("a") }, width: 4, height: 3)
+    @Test("explicit height overrides the report")
+    func explicitHeightOverridesReport() {
+        let buf = embedBuffer(VStack { Text("a") }, width: 4, height: 3)
         #expect(buf.height == 3)
         #expect(visibleRows(buf) == ["a", "", ""])
     }
 
-    @Test("viewoutput root resolves as a leaf")
-    func viewOutputRootResolves() {
-        let buf = eagerBuffer(ViewOutput("hi"), width: 4)
+    @Test("viewoutput root renders as a leaf")
+    func viewOutputRootRenders() {
+        let buf = embedBuffer(ViewOutput("hi"), width: 4)
         #expect(visibleRows(buf) == ["hi"])
     }
 
-    @Test("wrapping disabled by default truncates overflow (inline mode)")
-    func wrappingDisabledTruncates() {
-        let buf = eagerBuffer(Text("abcdef"), width: 4)
+    @Test("inline mode truncates at the buffer edge")
+    func inlineModeTruncates() {
+        let buf = embedBuffer(ViewOutput("abcdef"), width: 4)
         #expect(buf.height == 1)
         #expect(visibleRows(buf) == ["abcd"])
-    }
-
-    @Test("wrapping enabled wraps overflow onto next buffer row")
-    func wrappingEnabledWraps() {
-        let buf = eagerBuffer(Text("abcdef"), width: 4, wrapping: true, height: 2)
-        #expect(buf.height == 2)
-        #expect(visibleRows(buf) == ["abcd", "ef"])
     }
 }

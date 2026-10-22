@@ -164,11 +164,11 @@ struct ModifierWrapperTests {
         #expect(Text("a").padded(1)._flexibility() == .rigid)
         #expect(Text("a").bordered(.ascii)._flexibility() == .rigid)
         #expect(
-            FlexibleSpacer().padded(1)._flexibility()
+            Spacer().padded(1)._flexibility()
                 == LayoutFlexibility(width: 1, height: 1)
         )
         #expect(
-            FlexibleSpacer().bordered(.ascii)._flexibility()
+            Spacer().bordered(.ascii)._flexibility()
                 == LayoutFlexibility(width: 1, height: 1)
         )
     }
@@ -179,7 +179,7 @@ struct ModifierWrapperTests {
         // lands at the far edge. Without forwarding, "y" would sit at column 5.
         let view = HStack {
             Text("x")
-            FlexibleSpacer().padded(2)
+            Spacer().padded(2)
             Text("y")
         }
         #expect(visibleRows(embedBuffer(view, width: 12)) == ["x          y", "", "", ""])
@@ -188,7 +188,7 @@ struct ModifierWrapperTests {
     @Test func aFlexibleChildInsideABorderStillAbsorbsLeftover() {
         let view = HStack {
             Text("x")
-            FlexibleSpacer().bordered(.ascii)
+            Spacer().bordered(.ascii)
             Text("y")
         }
         // Spacer report 0 → border report 2; rigid total 1 + 2 + 1 = 4;

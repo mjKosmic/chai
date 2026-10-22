@@ -34,11 +34,6 @@ import Chai
 /// buffer as the final backstop; ``View/clipped()`` is the opt-in that masks
 /// that overflow. Shrinking content to fit is the wrapping/flex story — a
 /// frame is placement, not shrinking.
-///
-/// The legacy ``body`` cannot express flexible-fill: it has no assignment, so
-/// it applies the existing ``ViewOutput/width(_:align:)`` /
-/// ``ViewOutput/height(_:align:)`` modifiers for **fixed** dimensions only.
-/// Flexible-fill exists only in the engine (allowed divergence #4).
 public struct FrameView<Content: View>: View {
     /// The fixed width, or `nil` for a flexible width that fills the parent's
     /// offer.
@@ -79,30 +74,6 @@ public struct FrameView<Content: View>: View {
         self.horizontalAlignment = horizontalAlignment
         self.verticalAlignment = verticalAlignment
         self.content = content()
-    }
-
-    // MARK: Legacy body (eager path)
-
-    /// The eager resolution path, which has no proposal context.
-    ///
-    /// Fixed dimensions delegate to the existing ``ViewOutput/width(_:align:)``
-    /// and ``ViewOutput/height(_:align:)`` modifiers; a frame with no fixed
-    /// dimensions resolves to its content unchanged. Flexible-fill behavior
-    /// is impossible here — it exists only in the engine (allowed
-    /// divergence #4 in UPGRADE.md).
-    public var body: ViewOutput {
-        let resolved = content._resolveToViewOutput()
-        if let w = width, let h = height {
-            return resolved.width(w, align: horizontalAlignment)
-                .height(h, align: verticalAlignment)
-        }
-        if let w = width {
-            return resolved.width(w, align: horizontalAlignment)
-        }
-        if let h = height {
-            return resolved.height(h, align: verticalAlignment)
-        }
-        return resolved
     }
 }
 
@@ -179,13 +150,6 @@ extension View {
     /// A frame does **not** clip: content larger than the frame overflows its
     /// bounds, with the terminal buffer as the final backstop. Use
     /// ``View/clipped()`` to mask that overflow.
-    ///
-    /// - Note: On a ``ViewOutput`` receiver, calling `frame(width:height:)`
-    ///   with **both** dimensions resolves to the pre-existing eager
-    ///   `ViewOutput.frame` overload (minimum-enforcing, returns `ViewOutput`)
-    ///   rather than this one — width-only calls, or any non-`ViewOutput`
-    ///   receiver, use this tree-based frame. The eager overload is retired
-    ///   in Stage C (UPGRADE.md), which removes the ambiguity.
     ///
     /// ```swift
     /// // Center a small view in the terminal window.

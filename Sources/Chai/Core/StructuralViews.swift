@@ -1,34 +1,14 @@
 // MARK: - Structural views
 
-/// Join view outputs top-to-bottom, skipping empty components.
-///
-/// This is the default join strategy for ``ViewBuilder`` composition: it
-/// matches the legacy eager ``ViewBuilder`` behavior where a bare
-/// `@ViewBuilder` closure stacks its children vertically.
-func joinVertically(_ components: [ViewOutput]) -> ViewOutput {
-    guard !components.isEmpty else { return ViewOutput("") }
-    guard components.count > 1 else { return components[0] }
-
-    var result = components[0].content
-    for component in components.dropFirst() {
-        if !component.content.isEmpty {
-            if !result.isEmpty {
-                result.append("\n")
-            }
-            result += component.content
-        }
-    }
-    return ViewOutput(result)
-}
-
 /// Embed `children` top-to-bottom into `rect`.
 ///
-/// This is the **allocation** analogue of ``joinVertically(_:)`` for structural
-/// views that are rendered directly (as a root view or under a wrapper) rather
-/// than flattened by a container. Each child is queried at the rect's width and
-/// the row advances by its reported height, so empty children advance nothing
-/// (the phase-1 skip-empty semantics). Structural views inside a container are
-/// flattened by ``View/_childViews()`` and never reach this function.
+/// This is the allocation analogue of the old eager vertical join for
+/// structural views that are rendered directly (as a root view or under a
+/// wrapper) rather than flattened by a container. Each child is queried at
+/// the rect's width and the row advances by its reported height, so empty
+/// children advance nothing (the phase-1 skip-empty semantics). Structural
+/// views inside a container are flattened by ``View/_childViews()`` and never
+/// reach this function.
 func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffer, at rect: ViewRect) {
     var row = rect.origin.row
     for child in children {
@@ -41,6 +21,23 @@ func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffe
     }
 }
 
+/// Measure `children` the way ``embedStackedVertically(_:into:at:)`` places
+/// them: each child is queried at the proposal's width (height is ideal), the
+/// occupied width is the widest report, and the height is the sum of reports.
+///
+/// Structural views used the eager `body` join for measurement before P4b;
+/// with the eager path retired, this is their query kernel.
+func measureStackedVertically(_ children: [any View], proposal: ProposedSize) -> ViewSize {
+    var width = 0
+    var height = 0
+    for child in children {
+        let size = child._sizeThatFits(ProposedSize(width: proposal.width, height: nil))
+        width = max(width, size.width)
+        height += size.height
+    }
+    return ViewSize(width: width, height: height)
+}
+
 // MARK: - TupleView
 
 /// A structural view that groups multiple children produced by ``ViewBuilder``.
@@ -48,11 +45,9 @@ func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffe
 /// You don't create `TupleView` directly — it's produced automatically when
 /// a ``ViewBuilder`` closure contains multiple expressions.
 ///
-/// The default ``body`` stacks children vertically (matching the legacy
-/// ``ViewBuilder`` behavior). Container views like `HStack` enumerate the
-/// children directly via ``_childViews()`` to apply their own layout
-/// strategy. Each child's own collected views are flattened into the
-/// tuple's children, so structural views (``ForEachView``, nested
+/// Containers enumerate the children directly via ``_childViews()`` to apply
+/// their own layout strategy. Each child's own collected views are flattened
+/// into the tuple's children, so structural views (``ForEachView``, nested
 /// `TupleView`s) are transparent to containers — a `for` loop inside an
 /// `HStack` lays its elements out horizontally, as it does in SwiftUI.
 public struct TupleView<each T: View>: View {
@@ -70,12 +65,14 @@ public struct TupleView<each T: View>: View {
         return parts
     }
 
-    public var body: ViewOutput {
-        joinVertically(_childViews().map { $0._resolveToViewOutput() })
+    /// Allocation entrance when the tuple is rendered directly (as a root or
+    /// under a wrapper): children stack vertically.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        measureStackedVertically(_childViews(), proposal: proposal)
     }
 
     /// Allocation entrance when the tuple is rendered directly (as a root or
-    /// under a wrapper): children stack vertically, matching ``body``.
+    /// under a wrapper): children stack vertically.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }
@@ -104,15 +101,6 @@ public struct ConditionalContent<TrueContent: View, FalseContent: View>: View {
         Self(storage: .second(content))
     }
 
-    public var body: ViewOutput {
-        switch storage {
-        case .first(let content):
-            content._resolveToViewOutput()
-        case .second(let content):
-            content._resolveToViewOutput()
-        }
-    }
-
     /// Only the active branch contributes children. A multi-expression
     /// branch body is itself a ``TupleView``, so flattening the branch keeps
     /// per-child enumeration.
@@ -125,8 +113,12 @@ public struct ConditionalContent<TrueContent: View, FalseContent: View>: View {
         }
     }
 
-    /// Allocation entrance: the active branch's children stack vertically,
-    /// matching ``body``.
+    /// Allocation entrance: the active branch's children stack vertically.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        measureStackedVertically(_childViews(), proposal: proposal)
+    }
+
+    /// Allocation entrance: the active branch's children stack vertically.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }
@@ -144,17 +136,19 @@ public struct OptionalView<Wrapped: View>: View {
         self.content = content
     }
 
-    public var body: ViewOutput {
-        content?._resolveToViewOutput() ?? ViewOutput("")
-    }
-
     /// The wrapped content's children when present, none when `nil`.
     public func _childViews() -> [any View] {
         content?._childViews() ?? []
     }
 
-    /// Allocation entrance: the present content's children stack vertically,
-    /// matching ``body``. An absent branch embeds nothing.
+    /// Allocation entrance: the present content's children stack vertically.
+    /// An absent branch embeds nothing.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        measureStackedVertically(_childViews(), proposal: proposal)
+    }
+
+    /// Allocation entrance: the present content's children stack vertically.
+    /// An absent branch embeds nothing.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }
@@ -164,8 +158,7 @@ public struct OptionalView<Wrapped: View>: View {
 
 /// A structural view produced by `for...in` loops in a ``ViewBuilder``.
 ///
-/// The default ``body`` stacks children vertically. Like ``TupleView``,
-/// it is transparent to containers: ``_childViews()`` returns one view per
+/// It is transparent to containers: ``_childViews()`` returns one view per
 /// element, so a `for` loop inside an `HStack` lays its elements out
 /// horizontally.
 public struct ForEachView<Content: View>: View {
@@ -183,12 +176,14 @@ public struct ForEachView<Content: View>: View {
         return parts
     }
 
-    public var body: ViewOutput {
-        joinVertically(_childViews().map { $0._resolveToViewOutput() })
+    /// Allocation entrance when the loop is rendered directly: children stack
+    /// vertically.
+    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        measureStackedVertically(_childViews(), proposal: proposal)
     }
 
     /// Allocation entrance when the loop is rendered directly: children stack
-    /// vertically, matching ``body``.
+    /// vertically.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }

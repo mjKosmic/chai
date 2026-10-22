@@ -15,7 +15,7 @@ import Latte
 //
 // - `ViewOutput` is a fully-formed raster → it answers its ideal size (and may
 //   legitimately exceed the zero offer — legal overrule).
-// - `Spacer` → its rigid size; `FlexibleSpacer`/`Empty` → 0×0; `Fill` → the
+// - `Spacer` → its rigid size; `Spacer`/`Empty` → 0×0; `Fill` → the
 //   offered rect, i.e. (0, 0) at `.zero`.
 // - Containers follow their normal proposal rules — no special-casing.
 //
@@ -190,11 +190,11 @@ struct MinimumNonCompressibleTests {
     @Test func spacersAnswerTheirRigidSize() {
         #expect(Spacer(lines: 2)._sizeThatFits(.zero) == ViewSize(width: 0, height: 2))
         #expect(Spacer(columns: 3)._sizeThatFits(.zero) == ViewSize(width: 3, height: 1))
-        #expect(Spacer()._sizeThatFits(.zero) == ViewSize(width: 0, height: 1))
+        #expect(Spacer(lines: 1)._sizeThatFits(.zero) == ViewSize(width: 0, height: 1))
     }
 
     @Test func zeroSizedViewsAnswerZero() {
-        #expect(FlexibleSpacer()._sizeThatFits(.zero) == .zero)
+        #expect(Spacer()._sizeThatFits(.zero) == .zero)
         #expect(Empty()._sizeThatFits(.zero) == .zero)
     }
 

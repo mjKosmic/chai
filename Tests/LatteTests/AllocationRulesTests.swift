@@ -39,7 +39,7 @@ struct AllocationRulesTests {
     @Test func vstackStretchesFlexibleRowsToTheAssignedHeight() {
         let tree = VStack(alignment: .right) {
             Text("ab")
-            FlexibleSpacer()
+            Spacer()
         }
         // Rigid total 1, assigned height 6 → the spacer absorbs the 5-row
         // leftover. The stack still shrink-wraps to width 2.
@@ -149,7 +149,7 @@ struct AllocationRulesTests {
     @Test func flexibleSiblingsTakePriorityOverFill() {
         let tree = HStack {
             Text("A")
-            FlexibleSpacer()
+            Spacer()
             Fill()
             Text("B")
         }
@@ -165,9 +165,9 @@ struct AllocationRulesTests {
 
     @Test func flexibleSpacersShareTheAssignedLeftover() {
         let tree = HStack {
-            FlexibleSpacer()
+            Spacer()
             Text("mid")
-            FlexibleSpacer()
+            Spacer()
         }
         // Rigid 3, leftover 17 → 8 columns per spacer; "mid" at col 8.
         #expect(embed(tree, width: 20, height: 1) == ["        mid"])
@@ -176,9 +176,9 @@ struct AllocationRulesTests {
     @Test func trailingRemainderStaysUnallocated() {
         let tree = HStack {
             Text("A")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
-            FlexibleSpacer()
+            Spacer()
             Text("C")
         }
         var buffer = CellBuffer(width: 10, height: 1)
@@ -217,7 +217,7 @@ struct AllocationRulesTests {
     @Test func frameWithAFlexibleChildStretchesIt() {
         let tree = VStack {
             Text("t")
-            FlexibleSpacer()
+            Spacer()
         }
         .frame(width: 4, height: 5)
         // The frame's fixed height reaches the height-flexible child through

@@ -65,9 +65,10 @@ struct StructuralViewTests {
         }
     }
 
-    /// Resolves a view tree to its plain-text output for comparison.
+    /// Renders a view tree through the allocation engine and returns its
+    /// plain-text lines joined with newlines (trailing spaces stripped).
     private func resolve(_ view: some View) -> String {
-        view._resolveToViewOutput().content.plainText
+        engineText(view)
     }
 
     // MARK: - TupleView
@@ -130,25 +131,25 @@ struct StructuralViewTests {
 
     @Test func tupleViewCollectsOneViewPerChild() {
         let tuple = TupleView(Text("a"), Text("b"))
-        #expect(tuple._childViews().map { $0._resolveToViewOutput().content.plainText } == ["a", "b"])
+        #expect(tuple._childViews().map { engineText($0) } == ["a", "b"])
     }
 
     @Test func tupleViewFlattensStructuralChildren() {
         // A `ForEachView` nested inside a `TupleView` is transparent: the
         // tuple enumerates the loop's elements, not the loop itself.
         let tuple = TupleView(Text("x"), ForEachView([Text("a"), Text("b")]))
-        #expect(tuple._childViews().map { $0._resolveToViewOutput().content.plainText } == ["x", "a", "b"])
+        #expect(tuple._childViews().map { engineText($0) } == ["x", "a", "b"])
     }
 
     // MARK: - View resolution
 
-    @Test func viewOutputResolvesToItself() {
+    @Test func viewOutputRendersItsContent() {
         let output = ViewOutput("leaf")
-        #expect(output._resolveToViewOutput().content.plainText == "leaf")
+        #expect(engineText(output) == "leaf")
     }
 
     @Test func defaultChildViewsReturnsSelf() {
-        #expect(Label(text: "z")._childViews().map { $0._resolveToViewOutput().content.plainText } == ["z"])
+        #expect(Label(text: "z")._childViews().map { engineText($0) } == ["z"])
     }
 
     @Test func resolutionRecursesThroughCustomViews() {
@@ -184,13 +185,13 @@ struct StructuralViewTests {
 
     @Test func forEachViewCollectsOneViewPerElement() {
         let forEach = ForEachView([Text("a"), Text("b")])
-        #expect(forEach._childViews().map { $0._resolveToViewOutput().content.plainText } == ["a", "b"])
+        #expect(forEach._childViews().map { engineText($0) } == ["a", "b"])
     }
 
     // MARK: - Primitives
 
     @Test func textResolvesToItsContent() {
-        #expect(Text("hello")._resolveToViewOutput().content.plainText == "hello")
+        #expect(engineText(Text("hello")) == "hello")
     }
 
     @Test func textPassesStyledContentThrough() {
@@ -198,15 +199,26 @@ struct StructuralViewTests {
         #expect(Text(styled).body.content == styled)
     }
 
-    @Test func horizontalSpacerProducesSpaces() {
-        #expect(Spacer(columns: 3).body.content.plainText == "   ")
-    }
-
-    @Test func verticalSpacerProducesNewlines() {
-        #expect(Spacer(lines: 2).body.content.plainText == "\n\n")
+    @Test func spacersMeasureTheirRequestedSpace() {
+        #expect(Spacer(columns: 3)._sizeThatFits(.unspecified) == ViewSize(width: 3, height: 1))
+        #expect(Spacer(lines: 2)._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 2))
     }
 
     @Test func emptyViewProducesNoContent() {
-        #expect(Empty().body.content.plainText == "")
+        #expect(engineText(Empty()) == "")
+        #expect(Empty()._sizeThatFits(.unspecified) == .zero)
+    }
+
+    @Test func bodylessViewDefaultsToEmptyWithoutRecursing() {
+        // A conformer with neither a body nor engine methods inherits
+        // `body: Empty`; the engine defaults resolve body → Empty, whose own
+        // overrides terminate the chain at 0×0 / no paint. A recursion bug
+        // here would crash the test run.
+        struct Nothing: View {}
+        #expect(Nothing()._sizeThatFits(ProposedSize(width: 4, height: 4)) == .zero)
+
+        var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
+        Nothing()._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 4, height: 1)))
+        #expect(buffer[0, 0].character == "x")
     }
 }

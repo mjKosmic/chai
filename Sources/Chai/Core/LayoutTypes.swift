@@ -59,7 +59,7 @@ public struct ProposedSize: Sendable, Equatable {
     /// construction** — a ``ViewOutput`` is a fully-formed raster and answers
     /// its ideal size regardless (it may legitimately exceed the zero offer:
     /// the answer is never clamped), ``Spacer`` answers its rigid size,
-    /// ``FlexibleSpacer``/``Empty`` answer 0×0, and ``Fill`` answers
+    /// ``Spacer()``/``Empty`` answer 0×0, and ``Fill`` answers
     /// `(0, 0)` because a zero offer is `(proposal.width ?? 0,
     /// proposal.height ?? 0)`. ``Text`` is the one *compressible* view: at a
     /// zero (or negative) width proposal it wraps to its minimum width.

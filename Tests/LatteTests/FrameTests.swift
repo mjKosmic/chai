@@ -304,43 +304,6 @@ struct FrameNestingTests {
     }
 }
 
-// MARK: - Legacy body (eager path)
-
-@Suite("Frame Legacy Body")
-struct FrameLegacyBodyTests {
-
-    @Test func fixedBothEqualsWidthThenHeightComposition() {
-        let framed = Text("ab")
-            .frame(width: 6, height: 2, horizontalAlignment: .center, verticalAlignment: .middle)
-            ._resolveToViewOutput()
-        let composed = ViewOutput("ab")
-            .width(6, align: .center)
-            .height(2, align: .middle)
-        #expect(framed.content.plainText == composed.content.plainText)
-    }
-
-    @Test func fixedWidthOnlyAppliesWidthModifier() {
-        let framed = Text("ab")
-            .frame(width: 6, horizontalAlignment: .right)
-            ._resolveToViewOutput()
-        #expect(framed.content.plainText == "    ab")
-    }
-
-    @Test func fixedHeightOnlyAppliesHeightModifier() {
-        let framed = Text("a\nb")
-            .frame(height: 4, verticalAlignment: .bottom)
-            ._resolveToViewOutput()
-        // `enforceHeight` pads with blank lines of the content's width (1):
-        // " \n \na\nb".
-        #expect(framed.content.plainText == " \n \na\nb")
-    }
-
-    @Test func noFixedDimsResolvesPlain() {
-        let framed = Text("ab").frame()._resolveToViewOutput()
-        #expect(framed.content.plainText == "ab")
-    }
-}
-
 // MARK: - Degenerate sizes
 
 @Suite("Frame Degenerate Sizes")

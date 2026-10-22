@@ -2,11 +2,11 @@
 
 // The A1 wrapping rules (UPGRADE.md "Phase 3 — Stage A") live here, in Chai,
 // because they operate on Chai's ``StyledText`` segment model. Latte has its
-// own eager string-level wrapper (`Sources/Latte/Layout/Wrap.swift`) that
-// works on ANSI-embedded `String`s and resets/re-opens SGR styles across
-// wrapped lines; the dependency direction (Latte imports Chai) forbids
-// reusing it here. The eager path and the engine will be reconciled in
-// phase 3 Stage C when the eager path is retired.
+// own string-level wrapper (`Sources/Latte/Layout/Wrap.swift`) that works on
+// ANSI-embedded `String`s and resets/re-opens SGR styles across wrapped lines;
+// the dependency direction (Latte imports Chai) forbids reusing it here.
+// (The eager path retired in phase-4 P4b: `Wrap.swift` remains a public String
+// utility for `String.wrapped()`, and the engine only uses this file.)
 
 extension StyledText {
     /// Word-wraps this styled text to fit within `width` display columns,
