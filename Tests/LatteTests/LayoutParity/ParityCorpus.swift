@@ -721,8 +721,11 @@ extension ParityCase {
                 Fill()
             },
             width: 8,
-            // All three paths agree on the visible row: the trailing `Fill`
-            // paints nothing, and the text sits at col 0.
+            // All paths agree on the visible row: the trailing `Fill` paints
+            // nothing, and the text sits at col 0. The Fill still grows the
+            // stack's OCCUPIED width (1 → 8) — invisible here, pinned by
+            // `AllocationRulesTests.trailingFillDoesNotShiftTheSibling` and by
+            // the parent-alignment case below.
             expectedRows: ["x"]
         ),
 
@@ -747,6 +750,28 @@ extension ParityCase {
             expectedRows: ["x"],
             // Allocation path: `Fill` claims columns 0–6, "x" at col 7.
             expectedEmbedRows: ["       x"]
+        ),
+
+        // PHASE-4 ALLOCATION DELTA (supplement): the trailing `Fill` does not
+        // move its own sibling, but it does grow the HStack's *occupied* width
+        // (1 → 8), which a parent's alignment math observes. Pinned here so the
+        // consequence is on record, not just the sibling-free row.
+        ParityCase(
+            name: "PHASE-4 DELTA: trailing Fill grows the stack's occupied width",
+            view: VStack(alignment: .right) {
+                HStack {
+                    Text("x")
+                    Fill()
+                }
+                Text("y")
+            },
+            width: 8,
+            // Eager: the HStack resolves to "x" and the stack aligns to its
+            // own 1-column width → both rows flush left.
+            expectedRows: ["x", "y"],
+            // Allocation: the HStack occupies the assigned 8 columns, so the
+            // right-aligned sibling "y" sits at col 7.
+            expectedEmbedRows: ["x", "       y"]
         ),
     ]
 }

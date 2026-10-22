@@ -2,14 +2,14 @@ import Chai
 
 // MARK: - FrameView
 
-/// A view that proposes a fixed (or flexible) frame size to its content and
-/// aligns the content within the assigned rect.
+/// A view that assigns a fixed (or flexible) frame size to its content and
+/// aligns the content within that rect.
 ///
 /// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` is the
-/// acceptance feature of the phase-2 proposal-driven layout engine
-/// (UPGRADE.md, "Phase 2"): it *cannot* be implemented without proposals —
-/// a fixed dimension must be forced down to the child during measurement and
-/// answered to the parent regardless of the child's answer.
+/// phase-2 acceptance feature, re-expressed in phase 4 as an **allocator**
+/// (UPGRADE.md, "Phase 4"): a fixed dimension is an allocation decision the
+/// frame owns and hands down; a flexible dimension passes the parent's
+/// assignment through.
 ///
 /// ## Frame is an allocator
 ///
@@ -135,8 +135,7 @@ extension FrameView {
     /// Fixed dimensions are **allocation data**: the frame owns them verbatim
     /// and allocates the child the same fixed box, so the `width ?? proposal`
     /// reconstruction and proposal echoing of the phase-3 engine are gone.
-    /// Flexible dimensions pass the assigned rect through, floored at the
-    /// child's report (a frame never occupies less than what it must place).
+    /// Flexible dimensions pass the parent's assignment through.
     ///
     /// The child is measured with the frame's own box as its query context —
     /// a fixed height reaches a height-flexible child, matching the phase-3
@@ -148,9 +147,13 @@ extension FrameView {
             height: height ?? rect.size.height
         )
         let childSize = content._sizeThatFits(childProposal)
+        // The frame's occupied rect is its allocation: fixed dimensions are
+        // owned verbatim; flexible axes are the parent's assignment. A child
+        // larger than the frame renders from the alignment offset with the
+        // shortage clamped to 0 and overflows visibly (no clip).
         let occupied = ViewSize(
-            width: width ?? max(rect.size.width, childSize.width),
-            height: height ?? max(rect.size.height, childSize.height)
+            width: width ?? rect.size.width,
+            height: height ?? rect.size.height
         )
         let colShortage = max(0, occupied.width - childSize.width)
         let col = rect.origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
@@ -168,10 +171,10 @@ extension FrameView {
 extension View {
     /// Surround this view with a frame of the given size and alignment.
     ///
-    /// The frame proposes its fixed dimensions to the content and answers
-    /// them to the parent verbatim; flexible dimensions (`nil`) pass the
-    /// parent's offer through and fill it. The content is placed within the
-    /// assigned rect according to the alignment fractions.
+    /// The frame owns its fixed dimensions and allocates them to the content;
+    /// flexible dimensions (`nil`) pass the parent's assignment through. The
+    /// content is placed within the frame's rect according to the alignment
+    /// fractions.
     ///
     /// A frame does **not** clip: content larger than the frame overflows its
     /// bounds, with the terminal buffer as the final backstop. Use

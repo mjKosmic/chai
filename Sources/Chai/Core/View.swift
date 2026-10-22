@@ -182,49 +182,23 @@ public struct Text: View {
 // MARK: - Text engine implementation
 
 extension Text {
-    /// The content to measure and write for a given proposal.
+    /// The content to measure or paint at a given width context.
     ///
-    /// Fit and render both resolve through this single function, so the two
-    /// passes agree by construction — the A0 fit/render value-equality
-    /// contract holds for `Text` without the render pass re-deriving anything.
-    ///
-    /// - `nil` width is ideal: the content is returned unwrapped.
-    /// - A positive width wraps the content to that width
-    ///   (``StyledText/wrappedToWidth(_:)``).
-    /// - A **zero or negative** width is the *minimum offer* (one rule; a
-    ///   negative offer clamps to zero): the content wraps to its narrowest
-    ///   producible width — ``minimumWrapWidth()``. This is the phase-3 A3
-    ///   minimum semantics (``ProposedSize/zero``); it replaces A1's
-    ///   "non-positive → unwrapped" behavior.
-    private func resolvedContent(for proposal: ProposedSize) -> StyledText {
-        guard let width = proposal.width else { return content }
-        if width > 0 { return content.wrappedToWidth(width) }
+    /// `nil` is ideal (unwrapped). A positive width wraps at
+    /// `max(width, minimumWrapWidth())` — the **compression floor** (phase-4
+    /// decision 4): the query and the allocation use this SAME rule, so a
+    /// report's line count always matches what ``_embed(into:at:)`` paints.
+    /// A zero or negative width is the A3 minimum context: the content wraps
+    /// to its narrowest producible width (``minimumWrapWidth()``). Empty
+    /// content stays empty in every case.
+    private func resolvedContent(width: Int?) -> StyledText {
+        guard let width else { return content }
         let minimumWidth = minimumWrapWidth()
-        guard minimumWidth > 0 else { return content }
-        return content.wrappedToWidth(minimumWidth)
-    }
-
-    /// The content to write when embedded in a rect of the given width.
-    ///
-    /// This is the **allocation** rule (phase 4): `Text` wraps at the width it
-    /// was *allocated*, not at a proposal that happened to reach it. Two
-    /// guarantees:
-    ///
-    /// - **Compression floor (phase-4 decision 4):** the wrap width is clamped
-    ///   to the narrowest producible form (``minimumWrapWidth()``), so a
-    ///   wide/CJK character is never split or squeezed into a narrower rect.
-    ///   When the clamp bites, the line overflows the rect *visibly* — the
-    ///   buffer remains the only hard wall.
-    /// - **Degenerate allocations:** a zero (or negative) allocated width
-    ///   yields the same minimum form as a `.zero` query (the A3 minimum
-    ///   semantics); empty content stays empty.
-    private func resolvedContent(allocatedWidth: Int) -> StyledText {
-        let minimumWidth = minimumWrapWidth()
-        if allocatedWidth <= 0 {
+        if width <= 0 {
             guard minimumWidth > 0 else { return content }
             return content.wrappedToWidth(minimumWidth)
         }
-        return content.wrappedToWidth(max(allocatedWidth, minimumWidth))
+        return content.wrappedToWidth(max(width, minimumWidth))
     }
 
     /// The narrowest width at which this content can still be produced: the
@@ -246,26 +220,28 @@ extension Text {
         return max(1, widest)
     }
 
-    /// Proposal-aware measurement (phase-3 A1, extended in A3): the measured
-    /// size is the **resolved** content's `(maxLineWidth, lineCount())` — the
-    /// wrapped result for a positive width, the minimum form for a zero or
-    /// negative width, and the unwrapped ideal for `nil`.
+    /// Proposal-aware measurement: the measured size is the **resolved**
+    /// content's `(maxLineWidth, lineCount())` — the wrapped result for a
+    /// positive width (floored at the minimum producible width), the minimum
+    /// form for a zero or negative width, and the unwrapped ideal for `nil`.
     ///
-    /// Measurement and rendering resolve with the SAME function
-    /// (``resolvedContent(for:)``), so the two passes agree by construction.
+    /// Measurement and allocation resolve with the SAME function
+    /// (``resolvedContent(width:)``), so the report's line count always matches
+    /// the painted rows — including the mixed ASCII/wide case where the
+    /// minimum floor is wider than the offered width.
     public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        let resolved = resolvedContent(for: proposal)
+        let resolved = resolvedContent(width: proposal.width)
         return ViewSize(width: resolved.maxLineWidth, height: resolved.lineCount())
     }
 
     /// Render at the allocated width (phase 4): the content wraps at the
     /// width the container decided, with the compression floor applied (see
-    /// ``resolvedContent(allocatedWidth:)``). The rect's height is a placement
+    /// ``resolvedContent(width:)``). The rect's height is a placement
     /// bound, not a reflow instruction; content taller than the rect overflows
     /// it (the buffer is the backstop).
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         buffer.write(
-            resolvedContent(allocatedWidth: rect.size.width),
+            resolvedContent(width: rect.size.width),
             at: rect.origin.col,
             row: rect.origin.row
         )

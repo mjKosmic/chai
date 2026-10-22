@@ -53,8 +53,9 @@ extension StyledText {
     /// `\n\n` or a trailing `\n` — so a hard `\n` is always honored and the
     /// blank-line semantics match the unwrapped ideal (`lineCount()`).
     ///
-    /// Measurement and rendering must wrap with this SAME function so both
-    /// passes agree by construction (the fit/render value-equality contract).
+    /// Measurement and allocation must resolve with this SAME function so the
+    /// reported line count matches the painted rows — the phase-4 query is a
+    /// pure report the allocator sizes rects from (see UPGRADE.md, "Phase 4").
     func wrappedToWidth(_ width: Int) -> StyledText {
         guard width > 0, !segments.isEmpty else { return self }
 

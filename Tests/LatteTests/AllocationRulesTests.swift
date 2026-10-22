@@ -112,6 +112,13 @@ struct AllocationRulesTests {
             Fill()
         }
         #expect(embed(tree, width: 8, height: 1) == ["x"])
+        // ...but the trailing `Fill` still grows the stack's OCCUPIED width
+        // (1 → 8), which is visible to parent alignment math. Documented in
+        // UPGRADE.md ("Phase 4 — allocation deltas") and pinned by the corpus
+        // case "PHASE-4 DELTA: trailing Fill grows the stack's occupied width".
+        #expect(
+            tree._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
+        )
     }
 
     @Test func multipleFillsSplitTheRemainderEvenly() {
@@ -122,6 +129,36 @@ struct AllocationRulesTests {
         }
         // Unassigned = 9 − 1 = 8 → 4 columns per fill; "z" at col 8.
         #expect(embed(tree, width: 9, height: 1) == ["        z"])
+    }
+
+    @Test func multipleFillsDropTheOddRemainder() {
+        let tree = HStack {
+            Fill()
+            Fill()
+            Text("z")
+        }
+        // Unassigned 9 → Int(9/2) = 4 per fill; the odd column is left
+        // unallocated at the trailing end (the same convention as flexible
+        // shares), so the occupied width is 9, not the assigned 10.
+        #expect(
+            tree._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 9, height: 1)
+        )
+        #expect(embed(tree, width: 10, height: 1) == ["        z"])
+    }
+
+    @Test func flexibleSiblingsTakePriorityOverFill() {
+        let tree = HStack {
+            Text("A")
+            FlexibleSpacer()
+            Fill()
+            Text("B")
+        }
+        // The flexible share absorbs the whole leftover (8), leaving the
+        // `Fill` nothing to claim: order is flex shares first, then Fill.
+        #expect(
+            tree._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
+        )
+        #expect(embed(tree, width: 10, height: 1) == ["A        B"])
     }
 
     // MARK: Flex shares (A2 math, container-internal)
@@ -149,6 +186,15 @@ struct AllocationRulesTests {
         #expect(visibleRows(buffer) == ["A   B   C"])
         #expect(buffer[8, 0].character == "C")
         #expect(buffer[9, 0] == .empty)
+    }
+
+    @Test func narrowFrameAllocatesTheMinimumTextForm() {
+        let tree = Text("ab你").frame(width: 1)
+        // The frame answers width 1, but the `Text`'s report (2 wide, 2 rows)
+        // is its minimum form; the allocation paints exactly those two rows —
+        // no stray blank row from a differently-measured report.
+        #expect(tree._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
+        #expect(embed(tree, width: 2, height: 2) == ["ab", "你"])
     }
 
     // MARK: Frame (fixed dims are allocations)

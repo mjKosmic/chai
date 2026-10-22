@@ -510,7 +510,7 @@ result-builder view layer. Two guardrails follow, effective immediately:
 | 1 | Stack occupancy at width | **Shrink-wrap** — a stack occupies `max` child width; filling an assigned rect is `FlexibleSpacer`/`Fill`/`frame`'s job. Today's effective rule; corpus pins hold. |
 | 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect; stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
 | 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as today's `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
-| 4 | `Text` compression floor | **Adopt** (P1 finding: the wrap kernel already keeps wide characters whole, so at positive allocations the clamp is a no-op today — it makes the rule explicit and covers the degenerate zero-width allocation path, which now uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the clamp guarantees a `Text` is never *allocated* below its narrowest producible width and that its own write never splits a wide character). |
+| 4 | `Text` compression floor | **Adopt** — and it applies to the **query as well as the allocation** (the PR #22 review caught the split): a positive width wraps at `max(width, minimumWrapWidth())`, so a narrow offer containing a wide character reports the minimum form's line count *and* paints it. Without the query-side floor, a report could claim more rows than the allocation painted (e.g. `Text("ab你")` offered 1: wrap-at-1 gives 3 rows, wrap-at-2 gives 2). The zero/negative path uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the floor guarantees a `Text` is never allocated below its narrowest producible width and that its write never splits a wide character. |
 | 5 | SPI break mode | **Clean break** — `_embed(into:at:rect:)` replaces `_render(into:at:size:proposal:)`; no permanent coexistence. The old SPI survives only as a transition artifact across P1–P2 on the phase branch and is deleted in P3; nothing merges with dual render SPIs. |
 
 ### Architecture (spike §2 is the rule-level record; graduated shape)
@@ -582,11 +582,20 @@ there):
 
 - **A leading `Fill` claims the assigned remainder.** `HStack { Fill();
   Text("x") }` at width 8: the stack occupies 8 (was 1) and "x" moves to
-  col 7 (was col 0). A *trailing* `Fill` does not shift its sibling
-  (`HStack { Text("x"); Fill() }` is unchanged). Pinned as
-  `PHASE-4 DELTA: hstack leading Fill shifts its sibling`
-  (`expectedEmbedRows`) plus the trailing case as a normal pin, and as unit
-  tests in `AllocationRulesTests`.
+  col 7 (was col 0). Pinned as `PHASE-4 DELTA: hstack leading Fill shifts its
+  sibling` (`expectedEmbedRows`) and as unit tests in `AllocationRulesTests`.
+- **A trailing `Fill` grows the occupied width too** (1 → 8) even though its
+  own sibling does not move. A parent's alignment math observes it:
+  `VStack(alignment: .right) { HStack { Text("x"); Fill() }; Text("y") }`
+  places "y" at col 7 where the eager path keeps it at col 0. Pinned as
+  `PHASE-4 DELTA: trailing Fill grows the stack's occupied width`
+  (`expectedEmbedRows`) plus the measured-width assertion in
+  `AllocationRulesTests.trailingFillDoesNotShiftTheSibling`. Order of
+  precedence inside an HStack: flexible shares first, then `Fill` splits the
+  remainder evenly (an odd remainder is left unallocated, like flex shares).
+  `Fill` + `FlexibleSpacer` together are pinned by
+  `flexibleSiblingsTakePriorityOverFill`; multiple fills with an odd remainder
+  by `multipleFillsDropTheOddRemainder`.
 - **Consequences, now applied at P3** (old-engine path tests re-pinned to the
   new placement): `FillInStacksTests.fillDisplacesSiblingsInABottomAlignedFrame`
   (rows are now `["   x", "", ""]`) and
@@ -597,9 +606,17 @@ there):
   `ParityEngineTests` (M2) now runs the allocation path — the window's
   delta-aware expectations are `expectedEmbedRows ?? expectedEngineRows ??
   expectedRows`.
-- **Compression floor:** no observable delta for positive allocations (the
-  wrap kernel already keeps wide characters whole). The P1 clamp is the
-  explicit rule plus the degenerate zero-width path; see decision 4.
+- **Compression floor (query-side, fixed after the PR #22 review):** a narrow
+  *positive* width containing a wide character is resolved at
+  `max(width, minimumWrapWidth())` by both the query and the allocation. Before
+  the fix, the query wrapped at the offer while the allocation floored, so
+  `Text("ab你")` offered 1 reported 3 rows but painted 2 (a stray blank row and
+  a silently re-wrapped line). Pinned by
+  `EmbedKernelTests.textQueryAndAllocationAgreeOnNarrowMixedContent` and
+  `AllocationRulesTests.narrowFrameAllocatesTheMinimumTextForm`. This is a
+  visible delta vs phase 3 for narrow mixed-content trees (phase 3 split the
+  ASCII run at the offer); it is the intended behaviour of the floor and is
+  documented here rather than treated as a new negotiation divergence.
 
 ### Divergence list & corpus fate
 

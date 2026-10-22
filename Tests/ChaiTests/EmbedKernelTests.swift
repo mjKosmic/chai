@@ -168,6 +168,22 @@ struct LeafAllocationTests {
         #expect(embedRows(buffer) == ["a", "b", "c"])
     }
 
+    @Test func textQueryAndAllocationAgreeOnNarrowMixedContent() {
+        // Regression (PR #22 review): a positive width below the minimum
+        // producible width used to resolve differently in the query (wrap at
+        // the offer) and the allocation (wrap at the floor), so the report's
+        // line count disagreed with the painted rows. One resolution rule now
+        // serves both: "ab你" needs width 2, so at an offer/rect of 1 it
+        // reports AND paints the 2-column form.
+        let text = Text("ab你")
+        #expect(
+            text._sizeThatFits(ProposedSize(width: 1, height: nil)) == ViewSize(width: 2, height: 2)
+        )
+        var buffer = CellBuffer(width: 3, height: 2)
+        text._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 1, height: 2)))
+        #expect(embedRows(buffer) == ["ab", "你"])
+    }
+
     // MARK: Blank leaves
 
     @Test func blankLeavesPaintNothing() {
