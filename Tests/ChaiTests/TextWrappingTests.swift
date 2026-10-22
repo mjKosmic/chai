@@ -280,13 +280,13 @@ struct TextWrappingIntegrationTests {
         return rows
     }
 
-    /// Render `view` through the engine at `proposal`, returning the visible
-    /// rows. The buffer width is the proposal width (so a wrapped line can
-    /// never be a buffer artifact).
+    /// Embed `view` at its measured rect (the engine's allocation path),
+    /// returning the visible rows. The buffer width is the proposal width (so
+    /// a wrapped line can never be a buffer artifact).
     private func engineRows(_ view: some View, proposal: ProposedSize) -> [String] {
         let size = view._sizeThatFits(proposal)
         var buffer = CellBuffer(width: proposal.width ?? size.width, height: size.height)
-        view._render(into: &buffer, at: .zero, size: size, proposal: proposal)
+        view._embed(into: &buffer, at: ViewRect(size: size))
         return visibleRows(buffer)
     }
 
@@ -366,13 +366,13 @@ struct TextWrappingIntegrationTests {
     }
 
     @Test func renderAtZeroWidthWritesTheMinimumForm() {
-        // A3 spec delta: a zero-width proposal renders the SAME minimum form
-        // the fit pass measured — one 1-column row per character, at col 0.
+        // A3 spec delta: a zero-width allocation renders the SAME minimum form
+        // the query measured — one 1-column row per character, at col 0.
         let proposal = ProposedSize(width: 0, height: nil)
         let size = Text("abcdefgh")._sizeThatFits(proposal)
         #expect(size == ViewSize(width: 1, height: 8))
         var buffer = CellBuffer(width: 8, height: 8)
-        Text("abcdefgh")._render(into: &buffer, at: .zero, size: size, proposal: proposal)
+        Text("abcdefgh")._embed(into: &buffer, at: ViewRect(size: size))
         #expect(visibleRows(buffer) == ["a", "b", "c", "d", "e", "f", "g", "h"])
     }
 

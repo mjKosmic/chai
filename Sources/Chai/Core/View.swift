@@ -32,27 +32,29 @@ public protocol View: Sendable {
     /// ``ViewOutput`` leaf (or another view with its own engine overrides)
     /// measures correctly without any extra code.
     ///
+    /// **Phase-4 role: a pure query.** The answer is a *report* with no
+    /// authority — containers use it for allocation decisions (and buffer
+    /// sizing / clip reservation) but may overrule it. Allocation happens in
+    /// ``_embed(into:at:)``; the query never binds. See `UPGRADE.md`, "Phase 4
+    /// — Top-down allocation engine".
+    ///
     /// - Parameter proposal: The size a parent is offering; see
     ///   ``ProposedSize`` for the meaning of `nil` dimensions.
     /// - Returns: The size this view would take under the proposal.
     func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
 
-    /// Render this view into a cell buffer.
+    /// Embed this view into the rect its parent assigned.
     ///
-    /// The default resolves through ``body``. `size` is the concrete size
-    /// assigned by the parent after measurement; the view places its content
-    /// at `origin` honoring that assigned size. `proposal` is the proposal
-    /// this view was measured with in the fit pass — containers must forward
-    /// it unchanged so proposal-consuming children measure and render
-    /// identically (the fit/render value-equality contract; see
-    /// ARCHITECTURE.md "Fit/render consistency").
+    /// This is the **allocation** entrance: `rect` is what the parent decided,
+    /// not an offer to negotiate. The default resolves through ``body``; leaf
+    /// views rasterize at the rect's origin, and containers override this with
+    /// their allocation rules (children report, parents decide — see
+    /// `UPGRADE.md`, "Phase 4 — Top-down allocation engine").
     ///
     /// - Parameters:
     ///   - buffer: The buffer to draw into.
-    ///   - origin: The top-left position to draw at.
-    ///   - size: The size assigned to this view by its parent.
-    ///   - proposal: The proposal used to measure this view in the fit pass.
-    func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize)
+    ///   - rect: The rect assigned by the parent (origin + size).
+    func _embed(into buffer: inout CellBuffer, at rect: ViewRect)
 
     /// The views a container should treat as this view's children.
     ///
@@ -97,16 +99,15 @@ extension ViewOutput: View {
         ViewSize(width: content.maxLineWidth, height: content.lineCount())
     }
 
-    /// Rasterize the output's content into the buffer.
+    /// Rasterize the content at the assigned rect's origin.
     ///
-    /// The write follows the buffer's wrap-vs-truncate policy
-    /// (``CellBuffer/init(width:height:fill:wrapping:)``): inline-mode buffers
-    /// truncate at the right edge, alt-screen buffers wrap. The mode decision
-    /// stays renderer-level while the leaf SPI stays free of mode flags.
-    ///
-    /// A `ViewOutput` is a fully-formed raster: the proposal is ignored.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        buffer.write(content, at: origin.col, row: origin.row)
+    /// A `ViewOutput` is a fully-formed raster: it renders at its intrinsic
+    /// size anchored top-left in the rect (leaves do not stretch — the phase-4
+    /// decision), and the rect's size is a bound for the parent's placement,
+    /// not a reflow instruction. The buffer's write policy keeps its existing
+    /// truncate-vs-wrap behavior at the buffer edge.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        buffer.write(content, at: rect.origin.col, row: rect.origin.row)
     }
 }
 
@@ -131,10 +132,13 @@ extension View {
         body._sizeThatFits(proposal)
     }
 
-    /// The default engine implementation resolves through ``body``,
-    /// forwarding the proposal along.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        body._render(into: &buffer, at: origin, size: size, proposal: proposal)
+    /// The default allocation entrance resolves through ``body``.
+    ///
+    /// A view whose `body` is a ``ViewOutput`` therefore embeds correctly with
+    /// no engine code — the simple path (`body: ViewOutput` + strings) stays
+    /// complete and supported (see UPGRADE.md, "Simple-path contract").
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        body._embed(into: &buffer, at: rect)
     }
 
     /// The default treats this view as its own single child.
@@ -178,26 +182,23 @@ public struct Text: View {
 // MARK: - Text engine implementation
 
 extension Text {
-    /// The content to measure and write for a given proposal.
+    /// The content to measure or paint at a given width context.
     ///
-    /// Fit and render both resolve through this single function, so the two
-    /// passes agree by construction — the A0 fit/render value-equality
-    /// contract holds for `Text` without the render pass re-deriving anything.
-    ///
-    /// - `nil` width is ideal: the content is returned unwrapped.
-    /// - A positive width wraps the content to that width
-    ///   (``StyledText/wrappedToWidth(_:)``).
-    /// - A **zero or negative** width is the *minimum offer* (one rule; a
-    ///   negative offer clamps to zero): the content wraps to its narrowest
-    ///   producible width — ``minimumWrapWidth()``. This is the phase-3 A3
-    ///   minimum semantics (``ProposedSize/zero``); it replaces A1's
-    ///   "non-positive → unwrapped" behavior.
-    private func resolvedContent(for proposal: ProposedSize) -> StyledText {
-        guard let width = proposal.width else { return content }
-        if width > 0 { return content.wrappedToWidth(width) }
+    /// `nil` is ideal (unwrapped). A positive width wraps at
+    /// `max(width, minimumWrapWidth())` — the **compression floor** (phase-4
+    /// decision 4): the query and the allocation use this SAME rule, so a
+    /// report's line count always matches what ``_embed(into:at:)`` paints.
+    /// A zero or negative width is the A3 minimum context: the content wraps
+    /// to its narrowest producible width (``minimumWrapWidth()``). Empty
+    /// content stays empty in every case.
+    private func resolvedContent(width: Int?) -> StyledText {
+        guard let width else { return content }
         let minimumWidth = minimumWrapWidth()
-        guard minimumWidth > 0 else { return content }
-        return content.wrappedToWidth(minimumWidth)
+        if width <= 0 {
+            guard minimumWidth > 0 else { return content }
+            return content.wrappedToWidth(minimumWidth)
+        }
+        return content.wrappedToWidth(max(width, minimumWidth))
     }
 
     /// The narrowest width at which this content can still be produced: the
@@ -219,30 +220,31 @@ extension Text {
         return max(1, widest)
     }
 
-    /// Proposal-aware measurement (phase-3 A1, extended in A3): the measured
-    /// size is the **resolved** content's `(maxLineWidth, lineCount())` — the
-    /// wrapped result for a positive width, the minimum form for a zero or
-    /// negative width, and the unwrapped ideal for `nil`.
+    /// Proposal-aware measurement: the measured size is the **resolved**
+    /// content's `(maxLineWidth, lineCount())` — the wrapped result for a
+    /// positive width (floored at the minimum producible width), the minimum
+    /// form for a zero or negative width, and the unwrapped ideal for `nil`.
     ///
-    /// Measurement and rendering resolve with the SAME function
-    /// (``resolvedContent(for:)``), so the two passes agree by construction.
+    /// Measurement and allocation resolve with the SAME function
+    /// (``resolvedContent(width:)``), so the report's line count always matches
+    /// the painted rows — including the mixed ASCII/wide case where the
+    /// minimum floor is wider than the offered width.
     public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        let resolved = resolvedContent(for: proposal)
+        let resolved = resolvedContent(width: proposal.width)
         return ViewSize(width: resolved.maxLineWidth, height: resolved.lineCount())
     }
 
-    /// Proposal-aware rendering (phase-3 A1, extended in A3): writes the
-    /// **resolved** content — the wrapped form for a positive width, the
-    /// minimum form for a zero or negative width, the unwrapped content for
-    /// `nil`. The write follows the buffer's wrap-vs-truncate policy at the
-    /// right edge, so a degenerate line wider than the resolved width (e.g. a
-    /// single CJK character) is clipped by the buffer.
-    ///
-    /// The resolved content is computed exactly once per pass and never
-    /// cached: the fit pass measured the same value, so the render is
-    /// consistent by construction (see ``_sizeThatFits(_:)``).
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        buffer.write(resolvedContent(for: proposal), at: origin.col, row: origin.row)
+    /// Render at the allocated width (phase 4): the content wraps at the
+    /// width the container decided, with the compression floor applied (see
+    /// ``resolvedContent(width:)``). The rect's height is a placement
+    /// bound, not a reflow instruction; content taller than the rect overflows
+    /// it (the buffer is the backstop).
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        buffer.write(
+            resolvedContent(width: rect.size.width),
+            at: rect.origin.col,
+            row: rect.origin.row
+        )
     }
 }
 
@@ -357,8 +359,9 @@ extension FlexibleSpacer {
         .zero
     }
 
-    /// Rendering a spacer is a no-op: blank cells are the buffer default.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+    /// A flexible spacer's allocated share is claimed by painting nothing:
+    /// the container decides the share, and the cells are already blank.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         // Blank cells are the buffer's default fill; nothing to draw.
     }
 
@@ -410,9 +413,12 @@ extension Fill {
         ViewSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
     }
 
-    /// Filling is invisible: the cells it claims are the buffer's blank
-    /// default, so there is nothing to draw.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+    /// `Fill` claims exactly the rect it is allocated: the container's
+    /// decision defines it, and the claim is a no-op paint. As a *consumer*,
+    /// `Fill` has no intrinsic size — its report answers the query context,
+    /// and containers allocate it the rect they decide on (see the HStack
+    /// remainder rule in `Stacks.swift`).
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         // Blank cells are the buffer's default fill; nothing to draw.
     }
 }
@@ -459,9 +465,9 @@ extension Spacer {
         return .zero
     }
 
-    /// Rendering a spacer is a no-op: blank cells are the buffer default.
-    /// The proposal is ignored.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
+    /// A spacer claims its allocated rect by painting nothing: the cells are
+    /// already blank, so the rect is occupied without a write.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         // Blank cells are the buffer's default fill; nothing to draw.
     }
 }

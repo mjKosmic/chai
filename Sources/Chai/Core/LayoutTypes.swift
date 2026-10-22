@@ -12,7 +12,7 @@
 /// would destroy information the parent needs (a scroll viewport must know
 /// its content extends past the visible area even though the visible area
 /// is all it can show). Enforcement happens downstream — the parent's
-/// placement decision (`size:` in ``View/_render(into:at:size:proposal:)``)
+/// placement decision (the rect in ``View/_embed(into:at:)``)
 /// and, finally, the ``CellBuffer`` bounds. See ARCHITECTURE.md
 /// "An offer, not a box".
 ///
@@ -136,6 +136,35 @@ public struct LayoutFlexibility: Sendable, Equatable {
 
     /// Rigid on both axes — the view absorbs no leftover space.
     public static let rigid = LayoutFlexibility(width: nil, height: nil)
+}
+
+/// A rect within a ``CellBuffer``: an origin plus a size.
+///
+/// This is the phase-4 **assignment** — the value a container hands a child
+/// in ``View/_embed(into:at:)``. It is a bound, unlike ``ProposedSize``: the
+/// child renders inside the rect it was given (and may overflow it visually;
+/// the buffer remains the only hard wall). See `UPGRADE.md`, "Phase 4 —
+/// Top-down allocation engine".
+public struct ViewRect: Sendable, Equatable {
+
+    /// The top-left corner of the rect.
+    public var origin: ViewOrigin
+
+    /// The rect's size in display columns and rows.
+    public var size: ViewSize
+
+    /// Create a rect.
+    ///
+    /// - Parameters:
+    ///   - origin: The top-left corner.
+    ///   - size: The size in display columns and rows.
+    public init(origin: ViewOrigin = .zero, size: ViewSize) {
+        self.origin = origin
+        self.size = size
+    }
+
+    /// A zero-origin, zero-size rect.
+    public static let zero = ViewRect(origin: .zero, size: .zero)
 }
 
 /// A position within a ``CellBuffer``, in display columns and rows.

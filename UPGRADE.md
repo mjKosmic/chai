@@ -7,9 +7,12 @@ declarative approach built on Swift `@resultBuilder`.
 **Phase status:** phase 1 (declarative view tree) merged via PR #19.
 Phase 2 (proposal-driven layout engine) **has landed** on
 `declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
-this docs milestone). **Phase 3 is in progress** on
-`declarative-phase-3` — Stage A plan below; the full seed and staging are
-in "Deferred to phase 3".
+this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
+Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
+allocation engine) is in progress** — P0–P3 landed (plan, kernel +
+side-by-side corpus, renderer flip/clean break); P4/PB/PD remain. A design
+spike validated the direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
+corpus cases).
 
 ---
 
@@ -303,7 +306,7 @@ and proposes that fixed size downward.
 
 ---
 
-## Phase 3 — Stage A: first proposal consumers (in progress, branch `declarative-phase-3`)
+## Phase 3 — Stage A: first proposal consumers (Stage A landed via PR #21; Stages B/C re-scoped onto phase 4)
 
 **Scope (decided):** the proposal-carrying `_render` SPI fix, word-aware
 wrapping `Text`, fill/flex views + proportional `Spacer` variants, and
@@ -458,7 +461,247 @@ load-bearing:
 Dynamic alt-screen control is a runtime concern, not a layout one — scope
 it explicitly at kickoff or park it.
 
-Also resolved by A0: carry the proposal into `_render`. `FrameView._render` previously received only the assigned size, never the proposal, so a flexible-axis frame proposed *ideal* to its child on re-measure — observationally identical while children ignored proposals, but a proposal-responsive child (the phase-3 wrapping `Text`) inside a flexible-axis frame would have measured differently between the fit pass (which proposed the offer) and the render pass. A0 landed `_render(into:at:size:proposal:)` and `FrameView` now reconstructs its fit proposal (`width ?? proposal.width` / `height ?? proposal.height`). The value-level gap at the renderer's root is also closed: `flush()` fits with the terminal width and now passes the *same proposal value* to the root render. The parity harness blind spot — `engineBuffer` renders at the measured size with the same proposal, so it never exercised `assigned ≠ proposed` — is closed by the test-local `ProposalEchoView`, which pins the renderer-level (`W:20` at a 20-column terminal for a stack measuring 12) and frame-closure (`W:8` on a flexible-axis frame at an 8-column proposal) cases.
+Also resolved by A0: carry the proposal into `_render`. `FrameView._render` previously received only the assigned size, never the proposal, so a flexible-axis frame proposed *ideal* to its child on re-measure — observationally identical while children ignored proposals, but a proposal-responsive child (the phase-3 wrapping `Text`) inside a flexible-axis frame would have measured differently between the fit pass (which proposed the offer) and the render pass. A0 landed `_render(into:at:size:proposal:)` and `FrameView` now reconstructs its fit proposal (`width ?? proposal.width` / `height ?? proposal.height`). The value-level gap at the renderer's root is also closed: `flush()` fits with the terminal width and now passes the *same proposal value* to the root render. The parity harness blind spot — `engineBuffer` renders at the measured size with the same proposal, so it never exercised `assigned ≠ proposed` — is closed by the test-local `ProposalEchoView`, which pins the renderer-level (`W:20` at a 20-column terminal for a stack measuring 12) and frame-closure (`W:8` on a flexible-axis frame at an 8-column proposal) cases. *(Retired in phase 4 P3: `ProposalEchoView` and these echo expectations were deleted with the A0 contract; `RectEchoView` pins the allocation analogue — the child observes its allocated rect.)*
+
+---
+
+## Phase 4 — Top-down allocation engine (in progress — P0–P3 landed)
+
+**Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
+re-scoped onto this phase's kernel (P4/PB below). **P0 (plan), P1/P2 (kernel +
+side-by-side) and P3 (renderer flip, clean break) have landed.** Evidence of
+record: `TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
+reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
+semantic probes byte-identical — the prediction this plan was built on). The
+spike suite was retired in P1 when its rules graduated into production
+`_embed` implementations; its five probes are now assertions in
+`Tests/LatteTests/AllocationRulesTests.swift`.
+
+**Scope (decided):** replace **measurement-as-authority** with
+**allocation authority** — *children report; parents decide.* In scope:
+the `_embed` SPI + allocator kernel (the spike's rules graduated into
+per-conformer implementations), the renderer flip, Stages B/C on the new
+kernel, and the docs rewrite. Not in scope: reconciling the allowed
+divergences beyond their Stage-C self-retirement, dynamic alt-screen
+control (a runtime concern — park it or scope it separately), `AnyView`
+identity work beyond four-method forwarding.
+
+**Positioning (decided):** Chai is a **faithful TEA (Elm / Bubble Tea)
+runtime in Swift** — model/update/messages, commands, subscriptions — with
+the view function expressed through Swift's declarative result builders.
+The runtime is the framework's identity; the layout engine serves the
+result-builder view layer. Two guardrails follow, effective immediately:
+
+- **Simple-path contract (tested, not promised):** a complete app can be
+  built with `body: ViewOutput` + strings + Latte helpers — zero engine
+  concepts. A standing contract suite (an example-shaped app test)
+  **lands in P1** and is a phase gate thereafter: nothing may regress the
+  simple path.
+- **Engine feature freeze (process):** new engine features need use
+  cases, not SwiftUI symmetry. Phase 4 itself is needs-driven — it
+  *deletes* contract classes the history paid rent on (A0's fit/render
+  value-equality, `FrameView`-the-generator, the `.zero` negotiation
+  paragraph) and adds no SwiftUI surface.
+
+### Pinned decisions (owner-settled at P0)
+
+| # | Decision | Settled |
+|---|---|---|
+| 1 | Stack occupancy at width | **Shrink-wrap** — a stack occupies `max` child width; filling an assigned rect is `FlexibleSpacer`/`Fill`/`frame`'s job. Today's effective rule; corpus pins hold. |
+| 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect; stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
+| 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as today's `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
+| 4 | `Text` compression floor | **Adopt** — and it applies to the **query as well as the allocation** (the PR #22 review caught the split): a positive width wraps at `max(width, minimumWrapWidth())`, so a narrow offer containing a wide character reports the minimum form's line count *and* paints it. Without the query-side floor, a report could claim more rows than the allocation painted (e.g. `Text("ab你")` offered 1: wrap-at-1 gives 3 rows, wrap-at-2 gives 2). The zero/negative path uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the floor guarantees a `Text` is never allocated below its narrowest producible width and that its write never splits a wide character. |
+| 5 | SPI break mode | **Clean break** — `_embed(into:at:rect:)` replaces `_render(into:at:size:proposal:)`; no permanent coexistence. The old SPI survives only as a transition artifact across P1–P2 on the phase branch and is deleted in P3; nothing merges with dual render SPIs. |
+
+### Architecture (spike §2 is the rule-level record; graduated shape)
+
+**New engine SPI (clean break landed at P3, per decision 5):**
+
+```swift
+func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize        // PURE QUERY (role change; signature unchanged)
+func _flexibility() -> LayoutFlexibility                         // PURE REPORT (unchanged)
+func _embed(into buffer: inout CellBuffer, at rect: ViewRect)    // replaces _render(into:at:size:proposal:) — deleted
+func _childViews() -> [any View]                                // unchanged (transparency)
+```
+
+- `ViewRect(origin:size:)` joins `LayoutTypes` (the spike's `SpikeRect`,
+  graduated). The `size:`/`proposal:` duality is gone: **the assignment is
+  the allocated rect.** No proposal is carried between passes; there is no
+  fit value to hold equal. `ProposalEchoView` (both test targets) and the
+  A0 echo tests were retired at P3; the test-local `RectEchoView` replaces
+  them, pinning that a child observes its *allocated* rect.
+- Defaults keep body-resolving conformers working: a `body: ViewOutput`
+  model is a leaf raster and needs **zero changes** — that is the
+  simple-path contract, and the spike ran entirely over such defaults.
+- **Queries are honest, never binding:** a `ViewSize` answer still leaks
+  overflow signals (e.g. `ViewOutput`'s raster width) — a container may
+  overrule them (`Fill`-by-type, clip reservation). "An offer, not a box"
+  becomes "a report, not a bound; the rect is the box."
+- **Authority rules** (spike §2, verbatim-grade): `VStack` assigns row
+  rects — cross axis queried at the assigned width, rows never
+  compressed; leftover height via `_flexibility` shares (same
+  normalized-share/truncation-remainder math, byte-equal per the probes).
+  `HStack` measures columns at **ideal width** (the
+  `hstackNeverProposesWidthSoTextCannotWrapInsideIt` pin becomes the
+  allocator rule "columns measure at ideal width"), flexible shares
+  first, then `Fill`-by-type absorbs the remainder — a case today's
+  engine cannot express (`Fill` under an `HStack`, spike probe 4).
+  `FrameView`: fixed dims are allocations (data), flexible dims pass the
+  rect through floored by the child query. `ClipView` reserves by the
+  same rules, then masks. `Text` wraps at its **allocated** width, with
+  the compression floor (decision 4).
+- **Renderer (landed at P3):** `flush()` keeps its two-pass *shape* — but
+  both passes changed role: a pure query pass (`_sizeThatFits`, read-only —
+  buffer height, and the inline-vs-terminal height context) then one
+  allocation walk (`_embed(into:at:)` at the root rect). Buffer policy, suffix
+  clamp, and the diff/paint machinery are untouched below the buffer.
+
+### Milestones (each a PR-sized slice, TDD, zero warnings including test targets)
+
+| # | Deliverable | Exit criteria |
+|---|---|---|
+| P1 | **Allocation kernel + SPI** — `ViewRect`; `_embed` on all conformers (spike rules ported; per-conformer dispatch); `Text` compression floor; **simple-path contract suite**; corpus additions (the two `Fill`-in-`HStack` cases) | corpus green through the new `_embed` path with the live engine untouched (side-by-side harness); zero warnings — ✅ landed |
+| P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (every case without a documented allocation delta); no other pin changes — ✅ landed (window closed at P3; the suite folded into `ParityEngineTests`) |
+| P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green** (the phase's proof point, the M3 precedent); old SPI fully gone — ✅ landed |
+| P4 | **Stage C on the new kernel** — `ModifiedContent`-style wrappers (allocate inset rect, embed child), eager-path retirement (`_resolveToViewOutput`, eager frame/wrap, divergence collapse #4–#10), `Spacer` naming unification, `ViewOutput.frame` retirement, HStack-remaining-width candidate (use-case-gated; now a one-rule change) | wrapper tests; divergence list collapses as predicted; **engine `Spacer` semantics from entry #1 preserved** (exactly N blank rows, never the eager doubling quirk) |
+| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`) | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) |
+| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
+
+Ordering: P1 → P2 → P3 are strictly sequential (P2's coexistence is
+transition-only; P3 deletes the old SPI — decision 5). PB may land any
+time after P1 (it forwards, it does not allocate). P4 requires P3 —
+**do not build Stage C on the old SPI**; that was the trap the spike was
+started in time to avoid. PD closes the phase.
+
+### Pickup notes for the remaining milestones
+
+The plan above is self-contained for *what* remains; these are the concrete
+entry points for a cold start.
+
+**P4 (Stage C) — working inventory.**
+
+- **Retire the eager path:** `View._resolveToViewOutput()`
+  (`Sources/Chai/Core/View.swift`), the `ViewOutput` eager modifiers
+  (`Sources/Latte/Extensions/ViewOutput+Layout.swift`:
+  `.bordered/.padded/.beside/.above/.width/.height`), the eager string wrapper
+  (`Sources/Latte/Layout/Wrap.swift`, see the A1 "Wrapping-wrapper overlap"
+  note above), the legacy `body` implementations on
+  `FrameView`/`ClipView`/`VStack`/`HStack`/structural views, and the
+  `ViewOutput.frame` eager overload.
+- **Rebuild modifiers as wrappers:** a `ModifiedContent`-style wrapper's
+  `_embed` allocates an inset rect (borders/padding are rect insets) and
+  embeds its child; alignment and composition stay container rules.
+- **Corpus/tests:** the eager leg is `eagerBuffer` + `ParitySpecTests`
+  (`eagerMatchesPinnedSpec`) and the divergences' `expectedRows`/
+  `isKnownDivergent` fields. #4–#10 self-retire with the eager path; #1–#3
+  remain engine semantics. **Preserve entry #1's engine `Spacer` semantics**
+  (exactly N blank rows, never the eager doubling quirk).
+- **Source-breaking seed:** the `Spacer` unification shape, the
+  `ViewOutput.frame` overload trap, and the HStack-remaining-width rationale
+  are detailed in "Deferred to phase 3" above — that seed list is still the
+  detailed spec; the phase-4 rules here are what is in force. The
+  HStack-remaining-width change is now a one-rule change (the column query
+  context) plus corpus growth, and remains use-case-gated by the feature
+  freeze.
+
+**PB (`AnyView`).**
+
+- `ViewBuilder.buildArray` currently requires one homogeneous `V`
+  (`Sources/Chai/Core/ViewBuilder.swift`).
+- `AnyView` must forward **all four** SPI methods: `_sizeThatFits`, `_embed`,
+  `_childViews`, `_flexibility`. `_flexibility` is the silent failure
+  (PR #21 review): a non-forwarding wrapper is rigid, so flexible children
+  inside it stop absorbing leftover. Test that explicitly.
+
+**PD (docs).**
+
+- ARCHITECTURE.md: rewrite the three proposal-semantics subsections around
+  allocation (the phase-4 banner currently marks them historical), preserve
+  the buffer-as-only-hard-wall and overflow semantics, and drop the
+  `engineBuffer`/`ProposalEchoView` references in them.
+- AGENTS.md and CLAUDE.md are synced on pitfall #2 today; keep them in
+  lockstep when editing either.
+- UPGRADE.md: flip the phase-4 status to landed when P4/PB/PD close.
+- **Known nuance to document** (PR #22 review, remaining coverage gap): in an
+  HStack, a custom child that both reports height-flexibility and paints
+  observes the allocation-time height context (`rect.size.height`) rather than
+  the top-level query context (`nil`). Built-ins are unaffected (spacers and
+  `Fill` paint nothing); the allocation-time context is the accurate one.
+
+**Baseline at P3 + review:** `swift build --build-tests` zero warnings (known
+SpicesTests `viewAs` deprecations only); `swift test` **1283 tests / 109
+suites**. Gates: zero warnings includes test targets; corpus additions must
+carry explicit expectations (`expectedEmbedRows` for allocation-only deltas).
+
+### Allocation deltas (P1 findings, on record)
+
+The allocation path reproduces every corpus pin except one documented
+delta — the `Fill`-under-`HStack` rule that the phase-3 engine cannot
+express (it never offers a width to HStack children, so `Fill` reports 0
+there):
+
+- **A leading `Fill` claims the assigned remainder.** `HStack { Fill();
+  Text("x") }` at width 8: the stack occupies 8 (was 1) and "x" moves to
+  col 7 (was col 0). Pinned as `PHASE-4 DELTA: hstack leading Fill shifts its
+  sibling` (`expectedEmbedRows`) and as unit tests in `AllocationRulesTests`.
+- **A trailing `Fill` grows the occupied width too** (1 → 8) even though its
+  own sibling does not move. A parent's alignment math observes it:
+  `VStack(alignment: .right) { HStack { Text("x"); Fill() }; Text("y") }`
+  places "y" at col 7 where the eager path keeps it at col 0. Pinned as
+  `PHASE-4 DELTA: trailing Fill grows the stack's occupied width`
+  (`expectedEmbedRows`) plus the measured-width assertion in
+  `AllocationRulesTests.trailingFillDoesNotShiftTheSibling`. Order of
+  precedence inside an HStack: flexible shares first, then `Fill` splits the
+  remainder evenly (an odd remainder is left unallocated, like flex shares).
+  `Fill` + `FlexibleSpacer` together are pinned by
+  `flexibleSiblingsTakePriorityOverFill`; multiple fills with an odd remainder
+  by `multipleFillsDropTheOddRemainder`.
+- **Consequences, now applied at P3** (old-engine path tests re-pinned to the
+  new placement): `FillInStacksTests.fillDisplacesSiblingsInABottomAlignedFrame`
+  (rows are now `["   x", "", ""]`) and
+  `RendererEnginePathTests.fillClaimsOfferedHeightThroughEngine` ("x" is now
+  at col 3 inside the 4-wide frame; its assertion is substring-based and
+  unchanged). `hstackChildClaimsTheOfferedHeight` is unaffected (it queries at
+  a `nil` width). A second, pixel-identical consequence: the phase-3
+  `ParityEngineTests` (M2) now runs the allocation path — the window's
+  delta-aware expectations are `expectedEmbedRows ?? expectedEngineRows ??
+  expectedRows`.
+- **Compression floor (query-side, fixed after the PR #22 review):** a narrow
+  *positive* width containing a wide character is resolved at
+  `max(width, minimumWrapWidth())` by both the query and the allocation. Before
+  the fix, the query wrapped at the offer while the allocation floored, so
+  `Text("ab你")` offered 1 reported 3 rows but painted 2 (a stray blank row and
+  a silently re-wrapped line). Pinned by
+  `EmbedKernelTests.textQueryAndAllocationAgreeOnNarrowMixedContent` and
+  `AllocationRulesTests.narrowFrameAllocatesTheMinimumTextForm`. This is a
+  visible delta vs phase 3 for narrow mixed-content trees (phase 3 split the
+  ASCII run at the offer); it is the intended behaviour of the floor and is
+  documented here rather than treated as a new negotiation divergence.
+
+### Divergence list & corpus fate
+
+- The list does **not** shrink automatically — the walker reproduced
+  today's semantics deliberately. Entries #4–#10 self-retire at P4 with
+  the eager path (the engine-vs-eager *comparison itself* retires with
+  it); #1–#3 remain engine semantics.
+- The `Fill`-in-`HStack` rule is an **allocation delta**, not an
+  eager-vs-engine divergence: eager and the (now-deleted) phase-3 engine
+  agreed on those rows; the corpus carries the delta in `expectedEmbedRows`
+  (documented above).
+
+### Risks & mitigations
+
+- **Custom conformers (Spices users)** rely on query-level semantics —
+  the spike showed them stable at the query level; P2/P3 held that.
+- **Not-corpus-settleable territory** (painter order under clip, dynamic
+  resize, alt-screen/`println` interplay) — corpus growth work, not
+  blockers; treat exactly as the phase-2 movers did.
+- **`_sizeThatFits` re-documentation** ("offer" → "report") is real docs
+  work — scheduled in PD, not hand-waved.
+
+Estimated smaller than phase 2: no builders/tree work, no eager-parity
+dilemma — the corpus already carries the divergences and the spike
+matched the engine on all 38.
 
 ---
 

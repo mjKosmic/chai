@@ -2,29 +2,28 @@ import Chai
 
 // MARK: - FrameView
 
-/// A view that proposes a fixed (or flexible) frame size to its content and
-/// aligns the content within the assigned rect.
+/// A view that assigns a fixed (or flexible) frame size to its content and
+/// aligns the content within that rect.
 ///
 /// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` is the
-/// acceptance feature of the phase-2 proposal-driven layout engine
-/// (UPGRADE.md, "Phase 2"): it *cannot* be implemented without proposals —
-/// a fixed dimension must be forced down to the child during measurement and
-/// answered to the parent regardless of the child's answer.
+/// phase-2 acceptance feature, re-expressed in phase 4 as an **allocator**
+/// (UPGRADE.md, "Phase 4"): a fixed dimension is an allocation decision the
+/// frame owns and hands down; a flexible dimension passes the parent's
+/// assignment through.
 ///
-/// ## Frame is a proposal generator
+/// ## Frame is an allocator
 ///
-/// - Fixed dimensions (non-`nil` `width`/`height`) are proposed to the child
-///   and answered to the parent verbatim: `frame(width: 40)` reports 40
-///   columns wide no matter what the child measures.
-/// - Flexible dimensions (`nil`, the default) pass the parent's offer through
-///   to the child and **fill** a non-`nil` offer — the frame takes all the
-///   space the parent is offering — falling back to the child's ideal size
-///   when the offer is `nil`. This "fill available space" semantics is what
-///   lets a root view center itself in the terminal: the renderer proposes
-///   the terminal size, the frame answers it, and the alignment fraction
-///   places the content inside it.
-/// - Alignment fractions place the child within the assigned rect using the
-///   same `Int(Double(shortage) * fraction)` formula as the stacks
+/// - Fixed dimensions (non-`nil` `width`/`height`) are **allocation data**: the
+///   frame owns them and allocates the child that fixed box — `frame(width:
+///   40)` is 40 columns wide no matter what the child measures.
+/// - Flexible dimensions (`nil`, the default) pass the assigned rect through
+///   to the child and keep it — the frame fills the space its parent assigned —
+///   falling back to the child's report when the assignment is degenerate.
+///   This "fill available space" semantics is what lets a root view center
+///   itself in the terminal: the renderer assigns the terminal width, the
+///   frame keeps it, and the alignment fraction places the content inside it.
+/// - Alignment fractions place the child within the frame's occupied rect
+///   using the same `Int(Double(shortage) * fraction)` formula as the stacks
 ///   (``VStack``/``HStack``), with the same `max(0, ...)` guard.
 ///
 /// ## Overflow is not clipped (pinned decision)
@@ -33,23 +32,12 @@ import Chai
 /// clip. A child whose truthful answer exceeds the frame's fixed size
 /// overflows the frame's bounds (SwiftUI-consistent), with the terminal
 /// buffer as the final backstop; ``View/clipped()`` is the opt-in that masks
-/// that overflow. Shrinking content to fit is the phase-3 wrapping/flex story —
-/// a frame is placement, not shrinking.
+/// that overflow. Shrinking content to fit is the wrapping/flex story — a
+/// frame is placement, not shrinking.
 ///
-/// ## Fit proposal reconstruction (A0)
-///
-/// ``View/_render(into:at:size:proposal:)`` receives the proposal the fit
-/// pass used, so a flexible axis reconstructs the offer exactly: the child is
-/// re-measured and rendered with
-/// `ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)`
-/// — the same value the fit pass proposed (fixed dimensions constant;
-/// flexible axes pass the incoming offer through). This closes the phase-2
-/// limitation where render-time flexible axes proposed *ideal*; see
-/// ARCHITECTURE.md "Fit/render consistency".
-///
-/// The legacy ``body`` cannot express flexible-fill either: it has no
-/// proposal context, so it applies the existing ``ViewOutput/width(_:align:)``
-/// / ``ViewOutput/height(_:align:)`` modifiers for **fixed** dimensions only.
+/// The legacy ``body`` cannot express flexible-fill: it has no assignment, so
+/// it applies the existing ``ViewOutput/width(_:align:)`` /
+/// ``ViewOutput/height(_:align:)`` modifiers for **fixed** dimensions only.
 /// Flexible-fill exists only in the engine (allowed divergence #4).
 public struct FrameView<Content: View>: View {
     /// The fixed width, or `nil` for a flexible width that fills the parent's
@@ -120,15 +108,14 @@ public struct FrameView<Content: View>: View {
 
 // MARK: - FrameView engine implementation
 //
-// Phase-2 layout engine (UPGRADE.md): the frame is a proposal *generator*.
-// `_sizeThatFits` answers fixed dimensions verbatim, fills non-`nil` offers
-// on flexible axes, and falls back to the child's ideal when the offer is
-// `nil`. `_render` reconstructs the fit proposal (A0) — fixed dimensions
-// constant, flexible axes = the incoming proposal — re-measures the child
-// with it, renders the child with it, and places it at the alignment fraction
-// of the shortage — mirroring the stacks' `Int(Double(shortage) * fraction)`
-// formula and `max(0, ...)` guard. No clipping: a child larger than the
-// frame overflows its bounds (the buffer is the backstop).
+// Phase 4: fixed dimensions are ALLOCATION data — the frame owns them and
+// allocates the child box verbatim; flexible dimensions pass the assigned rect
+// through, floored by the child's report. `_sizeThatFits` remains the pure
+// query (fixed dims verbatim; flexible axes fill a non-`nil` offer, else the
+// child's ideal). Placement is the alignment fraction of the shortage on each
+// axis (`Int(Double(shortage) * fraction)`). No clipping: a child larger than
+// the frame overflows its bounds (the buffer is the backstop; `.clipped()` is
+// the opt-in).
 
 extension FrameView {
     /// Answer the frame's own size: fixed dimensions verbatim; flexible
@@ -143,21 +130,39 @@ extension FrameView {
         )
     }
 
-    /// Reconstruct the fit proposal (fixed dims constant, flexible axes = the
-    /// incoming proposal), re-measure the child with it, then place it at the
-    /// alignment fraction of the shortage per axis.
+    /// Allocate the content inside the frame's rect.
     ///
-    /// A child larger than the frame renders from its alignment offset
-    /// (shortage clamped to 0) and overflows the frame's bounds — no
-    /// clipping, the buffer is the backstop.
-    public func _render(into buffer: inout CellBuffer, at origin: ViewOrigin, size: ViewSize, proposal: ProposedSize) {
-        let childProposal = ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)
+    /// Fixed dimensions are **allocation data**: the frame owns them verbatim
+    /// and allocates the child the same fixed box, so the `width ?? proposal`
+    /// reconstruction and proposal echoing of the phase-3 engine are gone.
+    /// Flexible dimensions pass the parent's assignment through.
+    ///
+    /// The child is measured with the frame's own box as its query context —
+    /// a fixed height reaches a height-flexible child, matching the phase-3
+    /// fit proposal — then anchored at the alignment fraction of the shortage
+    /// per axis. Overflow is unmasked (`.clipped()` remains the opt-in).
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        let childProposal = ProposedSize(
+            width: width ?? rect.size.width,
+            height: height ?? rect.size.height
+        )
         let childSize = content._sizeThatFits(childProposal)
-        let colShortage = max(0, size.width - childSize.width)
-        let col = origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
-        let rowShortage = max(0, size.height - childSize.height)
-        let row = origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
-        content._render(into: &buffer, at: ViewOrigin(col: col, row: row), size: childSize, proposal: childProposal)
+        // The frame's occupied rect is its allocation: fixed dimensions are
+        // owned verbatim; flexible axes are the parent's assignment. A child
+        // larger than the frame renders from the alignment offset with the
+        // shortage clamped to 0 and overflows visibly (no clip).
+        let occupied = ViewSize(
+            width: width ?? rect.size.width,
+            height: height ?? rect.size.height
+        )
+        let colShortage = max(0, occupied.width - childSize.width)
+        let col = rect.origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
+        let rowShortage = max(0, occupied.height - childSize.height)
+        let row = rect.origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
+        content._embed(
+            into: &buffer,
+            at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
+        )
     }
 }
 
@@ -166,10 +171,10 @@ extension FrameView {
 extension View {
     /// Surround this view with a frame of the given size and alignment.
     ///
-    /// The frame proposes its fixed dimensions to the content and answers
-    /// them to the parent verbatim; flexible dimensions (`nil`) pass the
-    /// parent's offer through and fill it. The content is placed within the
-    /// assigned rect according to the alignment fractions.
+    /// The frame owns its fixed dimensions and allocates them to the content;
+    /// flexible dimensions (`nil`) pass the parent's assignment through. The
+    /// content is placed within the frame's rect according to the alignment
+    /// fractions.
     ///
     /// A frame does **not** clip: content larger than the frame overflows its
     /// bounds, with the terminal buffer as the final backstop. Use

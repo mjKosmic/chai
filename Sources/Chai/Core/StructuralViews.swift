@@ -21,6 +21,26 @@ func joinVertically(_ components: [ViewOutput]) -> ViewOutput {
     return ViewOutput(result)
 }
 
+/// Embed `children` top-to-bottom into `rect`.
+///
+/// This is the **allocation** analogue of ``joinVertically(_:)`` for structural
+/// views that are rendered directly (as a root view or under a wrapper) rather
+/// than flattened by a container. Each child is queried at the rect's width and
+/// the row advances by its reported height, so empty children advance nothing
+/// (the phase-1 skip-empty semantics). Structural views inside a container are
+/// flattened by ``View/_childViews()`` and never reach this function.
+func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffer, at rect: ViewRect) {
+    var row = rect.origin.row
+    for child in children {
+        let size = child._sizeThatFits(ProposedSize(width: rect.size.width, height: nil))
+        child._embed(
+            into: &buffer,
+            at: ViewRect(origin: ViewOrigin(col: rect.origin.col, row: row), size: size)
+        )
+        row += size.height
+    }
+}
+
 // MARK: - TupleView
 
 /// A structural view that groups multiple children produced by ``ViewBuilder``.
@@ -52,6 +72,12 @@ public struct TupleView<each T: View>: View {
 
     public var body: ViewOutput {
         joinVertically(_childViews().map { $0._resolveToViewOutput() })
+    }
+
+    /// Allocation entrance when the tuple is rendered directly (as a root or
+    /// under a wrapper): children stack vertically, matching ``body``.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }
 }
 
@@ -98,6 +124,12 @@ public struct ConditionalContent<TrueContent: View, FalseContent: View>: View {
             content._childViews()
         }
     }
+
+    /// Allocation entrance: the active branch's children stack vertically,
+    /// matching ``body``.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        embedStackedVertically(_childViews(), into: &buffer, at: rect)
+    }
 }
 
 // MARK: - OptionalView
@@ -119,6 +151,12 @@ public struct OptionalView<Wrapped: View>: View {
     /// The wrapped content's children when present, none when `nil`.
     public func _childViews() -> [any View] {
         content?._childViews() ?? []
+    }
+
+    /// Allocation entrance: the present content's children stack vertically,
+    /// matching ``body``. An absent branch embeds nothing.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }
 }
 
@@ -147,5 +185,11 @@ public struct ForEachView<Content: View>: View {
 
     public var body: ViewOutput {
         joinVertically(_childViews().map { $0._resolveToViewOutput() })
+    }
+
+    /// Allocation entrance when the loop is rendered directly: children stack
+    /// vertically, matching ``body``.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        embedStackedVertically(_childViews(), into: &buffer, at: rect)
     }
 }

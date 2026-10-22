@@ -84,11 +84,9 @@ struct FlexibleSpacerPrimitiveTests {
         // Blank cells are the buffer default — a flexible spacer draws
         // nothing, and pre-existing cells are left untouched.
         var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
-        FlexibleSpacer()._render(
+        FlexibleSpacer()._embed(
             into: &buffer,
-            at: .zero,
-            size: ViewSize(width: 4, height: 1),
-            proposal: ProposedSize(width: 4, height: nil)
+            at: ViewRect(size: ViewSize(width: 4, height: 1))
         )
         #expect(buffer[0, 0].character == "x")
         #expect(buffer[3, 0].character == "x")
@@ -127,11 +125,9 @@ struct FillPrimitiveTests {
 
     @Test func renderIsNoOp() {
         var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
-        Fill()._render(
+        Fill()._embed(
             into: &buffer,
-            at: .zero,
-            size: ViewSize(width: 4, height: 1),
-            proposal: ProposedSize(width: 4, height: 1)
+            at: ViewRect(size: ViewSize(width: 4, height: 1))
         )
         #expect(buffer[0, 0].character == "x")
         #expect(buffer[3, 0].character == "x")

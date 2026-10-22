@@ -11,9 +11,9 @@ import Foundation
 ///
 /// 1. ``write(_:)`` stores the latest ``View`` tree in an internal buffer.
 /// 2. A background `Task` ticks at `1/fps` seconds and calls ``flush()``.
-/// 3. ``flush()`` measures the tree and renders it through the layout engine
-///    into a ``CellBuffer``, diffs against ``lastBuffer``, and writes only
-///    the changed rows.
+/// 3. ``flush()`` queries the tree (sizing), renders it through the allocation
+///    engine into a ``CellBuffer``, diffs against ``lastBuffer``, and writes
+///    only the changed rows.
 ///
 /// The renderer is an actor to serialise all state mutations.
 actor Renderer {
@@ -34,10 +34,10 @@ actor Renderer {
     /// The view tree queued for the next flush.
     ///
     /// Stored as an existential rather than resolved eagerly: ``flush()``
-    /// lays the tree out through the phase-2 engine
-    /// (``View/_sizeThatFits(_:)`` + ``View/_render(into:at:size:proposal:)``)
-    /// into a ``CellBuffer``. `nil` (nothing written yet) renders as an empty
-    /// view.
+    /// lays the tree out through the phase-4 allocation engine
+    /// (``View/_sizeThatFits(_:)`` as the pure query + ``View/_embed(into:at:)``
+    /// as the single allocation walk) into a ``CellBuffer``. `nil` (nothing
+    /// written yet) renders as an empty view.
     private var pendingView: (any View)? = nil
 
     /// The cursor queued for the next flush (set separately from content).
@@ -182,21 +182,22 @@ actor Renderer {
             terminal.write(ANSI.hideCursor)
         }
 
-        // ── Build cell buffer through the layout engine ────────────────────
+        // ── Build cell buffer through the allocation engine ────────────────
+        //
+        // Phase 4: the query pass below is read-only (buffer height, and the
+        // `nil`-vs-terminal height context), then ONE allocation walk renders
+        // the tree from the root rect. There is no proposal to carry into the
+        // render pass: the root's assignment is the rect.
 
         let w = termWidth > 0 ? termWidth : Self.fallbackWidth
         let altScreenHeight = termHeight > 0 ? termHeight : 24
 
-        // The fit proposal: measure the tree under the terminal offer. Inline
-        // mode proposes width only (height stays ideal — the buffer is
-        // content-sized, clamped below); alt-screen mode proposes the fixed
-        // terminal size. The SAME value is passed to the root render call —
-        // the fit/render value-equality contract (A0) — so a proposal-
-        // consuming child at the root sees the fit proposal, not its assigned
-        // (measured) size.
-        let proposal = ProposedSize(width: w, height: altScreenActive ? altScreenHeight : nil)
+        // The query context: inline mode asks for the ideal height (the buffer
+        // is content-sized, clamped below); alt-screen proposes the fixed
+        // terminal size, so flexible roots report the height they will fill.
+        let query = ProposedSize(width: w, height: altScreenActive ? altScreenHeight : nil)
 
-        let measured = view._sizeThatFits(proposal)
+        let measured = view._sizeThatFits(query)
 
         let bufferHeight: Int
         if measured.height == 0 {
@@ -235,7 +236,10 @@ actor Renderer {
             origin = .zero
         }
 
-        view._render(into: &newBuffer, at: origin, size: measured, proposal: proposal)
+        view._embed(
+            into: &newBuffer,
+            at: ViewRect(origin: origin, size: ViewSize(width: w, height: measured.height))
+        )
 
         // ── Determine what needs updating ─────────────────────────────────
 

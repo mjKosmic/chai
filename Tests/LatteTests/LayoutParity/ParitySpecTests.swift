@@ -11,7 +11,8 @@ import Latte
 //
 // M2 integration: the parity flip (engine buffer vs eager buffer) is a
 // second assertion per case. Use `assertVisibleRows(_:build:)` so the engine
-// leg can be added with one line:
+// leg can be added with one line (phase 4: the engine leg is the allocation
+// walk via `embedBuffer`):
 //
 //     @Test("Engine path matches eager path")
 //     func engineMatchesEager() {
@@ -19,7 +20,7 @@ import Latte
 //             let eager = eagerBuffer(parityCase.view, width: parityCase.width)
 //             assertVisibleRows(
 //                 eagerBuffer(parityCase.view, width: parityCase.width),
-//                 build: { engineBuffer($0.view, width: $0.width, height: $0.explicitHeight) }
+//                 build: { embedBuffer($0.view, width: $0.width, height: $0.explicitHeight) }
 //             )
 //         }
 //     }

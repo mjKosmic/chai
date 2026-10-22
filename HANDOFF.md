@@ -1,8 +1,15 @@
 # Handoff — Phase 4: Top-Down Allocation Engine (pending kickoff)
 
-**Date:** Oct 2026 · **State:** phase 3 Stage A merged (PR #21, `f8a15a7`); a design
-spike has validated the next direction; the phase-4 plan is **not yet written** —
-five owner decisions are pending (below). This document is the pickup point.
+> **Status (later): this is the phase-4 *kickoff* handoff and is historical.**
+> P0–P3 have since landed on `fixing` (PR #22). The plan of record, current
+> status, allocation deltas, and the remaining milestones (P4/PB/PD) are in
+> `UPGRADE.md` → "Phase 4 — Top-down allocation engine"; the pickup notes for
+> those milestones are in its "Pickup notes for the remaining milestones"
+> subsection. The five owner decisions below were settled at P0.
+
+**Date:** Oct 2026 · **State at kickoff:** phase 3 Stage A merged (PR #21, `f8a15a7`); a design
+spike validated the direction; the five owner decisions were pending. They were
+settled at P0 (see `UPGRADE.md`), and P1–P3 are now landed.
 
 ---
 

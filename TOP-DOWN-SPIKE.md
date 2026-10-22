@@ -1,10 +1,13 @@
 # TOP-DOWN SPIKE — phase-4 investigation report
 
-**UNCOMMITTED SCRATCH.** This report and the spike files
-(`Tests/ChaiTests/Spike/TopDownSpike.swift` + `SpikeCorpus.swift`) are not
-intended to land as-is: the owner decides whether to commit either, and the
-spike must not ship (it contains a verbatim corpus copy and a `Mirror`-based
-type probe).
+**Status: retired (documented history).** The report below is the design
+evidence of record for phase 4. Its walker and corpus copy
+(`Tests/ChaiTests/Spike/`) were **deleted in P1** when the rules graduated
+into production `_embed` implementations; the production suites
+(`Tests/LatteTests/LayoutParity/ParityEngineTests.swift`,
+`AllocationRulesTests.swift`, `Tests/ChaiTests/EmbedKernelTests.swift`) now
+carry the assertions this spike ran as diagnostics. The spike's five probes are
+assertions in `AllocationRulesTests`.
 
 **Companion:** the spike suite is `TopDownSpikeComparisonTests` in
 `Tests/ChaiTests/Spike/TopDownSpike.swift` (all diagnostic: the corpus table
