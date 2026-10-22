@@ -39,7 +39,7 @@ public protocol View: Sendable {
     /// `_resolveToViewOutput()` bridge, so `body` is no longer a render path).
     var body: Body { get }
 
-    /// Measure this view's size for the given proposal.
+    /// Measure this view's size for the given query context.
     ///
     /// The default resolves through ``body``, so a view whose `body` is a
     /// ``ViewOutput`` leaf (or another view with its own engine overrides)
@@ -51,15 +51,15 @@ public protocol View: Sendable {
     /// ``_embed(into:at:)``; the query never binds. See `UPGRADE.md`, "Phase 4
     /// — Top-down allocation engine".
     ///
-    /// - Parameter proposal: The size a parent is offering; see
+    /// - Parameter proposal: The query context a parent is asking about; see
     ///   ``ProposedSize`` for the meaning of `nil` dimensions.
-    /// - Returns: The size this view would take under the proposal.
+    /// - Returns: The size this view reports under that context.
     func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
 
     /// Embed this view into the rect its parent assigned.
     ///
     /// This is the **allocation** entrance: `rect` is what the parent decided,
-    /// not an offer to negotiate. The default resolves through ``body``; leaf
+    /// not a value to negotiate. The default resolves through ``body``; leaf
     /// views rasterize at the rect's origin, and containers override this with
     /// their allocation rules (children report, parents decide — see
     /// `UPGRADE.md`, "Phase 4 — Top-down allocation engine").
@@ -84,7 +84,7 @@ public protocol View: Sendable {
     /// SPI: containers query this to distribute leftover space; regular views
     /// are rigid (``LayoutFlexibility/rigid``). A stack that lays out along an
     /// axis with at least one positively-flexible child fills a non-`nil`
-    /// proposal on that axis and splits the leftover proportionally between
+    /// main-axis assignment and splits the leftover proportionally between
     /// the flexible children (``Spacer()`` is the ready-made flexible
     /// view). Outside a stack nothing distributes leftover space, so a
     /// flexible view measures as if it were rigid.
@@ -231,7 +231,7 @@ extension Text {
     /// Measurement and allocation resolve with the SAME function
     /// (``resolvedContent(width:)``), so the report's line count always matches
     /// the painted rows — including the mixed ASCII/wide case where the
-    /// minimum floor is wider than the offered width.
+    /// minimum floor is wider than the queried width.
     public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
         let resolved = resolvedContent(width: proposal.width)
         return ViewSize(width: resolved.maxLineWidth, height: resolved.lineCount())
@@ -337,13 +337,13 @@ public struct Spacer: View {
 
 // MARK: - Fill
 
-/// A view that occupies exactly the space it is offered, rendering nothing.
+/// A view that claims the rect it is allocated, rendering nothing.
 ///
-/// `Fill` answers the proposal verbatim on both axes — it is a *consumer*:
-/// its size is undefined without an offer. Use it as a blank filler inside a
-/// fixed ``View/frame(width:height:horizontalAlignment:verticalAlignment:)``,
-/// or anywhere a view should claim the full offered rect while painting
-/// nothing.
+/// `Fill` reports the query context verbatim on both axes — it is a
+/// *consumer*: its size is undefined without a context. Containers decide the
+/// rect it claims (a leading `Fill` in an `HStack` absorbs the remainder; a
+/// fixed ``View/frame(width:height:horizontalAlignment:verticalAlignment:)``
+/// hands it the frame's box).
 ///
 /// ```swift
 /// HStack {
@@ -353,8 +353,8 @@ public struct Spacer: View {
 /// .frame(width: 20, height: 3)
 /// ```
 ///
-/// A `nil` proposal dimension is not an offer, so `Fill` reports 0 on that
-/// axis: outside any non-`nil` proposal it is 0×0 (like ``Empty``).
+/// A `nil` query dimension is ideal, not a context, so `Fill` reports 0 on
+/// that axis: outside any non-`nil` context it is 0×0 (like ``Empty``).
 public struct Fill: View {
     public init() {}
 }
@@ -362,8 +362,8 @@ public struct Fill: View {
 // MARK: - Fill engine implementation
 
 extension Fill {
-    /// Answer the offer on both axes: `(proposal.width ?? 0, proposal.height ?? 0)`.
-    /// A `nil` dimension is ideal, not an offer, so it reports 0 there.
+    /// Report the query context on both axes: `(proposal.width ?? 0, proposal.height ?? 0)`.
+    /// A `nil` dimension is ideal, not a context, so it reports 0 there.
     public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
         ViewSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
     }

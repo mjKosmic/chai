@@ -28,7 +28,7 @@ There are no external dependencies — do not add any.
 ```
 Sources/Chai/
   Core/        Model.swift  Message.swift  Command.swift  Program.swift
-               View.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
+               View.swift  AnyView.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
                LayoutTypes.swift  Cursor.swift  Logger.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
   Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift
@@ -37,12 +37,12 @@ Sources/Latte/    Layout, styling, borders, composition
                    Extensions/ViewOutput+Layout.swift  ...)
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
 Tests/ChaiTests/  LatteTests/  SpicesTests/
-  LatteTests/LayoutParity/   parity harness + corpus + spec/engine suites (M0/M2 discipline)
+  LatteTests/LayoutParity/   corpus + engine spec suites (the parity discipline)
 Examples/GroceryList/Sources/main.swift   the phase-2 acceptance example (centers via .frame(...))
 ```
 
 The layout engine lives across the seam: value types and the `View` SPI
-(`_sizeThatFits`/`_render`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
+(`_sizeThatFits`/`_embed`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
 the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
 `Chai/Renderer/Renderer.swift`. See `ARCHITECTURE.md` → "The Layout Engine".
 

@@ -34,7 +34,9 @@ Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `Fram
 6. [The Layout Engine](#the-layout-engine)
    - [The measure/render flow](#the-measurerender-flow)
    - [Who the engine SPI is for](#who-the-engine-spi-is-for)
-   - [Proposal semantics](#proposal-semantics)
+   - [Query and allocation semantics](#query-and-allocation-semantics)
+   - [Minimum queries (`ProposedSize.zero`)](#minimum-queries-proposedsizezero)
+   - [Why there is no `.infinity`](#why-there-is-no-infinity)
    - [The parity discipline](#the-parity-discipline)
    - [`frame()` — one modifier](#frame--one-modifier)
 7. [Spices — Component Library](#spices--component-library)
@@ -538,52 +540,74 @@ The underscore prefix is the SwiftUI-style convention for **technically public, 
 
 `_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis proposal, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
-### Proposal semantics
+### Query and allocation semantics
 
-**Phase-4 note (P3):** the render pass no longer takes a proposal — the assignment is the rect (``View/_embed(into:at:)``), and the proposal survives as the query language only. The three subsections below describe the phase-2/3 negotiation engine; they are retained as migration history until the PD docs rewrite. The current contract, in one line each: *queries are reports* (never binding), *the rect is the decision* (allocated top-down), *the buffer is the only hard wall*.
+The proposal model is the **query language**, not render-pass bookkeeping. Three
+properties matter; the first two replaced their phase-2/3 negotiation
+counterparts.
 
-Three properties of the proposal model were load-bearing in phases 2–3. They were settled in design review; the parts that survive are marked.
-
-**1. An offer, not a box.**
+**1. A report, not a bound; the rect is the box.**
 
 "Hardness" lives at four distinct stages, and only the last one is actually hard:
 
 | Stage | Who decides | Nature |
 |-------|-------------|--------|
-| The proposal (`ProposedSize`) | the parent | **advice** — what the parent is offering |
-| The returned `ViewSize` | the child | the child's **truthful want** — may exceed the offer |
-| The assigned `size:` in `_render` | the parent | the parent's **decision** — where/how big the child is placed |
+| The query (`ProposedSize`) | the parent | **context** — the size the parent is asking about |
+| The report (`ViewSize`) | the child | the child's **truthful size** — may exceed the query context |
+| The allocated `ViewRect` in `_embed` | the parent | the **decision** — where/how big the child is placed |
 | The `CellBuffer` bounds | the renderer | the **only hard wall** — writes outside are dropped |
 
-Nothing clamps measurement. A clamped answer destroys information a parent needs: a scroll viewport must know that its content extends past the visible area even though the visible area is all it can show. The buffer's bounds guards (`CellBuffer.set(col:row:_:)` returning for out-of-range positions) are what actually stop a view from painting outside the terminal.
+Nothing clamps a report. A clamped answer destroys information a parent needs:
+a scroll viewport must know that its content extends past the visible area even
+though the visible area is all it can show. The parent may overrule a report
+when it allocates (`Fill`-by-type, clip reservation, the `Text` compression
+floor), but the report itself stays honest. The buffer's bounds guards
+(`CellBuffer.set(col:row:_:)` returning for out-of-range positions) are what
+actually stop a view from painting outside the terminal; a child may also
+overflow its allocated rect visually — the rect is a placement decision, not a
+second wall.
 
-**2. An argument, not a limit.**
+**2. Query context, not a limit.**
 
-The proposal is an *argument* to the child's layout function, not a limit on its answer. It earns its keep the moment a child's answer *depends* on the offer. Views fall into a taxonomy by how they treat the argument:
+The query is an *argument* to the child's measurement, not a limit on its
+answer. It earns its keep the moment a child's answer *depends* on the context.
+Views fall into a taxonomy by how they treat it:
 
-- **Ignorers** — today's leaves (`ViewOutput`, ``Spacer``). They answer their ideal size regardless of the offer. A `ViewOutput` is a fully-formed raster; the engine measures it unwrapped.
-- **Passers** — the stacks (`VStack`/`HStack`). They propagate context down: each child gets the stack's proposal on the stacking axis, `nil` (ideal) on the cross axis, and the stack sizes itself from the answers.
-- **Generators** — `frame()` (`FrameView`). It answers fixed dimensions verbatim no matter what the child says, and forces those dimensions down as the child's proposal. `frame()` cannot be implemented without proposals — answering a size you were never offered requires the offer machinery.
-- **Consumers** — the phase-3 wrapping ``Text`` and fill views. Their answer is *undefined* without an offer: a wrapping paragraph has no ideal width, so it must be asked "how wide may you be?" before it can answer "how tall you get." A1 landed wrapping `Text` (it wraps to a positive non-`nil` width proposal) and A2 landed ``Fill`` (it answers `proposal.width ?? 0` × `proposal.height ?? 0` — exactly the offered rect). A flexible ``Spacer()`` is a consumer of a different kind: it is rigid on its own (0×0) and reports a positive `_flexibility()` fraction so an enclosing stack can hand it a share of the leftover.
+- **Reporters** — leaves such as ``ViewOutput`` and fixed ``Spacer(lines:)``/``Spacer(columns:)``. They answer their intrinsic size; a `ViewOutput` is a fully-formed raster and ignores the query, while a fixed spacer answers its requested cells.
+- **Containers** — ``VStack``/``HStack`` query their children in their own allocation context (cross-axis width/height, `nil` on the main axis), then allocate rects from the answers plus their rules (alignment, flexibility shares, the `Fill` remainder). The query is not a promise about the rect.
+- **Allocators** — ``FrameView``. Fixed dimensions are allocation data: the frame owns them and hands the child that box verbatim; flexible dimensions pass the parent's assignment through (floored by the child's report when the assignment is degenerate).
+- **Consumers** — proposal-sensitive views. ``Text`` wraps at the width it is **allocated** (with the compression floor); ``Fill`` claims the rect it is allocated; a flexible ``Spacer()`` reports 0×0 rigidly and a positive `_flexibility()` fraction so a stack can hand it a share of the leftover.
 
-**3. Fit/render consistency (value equality).**
+**3. The rect is the contract.**
 
-A container must propose **identically in `_sizeThatFits` and `_render`** — the value, not just the structure. A child asked different questions when measuring vs. when being placed will answer inconsistently — it may measure as one size and render as another, shifting content relative to the parent's alignment math. The contract: **the proposal passed to a child's `_render` must equal the proposal used to measure that child in the fit pass.** Since A0 the SPI carries the proposal (`_render(into:at:size:proposal:)`) and every container forwards it:
+There is no second pass to keep in sync: the rect passed to a child's
+``View/_embed(into:at:)`` **is** the parent's decision. The consequences are
+the AGENTS.md engine pitfalls:
 
-- `VStack` re-measures and renders each child with `ProposedSize(width: proposal.width, height: nil)` — the fit pass's child proposal, even when the stack's assigned `size.width` differs from its incoming proposal width (the renderer-root case).
-- `HStack` dually with `ProposedSize(width: nil, height: proposal.height)`.
-- `FrameView` reconstructs its fit proposal exactly — `ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)`: fixed dimensions constant, flexible axes pass the incoming offer through. This closed the phase-2 limitation (render-time ideal on flexible axes) and was pinned by the test-local `ProposalEchoView` (retired at P3; `RectEchoView` now pins the allocation analogue).
-- The renderer's root is no longer an exception: `flush()` holds the fit proposal in a local and passes the *same value* to the root render call.
+- `_sizeThatFits` is a **pure report** — never treat an answer as binding; a
+  container may overrule it.
+- Containers allocate child rects from their own rules and query context;
+  there is no remembered proposal to re-measure with.
+- `_embed` must not depend on `body` for containers.
 
-The contract is enforced by convention (containers forward the proposal) and pinned by the echo tests — a container that drops the proposal will misplace proposal-consuming children.
+The test-local ``RectEchoView`` pins that a child observes its *allocated* rect,
+not the container's rect or an earlier query context. (The phase-3
+`ProposalEchoView` and the A0 fit/render value-equality rule were deleted with
+the negotiation engine.)
 
-### Minimum offers (`ProposedSize.zero`)
+**Known nuance (PR #22 review):** in an `HStack`, a custom child that both
+reports height-flexibility and paints observes the allocation-time height
+context (`rect.size.height`) rather than the top-level query context (`nil`).
+Built-ins are unaffected (spacers and `Fill` paint nothing); the
+allocation-time context is the accurate one.
 
-SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `ProposedSize.zero` is the offer a container makes when it wants a child's **narrowest producible** form; like every proposal it is an offer, not a bound — the answer is never clamped.
+### Minimum queries (`ProposedSize.zero`)
 
-Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero offer), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the offered rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width proposal it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
+SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `ProposedSize.zero` is the query context a container uses to ask for a child's **narrowest producible** form; it is a context, not a constraint — the report is never clamped.
 
-Containers follow their normal proposal rules at `.zero` — no special-casing. `VStack` proposes `(0, nil)` to its children, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` proposes `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child answers its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed". `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero offer on flexible axes.
+Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero context), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the queried rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width context it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
+
+Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in UPGRADE.md). `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
 
 ### Why there is no `.infinity`
 
@@ -966,7 +990,7 @@ Covers the string-level layout/styling modules plus the phase-2 engine:
 | `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
 | `StackTests.swift` / `StacksEngineTests.swift` | Engine measure/render of `VStack`/`HStack` through the allocation walk, alignment, skip-empty, styling survival |
 | `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, overflow (no clipping), degenerate sizes |
-| `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis offer, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil proposal content-sized) and `Fill` in stacks/frames |
+| `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis assignment, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil assignment content-sized) and `Fill` in stacks/frames |
 | `LayoutParity/` | The corpus-based discipline: `ParityHarness.swift` (`embedBuffer` + `visibleRows`), `ParityCorpus.swift` (the single-spec engine corpus), `ParityEngineTests` (every case against `expectedRows`), `ParityHarnessTests` (comparison semantics) |
 | `ModifierWrapperTests.swift` | P4a tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
 | `ViewOutputLayoutTests.swift` | The `ViewOutput` raster helpers (`.clampedWidth()`, `.clampedHeight()`), including wide characters and multi-line content |
@@ -1136,15 +1160,15 @@ Full-screen redraws on every frame would send a large number of bytes to the ter
 
 ### Why a child-*view* layout seam instead of a child-*output* seam?
 
-The phase-1 renderer resolved children to `ViewOutput` strings before composing them (`_collectChildOutputs()`). The first phase-2 engine attempt kept that habit — layout operated on resolved outputs — and failed: resolving flattens the tree, bypasses every child's layout overrides, and makes proposals meaningless. The reverted attempt was the reason the M0 parity harness landed first, so the redesign could be verified against a mechanical spec. The engine's `_childViews()` seam exposes child *views* instead, letting containers measure and place them with full SPI fidelity.
+The phase-1 renderer resolved children to `ViewOutput` strings before composing them (`_collectChildOutputs()`). The first phase-2 engine attempt kept that habit — layout operated on resolved outputs — and failed: resolving flattens the tree, bypasses every child's layout overrides, and makes the query context meaningless. The reverted attempt was the reason the M0 parity harness landed first, so the redesign could be verified against a mechanical spec. The engine's `_childViews()` seam exposes child *views* instead, letting containers measure and place them with full SPI fidelity.
 
 ### Why is the engine SPI underscored-but-public?
 
 `_sizeThatFits(_:)`, `_embed(into:at:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
 
-### Why proposal *arguments* rather than clamped constraints?
+### Why query *context* rather than clamped constraints?
 
-A query is a report, not a wall: the child answers its truthful size, the parent decides the allocated rect, and only the ``CellBuffer`` enforces anything. Clamping at query time is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. Proposal-*responsive* children exist since phase 3 (wrapping `Text`), and in phase 4 they respond to the width they were **allocated** (`Text` wraps at `rect.size.width`, with the compression floor).
+A query is a report, not a wall: the child answers its truthful size, the parent decides the allocated rect, and only the ``CellBuffer`` enforces anything. Clamping at query time is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. Query-responsive children exist since phase 3 (wrapping `Text`), and in phase 4 they respond to the width they were **allocated** (`Text` wraps at `rect.size.width`, with the compression floor).
 
 ### Why assemble the entire frame into one `String` before writing?
 

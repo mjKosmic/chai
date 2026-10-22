@@ -8,14 +8,12 @@ declarative approach built on Swift `@resultBuilder`.
 Phase 2 (proposal-driven layout engine) **has landed** on
 `declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
 this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
-Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
-allocation engine) is in progress** — P0–P3 landed (plan, kernel +
-side-by-side corpus, renderer flip/clean break), **P4a landed** (the
-Stage-C wrapper family on the new kernel), **P4b landed** (eager-path
-retirement, corpus collapse, `Spacer` unification) and **PB landed**
-(`AnyView` + heterogeneous builders); PD remains. A design
-spike validated the direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
-corpus cases).
+Stages B/C were re-scoped onto the phase-4 kernel. **Phase 4 (top-down
+allocation engine) has landed** — P0–P3 (plan, kernel + side-by-side corpus,
+renderer flip/clean break), P4a (Stage-C wrapper family), P4b (eager
+retirement, corpus collapse, `Spacer` unification), PB (`AnyView`) and PD
+(docs/rules) are all closed. A design spike validated the direction
+(`TOP-DOWN-SPIKE.md` — walker == engine, 38/38 corpus cases).
 
 ---
 
@@ -472,13 +470,13 @@ Also resolved by A0: carry the proposal into `_render`. `FrameView._render` prev
 
 ---
 
-## Phase 4 — Top-down allocation engine (in progress — P0–P3, P4a, P4b, PB landed)
+## Phase 4 — Top-down allocation engine (landed)
 
-**Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
-re-scoped onto this phase's kernel. **P0 (plan), P1/P2 (kernel +
-side-by-side), P3 (renderer flip, clean break), P4a (Stage-C wrapper family),
-P4b (eager retirement, corpus collapse, `Spacer` unification) and PB
-(`AnyView`) have landed; PD (docs) remains.** Evidence of record:
+**Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C were
+re-scoped onto this phase's kernel. **All milestones have landed: P0 (plan),
+P1/P2 (kernel + side-by-side), P3 (renderer flip, clean break), P4a (Stage-C
+wrapper family), P4b (eager retirement, corpus collapse, `Spacer`
+unification), PB (`AnyView`) and PD (docs/rules).** Evidence of record:
 `TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
 reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
 semantic probes byte-identical — the prediction this plan was built on). The
@@ -677,14 +675,13 @@ transparent to the engine: it forwards **all four** SPI methods.
 | P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
 | P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
-| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
+| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
 
-Ordering: P1 → P2 → P3 are strictly sequential (P2's coexistence is
-transition-only; P3 deletes the old SPI — decision 5). **P4a → P4b**: the
-wrapper family must exist and be tested before the eager modifiers it
-replaces are deleted, or the simple path loses its Latte helpers. Both have
-landed; the eager path is gone. PB may land any time (it forwards, it does
-not allocate). PD closes the phase.
+Ordering: P1 → P2 → P3 were strictly sequential (P2's coexistence was
+transition-only; P3 deleted the old SPI — decision 5). **P4a → P4b**: the
+wrapper family had to exist and be tested before the eager modifiers it
+replaces were deleted, or the simple path would lose its Latte helpers. Both
+landed, then PB and PD closed the phase.
 
 ### Pickup notes for the remaining milestones
 
@@ -714,24 +711,20 @@ entry points for a cold start.
   `buildArray(_ components: [any View])` are the heterogeneous builder hooks.
   The remaining phase work is PD (docs/rules).
 
-**PD (docs).**
+**PD (docs) — landed.**
 
-- ARCHITECTURE.md: rewrite the three proposal-semantics subsections around
-  allocation (the phase-4 banner currently marks them historical), preserve
-  the buffer-as-only-hard-wall and overflow semantics, and drop the
-  `engineBuffer`/`ProposalEchoView` references in them. Also refresh the
-  parity-discipline and "Two `frame()`s coexisting" sections: the eager path
-  retired in P4b, so those describe history, not live behavior.
-- AGENTS.md and CLAUDE.md: pitfall #2 was updated to the allocation contract in
-  P4b; keep them in lockstep when editing either.
-- UPGRADE.md: flip the phase-4 status to landed when PD closes.
-- **Known nuance to document** (PR #22 review, remaining coverage gap): in an
-  HStack, a custom child that both reports height-flexibility and paints
-  observes the allocation-time height context (`rect.size.height`) rather than
-  the top-level query context (`nil`). Built-ins are unaffected (spacers and
-  `Fill` paint nothing); the allocation-time context is the accurate one.
+- ARCHITECTURE.md now describes query/allocation semantics: "An offer, not a
+  box" became "a report, not a bound; the rect is the box", the taxonomy is
+  reporters/containers/allocators/consumers, and the fit/render value-equality
+  section became "the rect is the contract". The minimum-query and `.infinity`
+  sections keep their content with allocation language; the buffer-as-only-
+  hard-wall and overflow semantics are preserved. The parity discipline and
+  `frame()` sections now describe the post-P4b state.
+- AGENTS.md and CLAUDE.md pitfall #2 states the corpus/allocation contract in
+  lockstep.
+- UPGRADE.md's phase-4 status is flipped to landed (this section).
 
-**Baseline at PB:** `swift build --build-tests` zero warnings (known
+**Final baseline:** `swift build --build-tests` zero warnings (known
 SpicesTests `viewAs` deprecations only); `swift test` **1277 tests / 109
 suites**. Gates: zero warnings includes test targets; the corpus is the single
 engine spec (`expectedRows`) and no case is skipped. (The count drops from
