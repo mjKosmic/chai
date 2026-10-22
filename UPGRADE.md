@@ -11,8 +11,9 @@ this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
 Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
 allocation engine) is in progress** — P0–P3 landed (plan, kernel +
 side-by-side corpus, renderer flip/clean break), **P4a landed** (the
-Stage-C wrapper family on the new kernel) and **P4b landed** (eager-path
-retirement, corpus collapse, `Spacer` unification); PB/PD remain. A design
+Stage-C wrapper family on the new kernel), **P4b landed** (eager-path
+retirement, corpus collapse, `Spacer` unification) and **PB landed**
+(`AnyView` + heterogeneous builders); PD remains. A design
 spike validated the direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
 corpus cases).
 
@@ -432,7 +433,9 @@ load-bearing:
    `Text`, fill/flex views, proportional `Spacer` variants, and
    `.clipped()`.
 2. **Stage B — `AnyView`** type erasure for heterogenous runtime-built
-   children (`buildArray` currently requires one homogeneous `V`).
+   children (`buildArray` currently requires one homogeneous `V`; landed in
+   PB on the phase-4 kernel, with `buildExpression`/`buildArray` existential
+   overloads).
 3. **Stage C — modifiers stay in the tree.** Rebuild
    `.bordered()/.padded()/.beside()/.above()` and the rest of the eager
    family as `ModifiedContent`-style wrappers, retire the eager
@@ -469,18 +472,18 @@ Also resolved by A0: carry the proposal into `_render`. `FrameView._render` prev
 
 ---
 
-## Phase 4 — Top-down allocation engine (in progress — P0–P3, P4a, P4b landed)
+## Phase 4 — Top-down allocation engine (in progress — P0–P3, P4a, P4b, PB landed)
 
 **Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
-re-scoped onto this phase's kernel (P4a/P4b/PB below). **P0 (plan), P1/P2
-(kernel + side-by-side), P3 (renderer flip, clean break), P4a (Stage-C
-wrapper family) and P4b (eager retirement, corpus collapse, `Spacer`
-unification) have landed.** Evidence of record: `TOP-DOWN-SPIKE.md` (a
-top-down allocation walker over the phase-3 SPI reproduced the live engine
-**bug-for-bug, 38/38 corpus cases**, all five semantic probes byte-identical
-— the prediction this plan was built on). The spike suite was retired in P1
-when its rules graduated into production `_embed` implementations; its five
-probes are now assertions in
+re-scoped onto this phase's kernel. **P0 (plan), P1/P2 (kernel +
+side-by-side), P3 (renderer flip, clean break), P4a (Stage-C wrapper family),
+P4b (eager retirement, corpus collapse, `Spacer` unification) and PB
+(`AnyView`) have landed; PD (docs) remains.** Evidence of record:
+`TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
+reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
+semantic probes byte-identical — the prediction this plan was built on). The
+spike suite was retired in P1 when its rules graduated into production
+`_embed` implementations; its five probes are now assertions in
 `Tests/LatteTests/AllocationRulesTests.swift`.
 
 **Scope (decided):** replace **measurement-as-authority** with
@@ -643,6 +646,27 @@ The eager render path is gone; the allocation engine is the only renderer.
   public String utility (`String.wrapped()`) and was never the engine's
   wrapper. The engine continues to use `StyledText.wrappedToWidth(_:)`.
 
+### PB — `AnyView` on the allocation kernel (landed)
+
+`AnyView` (`Sources/Chai/Core/AnyView.swift`) erases a view while staying
+transparent to the engine: it forwards **all four** SPI methods.
+
+- `_sizeThatFits` / `_embed`: erasure never changes measurement or painting.
+- `_childViews()`: an erased structural view stays transparent — e.g.
+  `AnyView(TupleView(Text("a"), Text("b")))` in an `HStack` lays out two
+  columns, not one opaque block.
+- `_flexibility()`: an erased flexible `Spacer()` still absorbs a stack's
+  leftover. This is the PR #21 review's silent-failure case and is
+  explicitly pinned (`AnyViewTests.erasedFlexibleSpacerStillAbsorbsLeftover`).
+- `ViewBuilder.buildExpression(_ view: any View) -> AnyView` makes
+  heterogeneous loops expressible (`for row in rows { row }` with
+  `rows: [any View]`); `buildArray(_ components: [any View])` covers direct
+  erased arrays. Both are `@_disfavoredOverload` so a concrete view keeps the
+  generic overload (and its concrete type in single-expression builders).
+- The engine has **no view identity and no tree diffing**; erasure therefore
+  costs a hop, not a reconciliation. (This is why `AnyView` needs no identity
+  work beyond the four forwardings.)
+
 ### Milestones (each a PR-sized slice, TDD, zero warnings including test targets)
 
 | # | Deliverable | Exit criteria |
@@ -652,7 +676,7 @@ The eager render path is gone; the allocation engine is the only renderer.
 | P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green** (the phase's proof point, the M3 precedent); old SPI fully gone — ✅ landed |
 | P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
 | P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
-| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`) | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) |
+| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
 | PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
 
 Ordering: P1 → P2 → P3 are strictly sequential (P2's coexistence is
@@ -683,14 +707,12 @@ entry points for a cold start.
 - The HStack-remaining-width change remains deferred by the feature freeze —
   it is **not** part of P4b.
 
-**PB (`AnyView`).**
+**PB (`AnyView`) — landed.**
 
-- `ViewBuilder.buildArray` currently requires one homogeneous `V`
-  (`Sources/Chai/Core/ViewBuilder.swift`).
-- `AnyView` must forward **all four** SPI methods: `_sizeThatFits`, `_embed`,
-  `_childViews`, `_flexibility`. `_flexibility` is the silent failure
-  (PR #21 review): a non-forwarding wrapper is rigid, so flexible children
-  inside it stop absorbing leftover. Test that explicitly.
+- See "PB — `AnyView` on the allocation kernel" above. `AnyView` forwards all
+  four SPI methods; `buildExpression(_ view: any View)` and
+  `buildArray(_ components: [any View])` are the heterogeneous builder hooks.
+  The remaining phase work is PD (docs/rules).
 
 **PD (docs).**
 
@@ -702,15 +724,15 @@ entry points for a cold start.
   retired in P4b, so those describe history, not live behavior.
 - AGENTS.md and CLAUDE.md: pitfall #2 was updated to the allocation contract in
   P4b; keep them in lockstep when editing either.
-- UPGRADE.md: flip the phase-4 status to landed when P4b/PB/PD close.
+- UPGRADE.md: flip the phase-4 status to landed when PD closes.
 - **Known nuance to document** (PR #22 review, remaining coverage gap): in an
   HStack, a custom child that both reports height-flexibility and paints
   observes the allocation-time height context (`rect.size.height`) rather than
   the top-level query context (`nil`). Built-ins are unaffected (spacers and
   `Fill` paint nothing); the allocation-time context is the accurate one.
 
-**Baseline at P4b:** `swift build --build-tests` zero warnings (known
-SpicesTests `viewAs` deprecations only); `swift test` **1266 tests / 108
+**Baseline at PB:** `swift build --build-tests` zero warnings (known
+SpicesTests `viewAs` deprecations only); `swift test` **1277 tests / 109
 suites**. Gates: zero warnings includes test targets; the corpus is the single
 engine spec (`expectedRows`) and no case is skipped. (The count drops from
 P4a's 1305/110 because the eager-parity suites and eager-modifier tests

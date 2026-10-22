@@ -622,7 +622,7 @@ The phase-1 eager ``ViewOutput.frame(width:height:horizontalAlignment:verticalAl
 
 ### Scope: what the engine deliberately does not do
 
-Phase 3's planned features (wrapping `Text`, fill/flex views, `AnyView`, tree-preserving modifier wrappers) deliberately avoid SwiftUI's hardest machinery: there is **no view identity** and **no per-view diffing**. The Elm model re-renders full frames every tick and the only history the framework keeps is the `CellBuffer` from the last frame for cell-level row diffing. This is a core simplification, not a gap: a full-frame layout pass at terminal frame rates is cheap enough that identity tracking buys nothing. Any phase-3 design that introduces identity or structural diffing on the view tree should be treated as scope creep and justified separately.
+Phase 3/4's declarative features (wrapping `Text`, fill/flex views, `AnyView`, tree-preserving modifier wrappers) deliberately avoid SwiftUI's hardest machinery: there is **no view identity** and **no per-view diffing**. The Elm model re-renders full frames every tick and the only history the framework keeps is the `CellBuffer` from the last frame for cell-level row diffing. This is a core simplification, not a gap: a full-frame layout pass at terminal frame rates is cheap enough that identity tracking buys nothing. Any design that introduces identity or structural diffing on the view tree should be treated as scope creep and justified separately.
 
 ---
 
@@ -940,6 +940,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1108 t
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
 | `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_sizeThatFits`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
 | `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the unified `Spacer`/`Fill` primitives (flexible 0×0 measurement with a fraction, fixed cell counts, no-op render) |
+| `AnyViewTests.swift` | PB: `AnyView` forwards all four SPI methods — measurement, allocation, `_childViews` structural transparency, and `_flexibility` leftover distribution — plus heterogeneous `for` loops and `buildArray` |
 | `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
 | `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
 | `StructuralViewTests.swift` | `TupleView`/`ForEachView`/`ConditionalContent`/`OptionalView` flattening and `_childViews()` transparency |
@@ -999,6 +1000,7 @@ chai/
 │   │   │   ├── Program.swift            # Program<M>, ProgramRunner, SignalHandler
 │   │   │   ├── Program+Options.swift    # Program.Option (withAltScreen, withLogger, ...)
 │   │   │   ├── View.swift               # View protocol + layout engine SPI + Text/Spacer/Fill/Empty
+│   │   │   ├── AnyView.swift            # Type erasure (forwards all four SPI methods)
 │   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
 │   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
 │   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
