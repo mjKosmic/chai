@@ -23,11 +23,11 @@ extension View {
     ///   - other: The view to place on the right.
     ///   - align: Vertical alignment when the views have different heights.
     ///     Defaults to ``VerticalAlignment/top``.
-    /// - Returns: An ``HStack`` containing this view and `other`.
+    /// - Returns: A view that arranges this view and `other` horizontally.
     public func beside<Other: View>(
         _ other: Other,
         align: VerticalAlignment = .top
-    ) -> HStack<TupleView<Self, Other>> {
+    ) -> some View {
         HStack(alignment: align) {
             self
             other
@@ -48,11 +48,11 @@ extension View {
     ///   - other: The view to place below.
     ///   - align: Horizontal alignment when the views have different widths.
     ///     Defaults to ``HorizontalAlignment/left``.
-    /// - Returns: A ``VStack`` containing this view and `other`.
+    /// - Returns: A view that arranges this view and `other` vertically.
     public func above<Other: View>(
         _ other: Other,
         align: HorizontalAlignment = .left
-    ) -> VStack<TupleView<Self, Other>> {
+    ) -> some View {
         VStack(alignment: align) {
             self
             other

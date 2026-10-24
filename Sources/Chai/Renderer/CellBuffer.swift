@@ -247,11 +247,19 @@ public struct CellBuffer: Sendable, Equatable {
     // MARK: - Resize and clear
 
     /// Resize the buffer. Existing content is discarded.
+    ///
+    /// An active hard-box clip is preserved and intersected with the new
+    /// bounds, so a view that resizes the buffer from inside its `_embed`
+    /// cannot use the resize to escape its allocation.
     public mutating func resize(width: Int, height: Int) {
         self.width = max(width, 0)
         self.height = max(height, 0)
         self.cells = Array(repeating: .empty, count: self.width * self.height)
-        self.clipRect = nil
+        if let clip = clipRect {
+            clipRect = clip.intersection(
+                ViewRect(size: ViewSize(width: self.width, height: self.height))
+            )
+        }
     }
 
     /// Clear all cells.

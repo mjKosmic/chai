@@ -27,9 +27,10 @@ import Chai
 /// - **Query:** the child is queried with the assignment reduced by two on
 ///   each axis; the report is the child's report plus two.
 /// - **Allocation:** the box is drawn at the assigned origin at the reported
-///   size (child plus the frame), and the child is embedded one cell inside.
-///   Like padding, the wrapper shrink-wraps rather than stretching to a larger
-///   assignment; `frame()` is the opt-in for filling.
+///   size (child plus the frame), clamped to the assignment so a clipped box
+///   still closes its visible edges, and the child is embedded one cell
+///   inside. Like padding, the wrapper shrink-wraps rather than stretching to
+///   a larger assignment; `frame()` is the opt-in for filling.
 /// - **Flexibility:** forwarded from the child (a flexible child inside a
 ///   border still absorbs a stack's leftover space).
 public struct BorderView<Content: View>: View {
@@ -81,9 +82,15 @@ extension BorderView {
         let reported = content._sizeThatFits(
             ProposedSize(width: inset.size.width, height: inset.size.height)
         )
+
+        // The box is drawn at the report (child plus the frame), but never
+        // larger than the allocation: under the hard-box contract a clipped
+        // border must still close its visible edges. Drawing at the
+        // unclamped report would push the bottom/right edges outside the
+        // allocation, where the kernel drops them.
         drawBox(
-            width: reported.width + 2,
-            height: reported.height + 2,
+            width: min(reported.width + 2, rect.size.width),
+            height: min(reported.height + 2, rect.size.height),
             into: &buffer,
             at: rect.origin
         )

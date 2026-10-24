@@ -16,9 +16,9 @@ import Chai
 ///
 /// ``View/padded(top:right:bottom:left:)`` places padding *inside* the view's
 /// own bounds: the wrapper occupies the child's size plus the insets, and the
-/// child is embedded at the inset origin. Unlike the eager
-/// ``ViewOutput/padded(top:right:bottom:left:)`` transform, the wrapper stays
-/// in the view tree, so it composes with the layout engine:
+/// child is embedded at the inset origin. Unlike the retired eager
+/// `ViewOutput` padding transform, the wrapper stays in the view tree, so it
+/// composes with the layout engine:
 ///
 /// ```swift
 /// HStack {
@@ -186,10 +186,10 @@ extension View {
 
     /// Add exterior margin around this view.
     ///
-    /// At the raster level margin and padding are identical (the eager helpers
-    /// share one implementation). The distinction is semantic — margin is
-    /// outside the border, padding is inside — so this returns the same
-    /// ``PaddingView`` wrapper under a margin-facing name.
+    /// Margin and padding are the same rect inset at the wrapper level; the
+    /// distinction is semantic — margin is outside the border, padding is
+    /// inside — so this returns the same ``PaddingView`` wrapper under a
+    /// margin-facing name.
     ///
     /// - Parameters:
     ///   - top: Lines of margin above the content.

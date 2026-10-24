@@ -5,9 +5,9 @@ import Latte
 // MARK: - M1 layout engine tests
 //
 // Milestone M1 of the phase-2 layout engine: the proposal-driven engine SPI
-// (`_sizeThatFits` / `_render` / `_childViews`) with body-resolving defaults,
-// leaf implementations (`ViewOutput`, `Spacer`), and the `maxLineWidth` move
-// into Chai's `StyledText`.
+// (`_sizeThatFits` / `_embed(into:at:)` / `_childViews()`) with body-resolving
+// defaults, leaf implementations (`ViewOutput`, `Spacer`), and the
+// `maxLineWidth` move into Chai's `StyledText`.
 //
 // Expectations were derived by running the code — CJK widths, offset writes,
 // and truncated rows are pinned from observed output, never hand-computed.

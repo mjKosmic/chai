@@ -116,6 +116,14 @@ struct ModifierWrapperTests {
         #expect(rows == ["+----+", "|abcd|", "|ef  |", "+----+"])
     }
 
+    @Test func borderClosesWhenClippedToAShorterAllocation() {
+        // The motivating status-panel composition: a bordered child inside a
+        // frame too short for it. The box is drawn at the allocation's size,
+        // so the bottom edge stays visible instead of being clipped away.
+        let view = Text("a\nb\nc\nd").bordered(.ascii).frame(width: 6, height: 3)
+        #expect(visibleRows(embedBuffer(view, width: 10)) == ["+-+", "|a|", "+-+"])
+    }
+
     @Test func borderDrawsAroundAMultiLineChild() {
         let view = VStack {
             Text("a")

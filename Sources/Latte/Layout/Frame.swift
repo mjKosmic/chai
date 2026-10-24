@@ -68,8 +68,8 @@ public struct FrameView<Content: View>: View {
         verticalAlignment: VerticalAlignment = .top,
         @ViewBuilder content: () -> Content
     ) {
-        self.width = width
-        self.height = height
+        self.width = width.map { max(0, $0) }
+        self.height = height.map { max(0, $0) }
         self.horizontalAlignment = horizontalAlignment
         self.verticalAlignment = verticalAlignment
         self.content = content()

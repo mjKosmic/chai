@@ -190,14 +190,15 @@ implemented without proposals — that is the point. Its legacy `body`
 delegates to the existing `.width()`/`.height()` modifiers when both
 dimensions are fixed.
 
-**`frame()` overflow semantics (decided):** `frame()` does **not** clip.
-A child whose truthful answer exceeds the frame's fixed size overflows
-the frame's bounds (SwiftUI-consistent), with the terminal buffer as the
-final backstop; a `.clipped()` modifier is a phase-3 candidate. Shrinking
-content to fit is the phase-3 wrapping/flex story — `frame()` is
-placement, not shrinking. Note `frame()` is a proposal *generator*: it
-answers its fixed size to its parent regardless of the child's answer,
-and proposes that fixed size downward.
+**`frame()` overflow semantics (decided, superseded in phase 5):** `frame()`
+did **not** clip in phase 2. A child whose truthful answer exceeded the
+frame's fixed size overflowed the frame's bounds, with the terminal buffer as
+the final backstop; a `.clipped()` modifier was the phase-3 candidate.
+Shrinking content to fit was the wrapping/flex story — `frame()` was
+placement, not shrinking. Phase 5 reversed this: `frame()` is now a hard box
+(see "Phase 5 — Hard-box containment"), so this paragraph is history. Note
+`frame()` is a proposal *generator*: it answers its fixed size to its parent
+regardless of the child's answer, and proposes that fixed size downward.
 
 ### Spec & parity strategy
 
@@ -621,7 +622,7 @@ The eager render path is gone; the allocation engine is the only renderer.
 - **`ViewOutput` modifiers retired.** `.padded/.margined/.bordered/.beside/
   .above/.width/.height/.size/.frame` no longer exist on `ViewOutput`;
   the tree wrappers (`View.padded`, `View.bordered`, `View.frame`,
-  `View.clipped`, `.beside/.above`) are the modifiers. `SimplePathContractTests`
+  `.beside/.above`) are the modifiers. `SimplePathContractTests`
   now pins **both** simple shapes: `body: some View` with tree wrappers, and
   `body: ViewOutput` with String-level Latte helpers.
 - **Raster helpers kept deliberately.** `ViewOutput.clampedWidth(_:)` /
@@ -677,7 +678,7 @@ transparent to the engine: it forwards **all four** SPI methods.
 | P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
 | P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
-| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
+| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
 
 Ordering: P1 → P2 → P3 were strictly sequential (P2's coexistence was
 transition-only; P3 deleted the old SPI — decision 5). **P4a → P4b**: the
@@ -685,9 +686,9 @@ wrapper family had to exist and be tested before the eager modifiers it
 replaces were deleted, or the simple path would lose its Latte helpers. Both
 landed, then PB and PD closed the phase.
 
-### Pickup notes for the remaining milestones
+### Pickup notes for the milestones
 
-The plan above is self-contained for *what* remains; these are the concrete
+The plan above is self-contained for *what landed*; these are the concrete
 entry points for a cold start.
 
 **P4a (Stage C wrappers) — landed.**
@@ -719,8 +720,9 @@ entry points for a cold start.
   box" became "a report, not a bound; the rect is the box", the taxonomy is
   reporters/containers/allocators/consumers, and the fit/render value-equality
   section became "the rect is the contract". The minimum-query and `.infinity`
-  sections keep their content with allocation language; the buffer-as-only-
-  hard-wall and overflow semantics are preserved. The parity discipline and
+  sections keep their content with allocation language; the phase-4 no-clip
+  semantics are recorded there as superseded by phase 5's hard box (see
+  "Phase 5 — Hard-box containment"). The parity discipline and
   `frame()` sections now describe the post-P4b state.
 - AGENTS.md and CLAUDE.md pitfall #2 states the corpus/allocation contract in
   lockstep.

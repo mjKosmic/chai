@@ -15,8 +15,9 @@ import Latte
 //
 // - `ViewOutput` is a fully-formed raster → it answers its ideal size (and may
 //   legitimately exceed the zero offer — legal overrule).
-// - `Spacer` → its rigid size; `Spacer`/`Empty` → 0×0; `Fill` → the
-//   offered rect, i.e. (0, 0) at `.zero`.
+// - Fixed `Spacer(lines:)`/`Spacer(columns:)` → their rigid size; flexible
+//   `Spacer()`/`Empty` → 0×0; `Fill` → the offered rect, i.e. (0, 0) at
+//   `.zero`.
 // - Containers follow their normal proposal rules — no special-casing.
 //
 // `Text` is the ONE compressible view: at a zero (or negative — clamped to

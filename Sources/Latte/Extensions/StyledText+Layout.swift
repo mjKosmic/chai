@@ -2,8 +2,9 @@ import Chai
 
 /// Internal layout primitives for spatial manipulation of ``StyledText``.
 ///
-/// These helpers support the public ``ViewOutput`` layout extensions. They are
-/// not part of the public API.
+/// These helpers support Latte's raster-level layout operations: the
+/// `String`/`StyledText` extensions and the ``ViewOutput`` clamping helpers.
+/// They are not part of the public API.
 
 // MARK: - Line type
 

@@ -33,6 +33,14 @@ struct FrameMeasurementTests {
         )
     }
 
+    @Test func negativeFixedDimensionsClampToZero() {
+        // Negative fixed dimensions are not meaningful; they clamp at init so
+        // a frame cannot report (and a parent cannot propagate) a negative
+        // size. Spacer counts and padding insets clamp the same way.
+        let frame = Text("ab").frame(width: -3, height: -2)
+        #expect(frame._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 0))
+    }
+
     @Test func widthFixedHeightFlexible() {
         let frame = Text("ab").frame(width: 10)
         // Flexible height: child ideal when the offer is nil.
@@ -182,17 +190,17 @@ struct FramePlacementTests {
     }
 }
 
-// MARK: - Overflow (no clipping — pinned decision)
+// MARK: - Overflow (clipped by the hard box)
 
 @Suite("Frame Overflow")
 struct FrameOverflowTests {
 
     /// A non-wrapping raster leaf: its `body` is a `ViewOutput`, so its
     /// measured and rendered size ignores the frame's width proposal — exactly
-    /// the pre-A1 `Text` behavior. Used to pin the frame's no-clip semantics
+    /// the pre-A1 `Text` behavior. Used to pin the frame's clipping semantics
     /// independently of A1's proposal-consuming `Text`, which wraps its
     /// content to the frame's fixed width and therefore no longer overflows
-    /// horizontally (see `textWrapsToFrameWidthInsteadOfOverflowing` below).
+    /// horizontally (see `textWrapsAtFrameWidthAndClipsHeight` below).
     private struct Raster: View {
         let content: String
         init(_ content: String) { self.content = content }

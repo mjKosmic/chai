@@ -402,14 +402,14 @@ select(stdin, cancelPipe)
 `flush()` builds the frame through the layout engine; see [The Layout Engine](#the-layout-engine) for the measure/render flow in detail.
 
 1. Handle cursor visibility: show the cursor when `pendingCursor` is set (and it was hidden), hide it in alt-screen mode when no cursor is set.
-2. Query the terminal size: `view._sizeThatFits(ProposedSize(width: w, height: altScreenActive ? h : nil))` — inline mode queries width only (the buffer is content-sized), alt-screen mode queries the fixed terminal size. The answer is a **report**: it sizes the buffer and nothing else.
+2. Query the terminal size: `view._sizeThatFits(ProposedSize(width: w, height: altScreenActive ? h : nil))` — inline mode queries width only (the buffer is content-sized), alt-screen mode queries the fixed terminal size. The answer is a **report**: it sizes the buffer (and, inline, the root allocation's height); it never binds a child's paint.
 3. Decide the buffer height from the reported size:
    - Empty content (`height == 0`) → a single-row buffer (keeps cursor-position tracking; `Cell.empty` is a space cell so the extra row renders invisibly).
    - Alt screen → fixed `termHeight`.
    - Inline → clamped to `termHeight` (suffix lines win, reproducing the old `content.suffix(lines:)` behavior).
 4. Allocate the buffer with the renderer's wrap-vs-truncate policy: **truncate** inline (the height is content-derived; wrapping would steal rows), **wrap** in alt screen. The mode decision stays renderer-level; the leaf SPI carries no mode flags.
 5. Inline suffix clamp: when the measured height exceeds `termHeight`, embed at a negative row origin (`bufferHeight - measured.height`) so only the bottom `bufferHeight` rows land in the buffer — byte-identical to the eager suffix. Alt screen renders from the top; out-of-bounds rows are dropped by the buffer's bounds guards.
-6. `view._embed(into: &newBuffer, at: ViewRect(origin: origin, size: (w, measured.height)))` — ONE allocation walk places every view into the buffer; each container decides its children's rects.
+6. `newBuffer.embed(view, at: ViewRect(origin: origin, size: (w, rootHeight)))` — ONE allocation walk places every view into the buffer. `rootHeight` is `bufferHeight` in alt-screen mode (the root may fill the screen) and `measured.height` inline; each container decides its children's rects, and the kernel clip contains every view to its rect.
 7. Diff `newBuffer` against `lastBuffer` (per-cell changes + `eraseBelow`).
 8. Move the cursor back to the top of the previous render, flush queued `println` lines (normal screen only), then paint each changed row (`row` + `ESC[K`), emitting `\n` for unchanged rows. On the first render (empty `lastBuffer`) force a full repaint so blank padding rows are not skipped and stale content cannot ghost through.
 9. If the previous frame had more rows than the new frame, emit `ESC[J` (erase screen below).
@@ -469,7 +469,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 |--------|-------|---------|
 | **Style** | `Style.swift`, `Color.swift`, `ColorProfile.swift`, `ColorPalette.swift`, `ColorUtilities.swift` | ANSI text styling — composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and color downsampling). |
 | **Borders** | `Border.swift`, `BorderRenderer.swift` | Render bordered boxes around text content. Supports rounded, normal, double, thick, ASCII, and hidden styles. Selective side rendering (top/bottom/left/right). `Style?` parameters (`borderStyle`, `topStyle`, `bottomStyle`, `leftStyle`, `rightStyle`) style border characters natively. Per-side styles override the shared `borderStyle`; corners inherit the style of their horizontal edge. Content inside the border is never styled. |
-| **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift`, `Stacks.swift`, `Frame.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction — plus the declarative containers: `VStack`/`HStack` (`Stacks.swift`) and `FrameView` with the `frame(...)` modifier (`Frame.swift`). |
+| **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift`, `Stacks.swift`, `Frame.swift`, `PaddingView.swift`, `BorderView.swift`, `CompositionWrappers.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction — plus the declarative containers and wrappers: `VStack`/`HStack` (`Stacks.swift`), `FrameView` with the `frame(...)` modifier (`Frame.swift`), the `PaddingView`/`BorderView` modifiers, and `.beside`/`.above` stack sugar (`CompositionWrappers.swift`). |
 | **Composition** | `Join.swift`, `Compositor.swift` | Compose multiple blocks — horizontal and vertical joins with alignment control (`Join.swift`), and z-ordered canvas placement of positioned `Layer` blocks (`Compositor.swift`, the successor to the old `Place.swift` module). |
 | **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
 | **Static** | `ListRenderer.swift`, `TreeRenderer.swift` | Static list and tree renderers for non-interactive output. |
@@ -821,9 +821,11 @@ renderer.flush()
         │     inline?          → measured height clamped to termHeight, truncate policy
         │                      → suffix clamp via negative row origin
         │
-        ├─ view._embed(into: &buffer,
-        │       at: ViewRect(origin: origin, size: (w, measured.height)))
-        │     (one allocation walk — the root rect is the assignment)
+        ├─ buffer.embed(view,
+        │       at: ViewRect(origin: origin, size: (w, rootHeight)))
+        │     rootHeight = bufferHeight (alt screen) | measured.height (inline)
+        │     (one allocation walk — the root rect is the assignment and the
+        │      kernel clip; each container decides its children's rects)
         │
         ├─ diff vs lastBuffer (per-cell changes + eraseBelow)
         │     no changes?      →  skip content flush
@@ -954,7 +956,7 @@ The `defer { terminal.disableRawMode() }` at the top of `run()` ensures the term
 
 ## Testing Strategy
 
-Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1108 tests in 87 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
+Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1278 tests in 110 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
 
 ### ChaiTests (Tests/ChaiTests/)
 
@@ -1031,7 +1033,7 @@ chai/
 │   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
 │   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
 │   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
-│   │   │   ├── LayoutTypes.swift        # ProposedSize / ViewSize / ViewOrigin
+│   │   │   ├── LayoutTypes.swift        # ProposedSize / ViewSize / ViewOrigin / ViewRect / LayoutFlexibility
 │   │   │   ├── Cursor.swift             # Cursor position and shape
 │   │   │   ├── Logger.swift             # ChaiLogger / FileLogger diagnostics
 │   │   │   └── MessageChannel.swift     # AsyncStream wrapper for the message bus
@@ -1173,7 +1175,7 @@ The phase-1 renderer resolved children to `ViewOutput` strings before composing 
 
 ### Why query *context* rather than clamped constraints?
 
-A query is a report, not a wall: the child answers its truthful size, the parent decides the allocated rect, and only the ``CellBuffer`` enforces anything. Clamping at query time is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. Query-responsive children exist since phase 3 (wrapping `Text`), and in phase 4 they respond to the width they were **allocated** (`Text` wraps at `rect.size.width`, with the compression floor).
+A query is a report, not a wall: the child answers its truthful size, the parent decides the allocated rect, and the allocated rect — enforced by the kernel clip — is what bounds painting; the ``CellBuffer`` bounds are the final backstop. Clamping at query time is deliberately avoided because it destroys information — a scroll viewport must know its content is taller than the visible area even though it can only show part of it. Query-responsive children exist since phase 3 (wrapping `Text`), and in phase 4 they respond to the width they were **allocated** (`Text` wraps at `rect.size.width`, with the compression floor).
 
 ### Why assemble the entire frame into one `String` before writing?
 

@@ -11,9 +11,14 @@ import Chai
 //   anchored top-left in their rect (decision 2 — no leaf stretching).
 // - `Text` wraps at the width it was ALLOCATED and applies the compression
 //   floor (decision 4): a wide/CJK character is never squeezed into a narrower
-//   rect; the line overflows visibly instead.
+//   rect; the glyph is written whole and the kernel clips it when it does not
+//   fit.
 // - The default `_embed` resolves through `body`, so `body: ViewOutput` models
 //   need zero engine code (the simple-path contract).
+//
+// Most tests call `_embed` directly to pin leaf behavior; the kernel clip is
+// installed by `CellBuffer.embed`, so tests that assert containment go through
+// it (`CellBufferClipTests` pins the clip itself).
 //
 // Expectations were derived by running the code, never hand-computed.
 
@@ -120,15 +125,15 @@ struct LeafAllocationTests {
         #expect(embedRows(buffer) == ["ab", ""])
     }
 
-    @Test func textTallerThanItsRectOverflowsVisibly() {
-        // The rect's height is a placement bound, not a clip: a leaf taller
-        // than its rect overflows; the buffer is the only hard wall.
+    @Test func textTallerThanItsRectIsClippedByTheKernel() {
+        // The leaf writes every row it measured, but the kernel clip installed
+        // by `CellBuffer.embed` contains the paint to the 2×1 allocation.
         var buffer = CellBuffer(width: 2, height: 3)
-        Text("a\nb\nc")._embed(
-            into: &buffer,
+        buffer.embed(
+            Text("a\nb\nc"),
             at: ViewRect(size: ViewSize(width: 2, height: 1))
         )
-        #expect(embedRows(buffer) == ["a", "b", "c"])
+        #expect(embedRows(buffer) == ["a", "", ""])
     }
 
     // MARK: Compression floor (decision 4)
@@ -136,8 +141,9 @@ struct LeafAllocationTests {
     @Test func textCompressionFloorKeepsAWideCharacterIntact() {
         // Allocated 1 column, but the narrowest producible form of "你" is 2
         // columns wide. The floor clamps the wrap width to 2, so the character
-        // is written whole (overflowing the rect) instead of being dropped or
-        // split.
+        // is written whole instead of being dropped or split. (This test calls
+        // `_embed` directly; through `CellBuffer.embed` the continuation
+        // column would be clipped.)
         var buffer = CellBuffer(width: 4, height: 1)
         Text("你")._embed(
             into: &buffer,

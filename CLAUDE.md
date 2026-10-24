@@ -105,7 +105,7 @@ Do not attempt direct tuple indexing — it does not compile.
 ### `Program.run()` returns the final model state
 `run()` is `@discardableResult` and returns `M`. This is useful for testing and for programs that want to inspect state after exit. Preserve this return value when modifying `ProgramRunner.run()`.
 
-### Engine pitfalls (phase-2/4 hard-won rules)
+### Engine pitfalls (phase-2/4/5 hard-won rules)
 
 1. **Layout operates on child *views*, never on resolved outputs.** Containers must enumerate children via `_childViews()` and call `_sizeThatFits` (query) / `_embed` (allocation) on the *views*. The first engine attempt resolved children to `ViewOutput` before measurement — that flattens the tree, bypasses every child's layout overrides, and makes assignment meaningless; it was reverted. Do not reintroduce output-based layout.
 2. **Allocation is the contract — and the box (phase 5).** The rect passed to a child's `_embed(into:at:)` **is** the parent's decision and its painting bound. Consequences: (a) `_sizeThatFits` is a **pure report** — never treat an answer as binding; a container may overrule it (Fill-by-type, the Text floor); (b) containers must allocate child rects from their own rules and query context, clamped to their own rect, never by re-measuring with a remembered proposal (there is none); (c) containers must embed children via `buffer.embed(child, at: rect)`, never `child._embed(into:&buffer,...)` directly — the helper installs the kernel clip that guarantees no paint escapes the rect; (d) `_embed` must not depend on `body` for containers. The test-local `RectEchoView` pins that children observe their *allocated* rect; `HardBoxTests` pins containment. Do not reintroduce proposal bookkeeping or unclipped child embeds.

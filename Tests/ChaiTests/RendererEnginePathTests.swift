@@ -6,8 +6,8 @@ import Latte
 //
 // Milestone M3 of the phase-2 layout engine: `Renderer.flush()` now builds
 // its ``CellBuffer`` through the layout engine (`_sizeThatFits` +
-// `_render`) instead of resolving the tree eagerly to a ``ViewOutput`` and
-// rasterizing the styled text. These tests pin every renderer-level policy
+// `_embed(into:at:)`) instead of resolving the tree eagerly to a ``ViewOutput``
+// and rasterizing the styled text. These tests pin every renderer-level policy
 // through the engine path:
 //
 // - Real trees (VStack/HStack, control flow) written via the generic
