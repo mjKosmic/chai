@@ -15,17 +15,14 @@
 /// rect in ``View/_embed(into:at:)``) and, finally, the ``CellBuffer`` bounds.
 /// See ARCHITECTURE.md, "Query and allocation semantics".
 ///
-/// (The type keeps its historical name; in phase-4 terms it is the query
-/// context, and `_sizeThatFits` is a pure report.)
-///
 /// ```swift
 /// // Ask a view for its ideal size.
-/// let ideal = text._sizeThatFits(.unspecified)
+/// let ideal = text._measure(in: .unconstrained)
 ///
 /// // Ask a view how it reports at a 20-column query context.
-/// let size = text._sizeThatFits(ProposedSize(width: 20, height: nil))
+/// let size = text._measure(in: AvailableSize(width: 20, height: nil))
 /// ```
-public struct ProposedSize: Sendable, Equatable {
+public struct AvailableSize: Sendable, Equatable {
 
     /// The queried width, or `nil` for the view's ideal width.
     public var width: Int?
@@ -46,14 +43,15 @@ public struct ProposedSize: Sendable, Equatable {
     }
 
     /// A query with no context on either axis: both dimensions are ideal.
-    public static let unspecified = ProposedSize(width: nil, height: nil)
+    public static let unconstrained = AvailableSize(width: nil, height: nil)
 
     /// A zero query: report your **minimum** size.
     ///
-    /// SwiftUI's `ProposedViewSize` has three special cases — `unspecified`
-    /// (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first
-    /// two; the third is deliberately absent (see ARCHITECTURE.md, "Why there
-    /// is no `.infinity`").
+    /// SwiftUI's `ProposedViewSize` has three special cases —
+    /// `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum).
+    /// Chai has the first two, spelled ``unconstrained`` (ideal) and
+    /// `.zero` (minimum); the third is deliberately absent (see
+    /// ARCHITECTURE.md, "Why there is no `.infinity`").
     ///
     /// `.zero` is the context a container uses to ask for a child's
     /// *narrowest producible* form. Most views answer their minimum **by
@@ -61,15 +59,15 @@ public struct ProposedSize: Sendable, Equatable {
     /// its ideal size regardless (it may legitimately exceed the zero
     /// context: a report is never clamped), ``Spacer`` answers its rigid size,
     /// flexible ``Spacer()``/``Empty`` answer 0×0, and ``Fill`` answers
-    /// `(0, 0)` because a zero query is `(proposal.width ?? 0,
-    /// proposal.height ?? 0)`. ``Text`` is the one *compressible* view: at a
+    /// `(0, 0)` because a zero query is `(available.width ?? 0,
+    /// available.height ?? 0)`. ``Text`` is the one *compressible* view: at a
     /// zero (or negative) width query it wraps to its minimum width.
     ///
     /// ```swift
     /// // Ask a view for its minimum size.
-    /// let minimum = text._sizeThatFits(.zero)
+    /// let minimum = text._measure(in: .zero)
     /// ```
-    public static let zero = ProposedSize(width: 0, height: 0)
+    public static let zero = AvailableSize(width: 0, height: 0)
 }
 
 /// A concrete size measured for a view, in display columns and rows.

@@ -35,7 +35,7 @@ Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `Fram
    - [The measure/render flow](#the-measurerender-flow)
    - [Who the engine SPI is for](#who-the-engine-spi-is-for)
    - [Query and allocation semantics](#query-and-allocation-semantics)
-   - [Minimum queries (`ProposedSize.zero`)](#minimum-queries-proposedsizezero)
+   - [Minimum queries (`AvailableSize.zero`)](#minimum-queries-availablesizezero)
    - [Why there is no `.infinity`](#why-there-is-no-infinity)
    - [The parity discipline](#the-parity-discipline)
    - [`frame()` — one modifier](#frame--one-modifier)
@@ -402,7 +402,7 @@ select(stdin, cancelPipe)
 `flush()` builds the frame through the layout engine; see [The Layout Engine](#the-layout-engine) for the measure/render flow in detail.
 
 1. Handle cursor visibility: show the cursor when `pendingCursor` is set (and it was hidden), hide it in alt-screen mode when no cursor is set.
-2. Query the terminal size: `view._sizeThatFits(ProposedSize(width: w, height: altScreenActive ? h : nil))` — inline mode queries width only (the buffer is content-sized), alt-screen mode queries the fixed terminal size. The answer is a **report**: it sizes the buffer (and, inline, the root allocation's height); it never binds a child's paint.
+2. Query the terminal size: `view._measure(in: AvailableSize(width: w, height: altScreenActive ? h : nil))` — inline mode queries width only (the buffer is content-sized), alt-screen mode queries the fixed terminal size. The answer is a **report**: it sizes the buffer (and, inline, the root allocation's height); it never binds a child's paint.
 3. Decide the buffer height from the reported size:
    - Empty content (`height == 0`) → a single-row buffer (keeps cursor-position tracking; `Cell.empty` is a space cell so the extra row renders invisibly).
    - Alt screen → fixed `termHeight`.
@@ -490,7 +490,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 
 **Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Latte/Layout/Stacks.swift`, `Sources/Latte/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
 
-The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_sizeThatFits` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. The proposal model survives only as the **query language** (`ProposedSize`), not as render-pass bookkeeping.
+The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_measure(in:)` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. What survives from the proposal model is only the **query language** (`AvailableSize`), not render-pass bookkeeping.
 
 ### The measure/render flow
 
@@ -501,7 +501,7 @@ renderer.write(model.body)          stores the tree: pendingView: any View
 renderer.flush()
         │
         ├─ 1. query the tree (pure, read-only):
-        │       view._sizeThatFits(ProposedSize(width: w, height: altScreen ? h : nil))
+        │       view._measure(in: AvailableSize(width: w, height: altScreen ? h : nil))
         │       (width only inline — the buffer is content-sized; fixed size in alt screen)
         │
         ├─ 2. the query cascade: every view reports a ViewSize, delegating
@@ -530,19 +530,19 @@ The eager bridge is gone (phase-4 P4b): ``View/_resolveToViewOutput()`` was dele
 The engine surface is four methods on ``View``:
 
 ```swift
-func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize   // pure query (report)
+func _measure(in available: AvailableSize) -> ViewSize   // pure query (report)
 func _embed(into buffer: inout CellBuffer, at rect: ViewRect)  // allocation entrance
 func _childViews() -> [any View]
 func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_sizeThatFits`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
 
-`_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis proposal, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
+`_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis assignment, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
 ### Query and allocation semantics
 
-The proposal model is the **query language**, not render-pass bookkeeping. Three
+The query language is the **measurement context**, not render-pass bookkeeping. Three
 properties matter; the first two replaced their phase-2/3 negotiation
 counterparts.
 
@@ -552,7 +552,7 @@ counterparts.
 
 | Stage | Who decides | Nature |
 |-------|-------------|--------|
-| The query (`ProposedSize`) | the parent | **context** — the size the parent is asking about |
+| The query (`AvailableSize`) | the parent | **context** — the size the parent is asking about |
 | The report (`ViewSize`) | the child | the child's **truthful size** — may exceed the query context |
 | The allocated `ViewRect` in `_embed` | the parent | the **decision** — the child's layout *and painting* box (phase 5) |
 | The `CellBuffer` bounds | the renderer | the final backstop — writes outside the buffer are dropped |
@@ -577,7 +577,7 @@ Views fall into a taxonomy by how they treat it:
 - **Reporters** — leaves such as ``ViewOutput`` and fixed ``Spacer(lines:)``/``Spacer(columns:)``. They answer their intrinsic size; a `ViewOutput` is a fully-formed raster and ignores the query, while a fixed spacer answers its requested cells.
 - **Containers** — ``VStack``/``HStack`` query their children in their own allocation context (cross-axis width/height, `nil` on the main axis), then allocate rects from the answers plus their rules (alignment, flexibility shares, the `Fill` remainder). The query is not a promise about the rect.
 - **Allocators** — ``FrameView``. Fixed dimensions are allocation data: the frame owns them and hands the child that box verbatim; flexible dimensions pass the parent's assignment through (floored by the child's report when the assignment is degenerate).
-- **Consumers** — proposal-sensitive views. ``Text`` wraps at the width it is **allocated** (with the compression floor); ``Fill`` claims the rect it is allocated; a flexible ``Spacer()`` reports 0×0 rigidly and a positive `_flexibility()` fraction so a stack can hand it a share of the leftover.
+- **Consumers** — query-sensitive views. ``Text`` wraps at the width it is **allocated** (with the compression floor); ``Fill`` claims the rect it is allocated; a flexible ``Spacer()`` reports 0×0 rigidly and a positive `_flexibility()` fraction so a stack can hand it a share of the leftover.
 
 **3. The rect is the contract.**
 
@@ -586,10 +586,10 @@ There is no second pass to keep in sync: the rect passed to a child's
 child's painting bound. The consequences are
 the AGENTS.md engine pitfalls:
 
-- `_sizeThatFits` is a **pure report** — never treat an answer as binding; a
+- `_measure(in:)` is a **pure report** — never treat an answer as binding; a
   container may overrule it.
 - Containers allocate child rects from their own rules and query context;
-  there is no remembered proposal to re-measure with.
+  there is no remembered query value to re-measure with.
 - `_embed` must not depend on `body` for containers.
 
 The test-local ``RectEchoView`` pins that a child observes its *allocated* rect,
@@ -603,9 +603,9 @@ context (`rect.size.height`) rather than the top-level query context (`nil`).
 Built-ins are unaffected (spacers and `Fill` paint nothing); the
 allocation-time context is the accurate one.
 
-### Minimum queries (`ProposedSize.zero`)
+### Minimum queries (`AvailableSize.zero`)
 
-SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `ProposedSize.zero` is the query context a container uses to ask for a child's **narrowest producible** form; it is a context, not a constraint — the report is never clamped.
+SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `zero` (minimum), and `infinity` (maximum). Chai has the first two. `AvailableSize.zero` is the query context a container uses to ask for a child's **narrowest producible** form; it is a context, not a constraint — the report is never clamped.
 
 Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero context), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the queried rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width context it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
 
@@ -617,10 +617,10 @@ The third SwiftUI special case is deliberately absent, for two independent reaso
 
 | Reason | Detail |
 |--------|--------|
-| No representation | A proposal dimension is `Int?`; there is no value for "infinity". |
+| No representation | A query dimension is `Int?`; there is no value for "infinity". |
 | No faithful answer | `ViewSize` is `Int`-based, so a view could never answer a maximum faithfully — a flexible `Spacer()`'s maximum is "whatever the container decides is left", which is a *container-level* fact the child does not know. |
 
-The functionality maps onto mechanisms that already exist: "expand to fill" ≙ `_flexibility()` + the stack's leftover distribution; "measure the maximum" ≙ the container's own leftover math. `.infinity` would add a third proposal case with no way to answer it — so it stays out.
+The functionality maps onto mechanisms that already exist: "expand to fill" ≙ `_flexibility()` + the stack's leftover distribution; "measure the maximum" ≙ the container's own leftover math. `.infinity` would add a third query case with no way to answer it — so it stays out.
 
 ### The parity discipline
 
@@ -632,7 +632,7 @@ The allocation engine is the only renderer; the corpus is its mechanical spec. T
   1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubled them (a join quirk; the engine semantics are preserved).
   2. `.empty` vs space cells in alignment padding — invisible by construction.
   3. Multi-line children block-aligned under non-left `VStack` alignment: the engine aligns each child as one layout unit; the eager path aligned each line (an artifact of text joining). SwiftUI-consistent.
-  4. `frame()` flexible-fill existed only in the engine: a `nil` frame dimension fills a non-`nil` proposal, which the proposal-less eager `body` could not express. Retired in P4b.
+  4. `frame()` flexible-fill existed only in the engine: a `nil` frame dimension fills a non-`nil` assignment, which the eager `body` could not express. Retired in P4b.
   5. Proposal-consuming `Text` wraps instead of truncating (A1). Retired in P4b.
   6. A fixed-width `frame()` around `Text` wraps instead of overflowing (A1). Retired in P4b.
   7. `FlexibleSpacer` distributed leftover space only in the engine (A2); now `Spacer()`. Retired in P4b.
@@ -813,7 +813,7 @@ renderer.flush()
         ├─ cursor visibility (show/hide)
         │
         ├─ query terminal size (report only):
-        │     view._sizeThatFits(ProposedSize(width: w, height: altScreen ? h : nil))
+        │     view._measure(in: AvailableSize(width: w, height: altScreen ? h : nil))
         │
         ├─ allocate CellBuffer by policy:
         │     empty content?   → 1-row buffer
@@ -966,7 +966,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1278 t
 | `RendererTests.swift` | Renderer via `MockTerminalOutput` (a `TerminalOutput` conformance that captures written strings): initial render, cell-diff skipping, alt screen enter/exit, cursor hide/show, window title, `println`, `repaint`, terminal size clamping, synchronized output markers, ANSI-aware width truncation, cursor shape |
 | `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
-| `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_sizeThatFits`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
+| `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_measure(in:)`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
 | `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the unified `Spacer`/`Fill` primitives (flexible 0×0 measurement with a fraction, fixed cell counts, no-op render) |
 | `AnyViewTests.swift` | PB: `AnyView` forwards all four SPI methods — measurement, allocation, `_childViews` structural transparency, and `_flexibility` leftover distribution — plus heterogeneous `for` loops and `buildArray` |
 | `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
@@ -1033,7 +1033,7 @@ chai/
 │   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
 │   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
 │   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
-│   │   │   ├── LayoutTypes.swift        # ProposedSize / ViewSize / ViewOrigin / ViewRect / LayoutFlexibility
+│   │   │   ├── LayoutTypes.swift        # AvailableSize / ViewSize / ViewOrigin / ViewRect / LayoutFlexibility
 │   │   │   ├── Cursor.swift             # Cursor position and shape
 │   │   │   ├── Logger.swift             # ChaiLogger / FileLogger diagnostics
 │   │   │   └── MessageChannel.swift     # AsyncStream wrapper for the message bus
@@ -1171,7 +1171,7 @@ The phase-1 renderer resolved children to `ViewOutput` strings before composing 
 
 ### Why is the engine SPI underscored-but-public?
 
-`_sizeThatFits(_:)`, `_embed(into:at:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
+`_measure(in:)`, `_embed(into:at:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
 
 ### Why query *context* rather than clamped constraints?
 

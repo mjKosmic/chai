@@ -5,7 +5,7 @@ import Latte
 // MARK: - M2 container engine tests
 //
 // Milestone M2 of the phase-2 layout engine, re-roled in phase 4: `VStack`/
-// `HStack` `_sizeThatFits` (pure query) and `_embed` (allocation walk).
+// `HStack` `_measure` (pure query) and `_embed` (allocation walk).
 // Expectations were derived by running the code (see the M2 report); alignment
 // offsets pin the exact fraction
 // math — `Int(Double(shortage) * fraction)` — including `Int()` truncation on
@@ -27,7 +27,7 @@ struct StacksEngineMeasurementTests {
             Text("ccc")
         }
         #expect(
-            stack._sizeThatFits(.unspecified) == ViewSize(width: 3, height: 3)
+            stack._measure(in: .unconstrained) == ViewSize(width: 3, height: 3)
         )
     }
 
@@ -38,7 +38,7 @@ struct StacksEngineMeasurementTests {
             Text("ccc")
         }
         #expect(
-            stack._sizeThatFits(.unspecified) == ViewSize(width: 6, height: 1)
+            stack._measure(in: .unconstrained) == ViewSize(width: 6, height: 1)
         )
     }
 
@@ -49,7 +49,7 @@ struct StacksEngineMeasurementTests {
             Text("b")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 10, height: 1)) == ViewSize(width: 2, height: 2)
+            stack._measure(in: AvailableSize(width: 10, height: 1)) == ViewSize(width: 2, height: 2)
         )
     }
 
@@ -59,7 +59,7 @@ struct StacksEngineMeasurementTests {
             Text("b")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 1, height: 2)) == ViewSize(width: 3, height: 1)
+            stack._measure(in: AvailableSize(width: 1, height: 2)) == ViewSize(width: 3, height: 1)
         )
     }
 
@@ -67,14 +67,14 @@ struct StacksEngineMeasurementTests {
         let stack = VStack {
             Text("only")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 1))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 4, height: 1))
     }
 
     @Test func hstackSingleChildMeasuresChild() {
         let stack = HStack {
             Text("only")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 1))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 4, height: 1))
     }
 
     @Test func hstackColumnsMeasureAtIdealWidthSoTextCannotWrapInsideIt() {
@@ -89,21 +89,21 @@ struct StacksEngineMeasurementTests {
             Text("abcdefghij")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 5, height: nil)) == ViewSize(width: 10, height: 1)
+            stack._measure(in: AvailableSize(width: 5, height: nil)) == ViewSize(width: 10, height: 1)
         )
-        let size = stack._sizeThatFits(ProposedSize(width: 5, height: nil))
+        let size = stack._measure(in: AvailableSize(width: 5, height: nil))
         var buffer = CellBuffer(width: 5, height: size.height)
         stack._embed(into: &buffer, at: ViewRect(size: size))
         #expect(visibleRows(buffer) == ["abcde"])
     }
 
     @Test func vstackEmptyChildrenMeasureZero() {
-        #expect(VStack { Empty() }._sizeThatFits(.unspecified) == .zero)
+        #expect(VStack { Empty() }._measure(in: .unconstrained) == .zero)
         #expect(
             VStack {
                 Empty()
                 Empty()
-            }._sizeThatFits(.unspecified) == .zero
+            }._measure(in: .unconstrained) == .zero
         )
     }
 
@@ -112,7 +112,7 @@ struct StacksEngineMeasurementTests {
             HStack {
                 Empty()
                 Empty()
-            }._sizeThatFits(.unspecified) == .zero
+            }._measure(in: .unconstrained) == .zero
         )
     }
 
@@ -122,7 +122,7 @@ struct StacksEngineMeasurementTests {
             Empty()
             Text("b")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 1, height: 2))
     }
 
     @Test func hstackSkipsEmptyChildInMeasurement() {
@@ -131,7 +131,7 @@ struct StacksEngineMeasurementTests {
             Empty()
             Text("b")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 1))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 2, height: 1))
     }
 
     @Test func hstackSpacerColumnsAdvanceWidth() {
@@ -140,7 +140,7 @@ struct StacksEngineMeasurementTests {
             Spacer(columns: 3)
             Text("b")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 1))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 5, height: 1))
     }
 
     @Test func vstackSpacerLinesAdvanceHeight() {
@@ -149,7 +149,7 @@ struct StacksEngineMeasurementTests {
             Spacer(lines: 2)
             Text("b")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 4))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 1, height: 4))
     }
 
     @Test func vstackMeasuresCjkChildWidth() {
@@ -157,7 +157,7 @@ struct StacksEngineMeasurementTests {
             Text("你好")
             Text("ok")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 2))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 4, height: 2))
     }
 
     @Test func hstackMeasuresCjkChildWidth() {
@@ -165,7 +165,7 @@ struct StacksEngineMeasurementTests {
             Text("你好")
             Text("!")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 1))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 5, height: 1))
     }
 
     @Test func nestedStacksCombineSizes() {
@@ -176,7 +176,7 @@ struct StacksEngineMeasurementTests {
                 Text("b")
             }
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 2))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 4, height: 2))
     }
 }
 

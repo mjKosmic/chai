@@ -19,7 +19,7 @@
 ///
 /// `AnyView` forwards **all four** engine SPI methods to the erased view:
 ///
-/// - ``View/_sizeThatFits(_:)`` and ``View/_embed(into:at:)`` — erasure never
+/// - ``View/_measure(in:)`` and ``View/_embed(into:at:)`` — erasure never
 ///   changes measurement or painting.
 /// - ``View/_childViews()`` — an erased structural view stays *transparent*:
 ///   `AnyView(TupleView(...))` inside an `HStack` still exposes its individual
@@ -40,8 +40,8 @@ public struct AnyView: View {
     }
 
     /// Forward the erased view's measurement.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        base._sizeThatFits(proposal)
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        base._measure(in: available)
     }
 
     /// Forward the erased view's allocation walk.

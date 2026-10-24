@@ -183,7 +183,7 @@ struct LeafAllocationTests {
         // reports AND paints the 2-column form.
         let text = Text("ab你")
         #expect(
-            text._sizeThatFits(ProposedSize(width: 1, height: nil)) == ViewSize(width: 2, height: 2)
+            text._measure(in: AvailableSize(width: 1, height: nil)) == ViewSize(width: 2, height: 2)
         )
         var buffer = CellBuffer(width: 3, height: 2)
         text._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 1, height: 2)))

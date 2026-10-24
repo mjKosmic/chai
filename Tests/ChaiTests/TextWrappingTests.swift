@@ -5,7 +5,7 @@ import Latte
 // MARK: - A1: word-aware wrapping `Text`
 //
 // Milestone A1 of the phase-3 Stage A SPI break: `Text` becomes the first
-// production proposal consumer. A non-`nil`, positive width proposal wraps
+// production query consumer. A non-`nil`, positive width query wraps
 // the content to that width (both measurement and rendering use the SAME
 // `StyledText.wrappedToWidth(_:)` function, so the two passes agree by
 // construction — the A0 fit/render value-equality contract).
@@ -25,9 +25,9 @@ import Latte
 // 6. Styles are preserved exactly via segment splitting; no invented/merged
 //    styles.
 // 7. The shared function's own guard: `width ≤ 0` returns the content
-//    unchanged. `Text` no longer routes a non-positive width proposal here —
-//    since A3 it clamps to the minimum producible width (`ProposedSize.zero`
-//    semantics, see `ProposedSizeZeroTests`) — but the primitive's guard
+//    unchanged. `Text` no longer routes a non-positive width query here —
+//    since A3 it clamps to the minimum producible width (`AvailableSize.zero`
+//    semantics, see `MinimumSizeTests`) — but the primitive's guard
 //    remains the contract callers rely on for degenerate widths.
 //
 // The first block pins the shared wrapping function directly (exact, includes
@@ -191,7 +191,7 @@ struct TextWrappingTableTests {
         // The shared wrapping function's contract: `width <= 0` is unusable,
         // so it returns the content unchanged. (Since A3 `Text` never passes a
         // non-positive width — it computes the minimum producible width first,
-        // see `ProposedSizeZeroTests`. This pins the primitive's guard, which
+        // see `MinimumSizeTests`. This pins the primitive's guard, which
         // other callers still rely on.)
         #expect(StyledText("hello world").wrappedToWidth(0).plainText == "hello world")
     }
@@ -258,7 +258,7 @@ struct TextWrappingTableTests {
     }
 }
 
-// MARK: - `Text` wiring (production proposal consumer)
+// MARK: - `Text` wiring (production query consumer)
 
 @Suite("Text Wrapping — Text integration")
 struct TextWrappingIntegrationTests {
@@ -281,95 +281,95 @@ struct TextWrappingIntegrationTests {
     }
 
     /// Embed `view` at its measured rect (the engine's allocation path),
-    /// returning the visible rows. The buffer width is the proposal width (so
+    /// returning the visible rows. The buffer width is the query width (so
     /// a wrapped line can never be a buffer artifact).
-    private func engineRows(_ view: some View, proposal: ProposedSize) -> [String] {
-        let size = view._sizeThatFits(proposal)
-        var buffer = CellBuffer(width: proposal.width ?? size.width, height: size.height)
+    private func engineRows(_ view: some View, available: AvailableSize) -> [String] {
+        let size = view._measure(in: available)
+        var buffer = CellBuffer(width: available.width ?? size.width, height: size.height)
         view._embed(into: &buffer, at: ViewRect(size: size))
         return visibleRows(buffer)
     }
 
     @Test func positiveWidthProposalMeasuresTheWrappedSize() {
-        let proposal = ProposedSize(width: 11, height: nil)
+        let available = AvailableSize(width: 11, height: nil)
         // "The quick" / "brown fox" → widest line 9, 2 lines.
-        #expect(Text("The quick brown fox")._sizeThatFits(proposal) == ViewSize(width: 9, height: 2))
+        #expect(Text("The quick brown fox")._measure(in: available) == ViewSize(width: 9, height: 2))
     }
 
     @Test func narrowerProposalWrapsToMoreLines() {
         // "The" / "qui" / "ck" / "bro" / "wn" / "fox" → 3×6.
         #expect(
-            Text("The quick brown fox")._sizeThatFits(ProposedSize(width: 3, height: nil))
+            Text("The quick brown fox")._measure(in: AvailableSize(width: 3, height: nil))
                 == ViewSize(width: 3, height: 6)
         )
     }
 
     @Test func nilProposalMeasuresTheUnwrappedIdeal() {
-        #expect(Text("The quick brown fox")._sizeThatFits(.unspecified) == ViewSize(width: 19, height: 1))
+        #expect(Text("The quick brown fox")._measure(in: .unconstrained) == ViewSize(width: 19, height: 1))
     }
 
-    @Test func nonPositiveWidthProposalMeasuresTheMinimum() {
-        // A3 spec delta: a zero (or negative) width proposal is the MINIMUM
+    @Test func nonPositiveWidthQueryMeasuresTheMinimum() {
+        // A3 spec delta: a zero (or negative) width query is the minimum
         // offer, not "unwrapped". "The quick brown fox" compresses to width 1
         // (the widest single character); the three word-break spaces are
         // consumed → 16 rows.
         #expect(
-            Text("The quick brown fox")._sizeThatFits(ProposedSize(width: 0, height: nil))
+            Text("The quick brown fox")._measure(in: AvailableSize(width: 0, height: nil))
                 == ViewSize(width: 1, height: 16)
         )
     }
 
     @Test func wideEnoughProposalMeasuresTheUnwrappedIdeal() {
         #expect(
-            Text("The quick brown fox")._sizeThatFits(ProposedSize(width: 40, height: nil))
+            Text("The quick brown fox")._measure(in: AvailableSize(width: 40, height: nil))
                 == ViewSize(width: 19, height: 1)
         )
     }
 
     @Test func whitespaceOnlyContentMeasuresZeroByZero() {
-        #expect(Text("   ")._sizeThatFits(ProposedSize(width: 5, height: nil)) == .zero)
+        #expect(Text("   ")._measure(in: AvailableSize(width: 5, height: nil)) == .zero)
     }
 
     @Test func emptyContentMeasuresZeroByZero() {
-        #expect(Text("")._sizeThatFits(ProposedSize(width: 5, height: nil)) == .zero)
+        #expect(Text("")._measure(in: AvailableSize(width: 5, height: nil)) == .zero)
     }
 
     @Test func blankHardLinesMeasureAsLines() {
         // A1 does not change blank-line semantics: `Text("a\n\nb")` keeps its
-        // three lines under a width proposal (a hard `\n` is always honored).
+        // three lines under a width query (a hard `\n` is always honored).
         #expect(
-            Text("a\n\nb")._sizeThatFits(ProposedSize(width: 5, height: nil))
+            Text("a\n\nb")._measure(in: AvailableSize(width: 5, height: nil))
                 == ViewSize(width: 1, height: 3)
         )
     }
 
     @Test func minimumHoldsForWhitespacePrefixedContent() {
         // PR #21 review: leading whitespace used to defeat the minimum
-        // contract (`Text("  ab")._sizeThatFits(.zero)` returned width 3).
+        // contract (`Text("  ab")._measure(in: .zero)` returned width 3).
         // The leading run is now dropped when it cannot fit with the next
         // character, so the minimum is the widest character (1).
-        #expect(Text("  ab")._sizeThatFits(.zero) == ViewSize(width: 1, height: 2))
+        #expect(Text("  ab")._measure(in: .zero) == ViewSize(width: 1, height: 2))
     }
 
     @Test func newlineOnlyTextMeasuresZero() {
         // Allowed divergence #10: content with no visible character
         // (newline-only included) wraps to empty and measures 0x0, where the
         // eager path measures ViewOutput("\n") as two blank rows.
-        #expect(Text("\n")._sizeThatFits(ProposedSize(width: 5, height: nil)) == .zero)
+        #expect(Text("\n")._measure(in: AvailableSize(width: 5, height: nil)) == .zero)
     }
 
     @Test func renderWritesTheWrappedContentAtTheProposal() {
-        // The fit proposal (5) and the render proposal are the SAME value: the
+        // The query width (5) and the allocated width are the same value: the
         // rendered rows are exactly the measured wrapped rows.
-        let proposal = ProposedSize(width: 5, height: nil)
-        #expect(engineRows(Text("abcdefgh"), proposal: proposal) == ["abcde", "fgh"])
+        let available = AvailableSize(width: 5, height: nil)
+        #expect(engineRows(Text("abcdefgh"), available: available) == ["abcde", "fgh"])
     }
 
     @Test func renderAtZeroWidthWritesTheMinimumForm() {
         // A3 spec delta: a zero-width allocation renders the SAME minimum form
         // the query measured — one 1-column row per character, at col 0.
-        let proposal = ProposedSize(width: 0, height: nil)
-        let size = Text("abcdefgh")._sizeThatFits(proposal)
+        let available = AvailableSize(width: 0, height: nil)
+        let size = Text("abcdefgh")._measure(in: available)
         #expect(size == ViewSize(width: 1, height: 8))
         var buffer = CellBuffer(width: 8, height: 8)
         Text("abcdefgh")._embed(into: &buffer, at: ViewRect(size: size))
@@ -381,8 +381,8 @@ struct TextWrappingIntegrationTests {
         // "    c"/"ode" — the first row exceeded the width, the truncating
         // buffer rendered "   ", and the "c" was lost. The indentation is
         // dropped instead, so every visible character survives.
-        let proposal = ProposedSize(width: 3, height: nil)
-        #expect(engineRows(Text("    code"), proposal: proposal) == ["cod", "e"])
+        let available = AvailableSize(width: 3, height: nil)
+        #expect(engineRows(Text("    code"), available: available) == ["cod", "e"])
     }
 
     @Test func textMeasuresWrappedInsideAVStack() {
@@ -391,7 +391,7 @@ struct TextWrappingIntegrationTests {
             Text("jumps")
         }
         // First child wraps to 9×2; "jumps" is 5×1 → the stack is 9 wide, 3 tall.
-        #expect(stack._sizeThatFits(ProposedSize(width: 11, height: nil)) == ViewSize(width: 9, height: 3))
+        #expect(stack._measure(in: AvailableSize(width: 11, height: nil)) == ViewSize(width: 9, height: 3))
     }
 
     @Test func textWrapsInsideAVStackAtRenderTime() {
@@ -399,10 +399,10 @@ struct TextWrappingIntegrationTests {
             Text("The quick brown fox")
             Text("jumps")
         }
-        // The stack forwards its incoming width proposal to each child, so the
+        // The stack queries each child at its incoming width context, so the
         // render-time wrap matches the fit-time wrap (value-equality contract).
         #expect(
-            engineRows(stack, proposal: ProposedSize(width: 11, height: nil))
+            engineRows(stack, available: AvailableSize(width: 11, height: nil))
                 == ["The quick", "brown fox", "jumps"]
         )
     }

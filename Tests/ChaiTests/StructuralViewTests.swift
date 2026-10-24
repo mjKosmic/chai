@@ -200,13 +200,13 @@ struct StructuralViewTests {
     }
 
     @Test func spacersMeasureTheirRequestedSpace() {
-        #expect(Spacer(columns: 3)._sizeThatFits(.unspecified) == ViewSize(width: 3, height: 1))
-        #expect(Spacer(lines: 2)._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 2))
+        #expect(Spacer(columns: 3)._measure(in: .unconstrained) == ViewSize(width: 3, height: 1))
+        #expect(Spacer(lines: 2)._measure(in: .unconstrained) == ViewSize(width: 0, height: 2))
     }
 
     @Test func emptyViewProducesNoContent() {
         #expect(engineText(Empty()) == "")
-        #expect(Empty()._sizeThatFits(.unspecified) == .zero)
+        #expect(Empty()._measure(in: .unconstrained) == .zero)
     }
 
     @Test func bodylessViewDefaultsToEmptyWithoutRecursing() {
@@ -215,7 +215,7 @@ struct StructuralViewTests {
         // overrides terminate the chain at 0×0 / no paint. A recursion bug
         // here would crash the test run.
         struct Nothing: View {}
-        #expect(Nothing()._sizeThatFits(ProposedSize(width: 4, height: 4)) == .zero)
+        #expect(Nothing()._measure(in: AvailableSize(width: 4, height: 4)) == .zero)
 
         var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
         Nothing()._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 4, height: 1)))

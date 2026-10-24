@@ -53,17 +53,17 @@ public struct BorderView<Content: View>: View {
 // MARK: - BorderView engine implementation
 
 extension BorderView {
-    /// The child's proposal inside the one-cell frame.
-    private func childProposal(for proposal: ProposedSize) -> ProposedSize {
-        ProposedSize(
-            width: proposal.width.map { max(0, $0 - 2) },
-            height: proposal.height.map { max(0, $0 - 2) }
+    /// The child's query context inside the one-cell frame.
+    private func childQuery(for available: AvailableSize) -> AvailableSize {
+        AvailableSize(
+            width: available.width.map { max(0, $0 - 2) },
+            height: available.height.map { max(0, $0 - 2) }
         )
     }
 
     /// Report the child's report plus the one-cell frame on each side.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        let child = content._sizeThatFits(childProposal(for: proposal))
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        let child = content._measure(in: childQuery(for: available))
         return ViewSize(width: child.width + 2, height: child.height + 2)
     }
 
@@ -79,8 +79,8 @@ extension BorderView {
             )
         ).intersection(rect)
 
-        let reported = content._sizeThatFits(
-            ProposedSize(width: inset.size.width, height: inset.size.height)
+        let reported = content._measure(in: 
+            AvailableSize(width: inset.size.width, height: inset.size.height)
         )
 
         // The box is drawn at the report (child plus the frame), but never

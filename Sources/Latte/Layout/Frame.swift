@@ -53,9 +53,9 @@ public struct FrameView<Content: View>: View {
     ///
     /// - Parameters:
     ///   - width: The fixed frame width in columns, or `nil` for a flexible
-    ///     width that fills the parent's proposal.
+    ///     width that fills the parent's assignment.
     ///   - height: The fixed frame height in rows, or `nil` for a flexible
-    ///     height that fills the parent's proposal.
+    ///     height that fills the parent's assignment.
     ///   - horizontalAlignment: How the content is aligned horizontally.
     ///     Defaults to `.left`.
     ///   - verticalAlignment: How the content is aligned vertically.
@@ -80,7 +80,7 @@ public struct FrameView<Content: View>: View {
 //
 // Phase 4: fixed dimensions are ALLOCATION data — the frame owns them and
 // allocates the child box verbatim; flexible dimensions pass the assigned rect
-// through. `_sizeThatFits` remains the pure query (fixed dims verbatim;
+// through. `_measure` remains the pure query (fixed dims verbatim;
 // flexible axes fill a non-`nil` offer, else the child's ideal). Placement is
 // the alignment fraction of the shortage on each axis
 // (`Int(Double(shortage) * fraction)`). Hard-box contract: the box is clamped
@@ -89,21 +89,21 @@ public struct FrameView<Content: View>: View {
 extension FrameView {
     /// Answer the frame's own size: fixed dimensions verbatim; flexible
     /// dimensions fill a non-`nil` offer, else the child's ideal.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        let childSize = content._sizeThatFits(
-            ProposedSize(width: width ?? proposal.width, height: height ?? proposal.height)
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        let childSize = content._measure(in: 
+            AvailableSize(width: width ?? available.width, height: height ?? available.height)
         )
         return ViewSize(
-            width: width ?? (proposal.width ?? childSize.width),
-            height: height ?? (proposal.height ?? childSize.height)
+            width: width ?? (available.width ?? childSize.width),
+            height: height ?? (available.height ?? childSize.height)
         )
     }
 
     /// Allocate the content inside the frame's rect.
     ///
     /// Fixed dimensions are **allocation data**: the frame owns them verbatim
-    /// and allocates the child the same fixed box, so the `width ?? proposal`
-    /// reconstruction and proposal echoing of the phase-3 engine are gone.
+    /// and allocates the child the same fixed box, so the phase-3
+    /// `width ?? proposal` reconstruction is gone.
     /// Flexible dimensions pass the parent's assignment through.
     ///
     /// The child is measured with the frame's visible box as its query
@@ -122,8 +122,8 @@ extension FrameView {
         let box = ViewRect(origin: rect.origin, size: declared).intersection(rect)
         guard !box.isEmpty else { return }
 
-        let childProposal = ProposedSize(width: box.size.width, height: box.size.height)
-        let reported = content._sizeThatFits(childProposal)
+        let childProposal = AvailableSize(width: box.size.width, height: box.size.height)
+        let reported = content._measure(in: childProposal)
         let childSize = ViewSize(
             width: min(reported.width, box.size.width),
             height: min(reported.height, box.size.height)
@@ -173,9 +173,9 @@ extension View {
     ///
     /// - Parameters:
     ///   - width: The fixed frame width in columns, or `nil` for a flexible
-    ///     width that fills the parent's proposal.
+    ///     width that fills the parent's assignment.
     ///   - height: The fixed frame height in rows, or `nil` for a flexible
-    ///     height that fills the parent's proposal.
+    ///     height that fills the parent's assignment.
     ///   - horizontalAlignment: How the content is aligned horizontally.
     ///     Defaults to `.left`.
     ///   - verticalAlignment: How the content is aligned vertically.

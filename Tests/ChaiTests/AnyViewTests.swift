@@ -15,10 +15,10 @@ struct AnyViewTests {
     // MARK: Measurement + allocation
 
     @Test func forwardsMeasurement() {
-        #expect(AnyView(Text("abc"))._sizeThatFits(.unspecified) == ViewSize(width: 3, height: 1))
+        #expect(AnyView(Text("abc"))._measure(in: .unconstrained) == ViewSize(width: 3, height: 1))
         // The erased Text still wraps at the proposed width.
         #expect(
-            AnyView(Text("abcdef"))._sizeThatFits(ProposedSize(width: 3, height: nil))
+            AnyView(Text("abcdef"))._measure(in: AvailableSize(width: 3, height: nil))
                 == ViewSize(width: 3, height: 2)
         )
     }
@@ -32,7 +32,7 @@ struct AnyViewTests {
     }
 
     @Test func nestedErasureForwards() {
-        #expect(AnyView(AnyView(Text("x")))._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 1))
+        #expect(AnyView(AnyView(Text("x")))._measure(in: .unconstrained) == ViewSize(width: 1, height: 1))
     }
 
     // MARK: Child transparency

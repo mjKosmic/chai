@@ -43,9 +43,9 @@ extension StyledText {
     /// ## Degenerate proposals and content
     ///
     /// `width <= 0` returns the content **unchanged** (the caller treats a
-    /// non-positive proposal as unusable). A character wider than `width` on
+    /// non-positive width context as unusable). A character wider than `width` on
     /// an empty line (a single CJK character at `width == 1`) is kept on its
-    /// line anyway — the line overflows the proposal and the buffer clips it.
+    /// line anyway — the line overflows the available width and the buffer clips it.
     /// Content with no visible character (empty or whitespace-only, including
     /// newline-only content) wraps to an empty ``StyledText`` and measures
     /// 0×0, consistent with the existing empty-content semantics. Otherwise
@@ -154,7 +154,7 @@ private func wrapHardLine(
             // whitespace run and the character. When the line is empty the
             // character is placed even if it alone exceeds `width` (a CJK
             // character at width 1): degenerate — the line overflows the
-            // proposal and the buffer clips it (rule: CJK needs no fallback).
+            // available width and the buffer clips it (rule: CJK needs no fallback).
             if !pending.isEmpty {
                 cur.append(contentsOf: pending)
                 curWidth += pendingWidth

@@ -498,7 +498,7 @@ extension ParityCase {
                 Fill()
             },
             width: 8,
-            // Fill claims the 8-column proposal, so the stack is 8 wide and the
+            // Fill claims the 8-column assignment, so the stack is 8 wide and the
             // right-aligned Text sits at offset 6.
             expectedRows: ["      ab"]
         ),

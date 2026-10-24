@@ -15,7 +15,7 @@ func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffe
     for child in children {
         guard row < bottom else { break }
         let remaining = bottom - row
-        let size = child._sizeThatFits(ProposedSize(width: rect.size.width, height: nil))
+        let size = child._measure(in: AvailableSize(width: rect.size.width, height: nil))
         let childRect = ViewRect(
             origin: ViewOrigin(col: rect.origin.col, row: row),
             size: ViewSize(
@@ -32,16 +32,16 @@ func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffe
 }
 
 /// Measure `children` the way ``embedStackedVertically(_:into:at:)`` places
-/// them: each child is queried at the proposal's width (height is ideal), the
+/// them: each child is queried at the available width (height is ideal), the
 /// occupied width is the widest report, and the height is the sum of reports.
 ///
 /// Structural views used the eager `body` join for measurement before P4b;
 /// with the eager path retired, this is their query kernel.
-func measureStackedVertically(_ children: [any View], proposal: ProposedSize) -> ViewSize {
+func measureStackedVertically(_ children: [any View], available: AvailableSize) -> ViewSize {
     var width = 0
     var height = 0
     for child in children {
-        let size = child._sizeThatFits(ProposedSize(width: proposal.width, height: nil))
+        let size = child._measure(in: AvailableSize(width: available.width, height: nil))
         width = max(width, size.width)
         height += size.height
     }
@@ -75,10 +75,10 @@ public struct TupleView<each T: View>: View {
         return parts
     }
 
-    /// Allocation entrance when the tuple is rendered directly (as a root or
-    /// under a wrapper): children stack vertically.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        measureStackedVertically(_childViews(), proposal: proposal)
+    /// Measurement entrance when the tuple is rendered directly (as a root or
+    /// under a wrapper): children are queried and stacked vertically.
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        measureStackedVertically(_childViews(), available: available)
     }
 
     /// Allocation entrance when the tuple is rendered directly (as a root or
@@ -123,9 +123,10 @@ public struct ConditionalContent<TrueContent: View, FalseContent: View>: View {
         }
     }
 
-    /// Allocation entrance: the active branch's children stack vertically.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        measureStackedVertically(_childViews(), proposal: proposal)
+    /// Measurement entrance: the active branch's children are queried and
+    /// stacked vertically.
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        measureStackedVertically(_childViews(), available: available)
     }
 
     /// Allocation entrance: the active branch's children stack vertically.
@@ -151,10 +152,10 @@ public struct OptionalView<Wrapped: View>: View {
         content?._childViews() ?? []
     }
 
-    /// Allocation entrance: the present content's children stack vertically.
-    /// An absent branch embeds nothing.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        measureStackedVertically(_childViews(), proposal: proposal)
+    /// Measurement entrance: the present content's children are queried and
+    /// stacked vertically. An absent branch reports nothing.
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        measureStackedVertically(_childViews(), available: available)
     }
 
     /// Allocation entrance: the present content's children stack vertically.
@@ -186,10 +187,10 @@ public struct ForEachView<Content: View>: View {
         return parts
     }
 
-    /// Allocation entrance when the loop is rendered directly: children stack
-    /// vertically.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        measureStackedVertically(_childViews(), proposal: proposal)
+    /// Measurement entrance when the loop is rendered directly: children are
+    /// queried and stacked vertically.
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        measureStackedVertically(_childViews(), available: available)
     }
 
     /// Allocation entrance when the loop is rendered directly: children stack

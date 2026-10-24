@@ -83,9 +83,9 @@ struct SpacerPrimitiveTests {
     @Test func rigidMeasurementIsZeroAtEveryProposal() {
         // A stack measures flexible children rigidly (0 on the flexible axis);
         // outside a stack nothing distributes leftover, so it stays 0×0.
-        #expect(Spacer()._sizeThatFits(.unspecified) == .zero)
-        #expect(Spacer()._sizeThatFits(ProposedSize(width: 8, height: 4)) == .zero)
-        #expect(Spacer(fraction: 3)._sizeThatFits(ProposedSize(width: 8, height: nil)) == .zero)
+        #expect(Spacer()._measure(in: .unconstrained) == .zero)
+        #expect(Spacer()._measure(in: AvailableSize(width: 8, height: 4)) == .zero)
+        #expect(Spacer(fraction: 3)._measure(in: AvailableSize(width: 8, height: nil)) == .zero)
     }
 
     @Test func renderIsNoOp() {
@@ -102,7 +102,7 @@ struct SpacerPrimitiveTests {
 
     @Test func asRootItIsZeroSized() {
         // A root view has no enclosing stack: nothing distributes leftover.
-        #expect(Spacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
+        #expect(Spacer()._measure(in: AvailableSize(width: 20, height: 5)) == .zero)
     }
 }
 
@@ -112,14 +112,14 @@ struct SpacerPrimitiveTests {
 struct FillPrimitiveTests {
 
     @Test func answersTheOfferOnBothAxes() {
-        #expect(Fill()._sizeThatFits(ProposedSize(width: 4, height: 2)) == ViewSize(width: 4, height: 2))
+        #expect(Fill()._measure(in: AvailableSize(width: 4, height: 2)) == ViewSize(width: 4, height: 2))
     }
 
     @Test func nilDimensionIsNotAnOffer() {
         // A `nil` dimension is ideal, not an offer → 0 on that axis.
-        #expect(Fill()._sizeThatFits(ProposedSize(width: 4, height: nil)) == ViewSize(width: 4, height: 0))
-        #expect(Fill()._sizeThatFits(ProposedSize(width: nil, height: 2)) == ViewSize(width: 0, height: 2))
-        #expect(Fill()._sizeThatFits(.unspecified) == .zero)
+        #expect(Fill()._measure(in: AvailableSize(width: 4, height: nil)) == ViewSize(width: 4, height: 0))
+        #expect(Fill()._measure(in: AvailableSize(width: nil, height: 2)) == ViewSize(width: 0, height: 2))
+        #expect(Fill()._measure(in: .unconstrained) == .zero)
     }
 
     @Test func renderIsNoOp() {
