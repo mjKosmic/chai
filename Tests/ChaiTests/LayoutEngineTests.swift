@@ -17,19 +17,19 @@ import Latte
 @Suite("Layout Types")
 struct LayoutTypesTests {
 
-    @Test func proposedSizeMembers() {
+    @Test func availableSizeMembers() {
         let available = AvailableSize(width: 3, height: nil)
         #expect(available.width == 3)
         #expect(available.height == nil)
     }
 
-    @Test func proposedSizeDefaultIsUnspecified() {
-        let defaultProposal = AvailableSize()
-        #expect(defaultProposal == AvailableSize(width: nil, height: nil))
-        #expect(AvailableSize.unconstrained == defaultProposal)
+    @Test func availableSizeDefaultIsUnconstrained() {
+        let defaultAvailable = AvailableSize()
+        #expect(defaultAvailable == AvailableSize(width: nil, height: nil))
+        #expect(AvailableSize.unconstrained == defaultAvailable)
     }
 
-    @Test func proposedSizeEquatable() {
+    @Test func availableSizeEquatable() {
         let a = AvailableSize(width: 1, height: 2)
         let b = AvailableSize(width: 1, height: 2)
         let c = AvailableSize(width: 2, height: 1)

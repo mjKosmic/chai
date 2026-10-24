@@ -201,8 +201,8 @@ struct SpacerVStackTests {
     @Test func heightProposalIsFilledAndDistributed() {
         // Rigid total 2, assigned height 6, leftover 4 → the spacer's final
         // height is 4.
-        let proposed = AvailableSize(width: nil, height: 6)
-        #expect(stack._measure(in: proposed) == ViewSize(width: 1, height: 6))
+        let available = AvailableSize(width: nil, height: 6)
+        #expect(stack._measure(in: available) == ViewSize(width: 1, height: 6))
         var buffer = CellBuffer(width: 1, height: 6)
         stack._embed(
             into: &buffer,

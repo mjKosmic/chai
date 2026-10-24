@@ -9,6 +9,10 @@ into production `_embed` implementations; the production suites
 carry the assertions this spike ran as diagnostics. The spike's five probes are
 assertions in `AllocationRulesTests`.
 
+**Naming note:** the report uses the phase-4 SPI names as they were then. They
+have since been renamed: `ProposedSize` → `AvailableSize`, `_sizeThatFits` →
+`_measure(in:)`, `.unspecified` → `.unconstrained`.
+
 **Companion:** the spike suite is `TopDownSpikeComparisonTests` in
 `Tests/ChaiTests/Spike/TopDownSpike.swift` (all diagnostic: the corpus table
 is data, not a gate). With the scratch present the tree builds and tests green

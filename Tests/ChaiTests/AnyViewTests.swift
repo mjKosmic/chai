@@ -16,7 +16,7 @@ struct AnyViewTests {
 
     @Test func forwardsMeasurement() {
         #expect(AnyView(Text("abc"))._measure(in: .unconstrained) == ViewSize(width: 3, height: 1))
-        // The erased Text still wraps at the proposed width.
+        // The erased Text still wraps at the queried width.
         #expect(
             AnyView(Text("abcdef"))._measure(in: AvailableSize(width: 3, height: nil))
                 == ViewSize(width: 3, height: 2)

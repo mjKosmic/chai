@@ -42,7 +42,7 @@ struct StacksEngineMeasurementTests {
         )
     }
 
-    @Test func vstackIgnoresProposedHeight() {
+    @Test func vstackIgnoresQueriedHeight() {
         // Children are measured with (width, nil): their heights stay ideal.
         let stack = VStack {
             Text("aa")
@@ -53,7 +53,7 @@ struct StacksEngineMeasurementTests {
         )
     }
 
-    @Test func hstackIgnoresProposedWidth() {
+    @Test func hstackIgnoresQueriedWidth() {
         let stack = HStack {
             Text("aa")
             Text("b")

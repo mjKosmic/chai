@@ -492,7 +492,7 @@ extension ParityCase {
         // ── Fill (consumer semantics) ──────────────────────────────────────
 
         ParityCase(
-            name: "vstack right-aligned Fill claims the proposed width",
+            name: "vstack right-aligned Fill claims the assigned width",
             view: VStack(alignment: .right) {
                 Text("ab")
                 Fill()
