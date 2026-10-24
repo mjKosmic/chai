@@ -14,6 +14,12 @@
 /// - Window title: ``Command/setWindowTitle(_:)`` (fire-and-forget command)
 /// - Cursor: ``cursor`` (property on this protocol, default `nil`)
 ///
+/// > Important: ``View/Body`` defaults to ``Empty`` so engine-implemented
+/// > views can omit `body`. A model that implements neither `body` nor the
+/// > engine SPI therefore compiles but renders a blank screen — there is no
+/// > compiler error for a missing body. Always implement `body` (or the four
+/// > `_`-prefixed SPI methods for a custom container).
+///
 /// ## Example
 ///
 /// ```swift

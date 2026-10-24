@@ -26,19 +26,13 @@ import Chai
 ///   using the same `Int(Double(shortage) * fraction)` formula as the stacks
 ///   (``VStack``/``HStack``), with the same `max(0, ...)` guard.
 ///
-/// ## Overflow is not clipped (pinned decision)
+/// ## Overflow is clipped (hard-box contract)
 ///
-/// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` does **not**
-/// clip. A child whose truthful answer exceeds the frame's fixed size
-/// overflows the frame's bounds (SwiftUI-consistent), with the terminal
-/// buffer as the final backstop; ``View/clipped()`` is the opt-in that masks
-/// that overflow. Shrinking content to fit is the wrapping/flex story — a
-/// frame is placement, not shrinking.
-///
-/// The legacy ``body`` cannot express flexible-fill: it has no assignment, so
-/// it applies the existing ``ViewOutput/width(_:align:)`` /
-/// ``ViewOutput/height(_:align:)`` modifiers for **fixed** dimensions only.
-/// Flexible-fill exists only in the engine (allowed divergence #4).
+/// The frame is a hard box: its fixed dimensions are its painting bounds. A
+/// child that reports larger than the box is clipped to it by the allocation
+/// kernel, and the frame itself is clamped to the rect its parent assigned.
+/// Shrinking content to fit is still the wrapping/flex story — a frame is a
+/// box, not a reflow instruction — but nothing paints outside it.
 public struct FrameView<Content: View>: View {
     /// The fixed width, or `nil` for a flexible width that fills the parent's
     /// offer.
@@ -74,35 +68,11 @@ public struct FrameView<Content: View>: View {
         verticalAlignment: VerticalAlignment = .top,
         @ViewBuilder content: () -> Content
     ) {
-        self.width = width
-        self.height = height
+        self.width = width.map { max(0, $0) }
+        self.height = height.map { max(0, $0) }
         self.horizontalAlignment = horizontalAlignment
         self.verticalAlignment = verticalAlignment
         self.content = content()
-    }
-
-    // MARK: Legacy body (eager path)
-
-    /// The eager resolution path, which has no proposal context.
-    ///
-    /// Fixed dimensions delegate to the existing ``ViewOutput/width(_:align:)``
-    /// and ``ViewOutput/height(_:align:)`` modifiers; a frame with no fixed
-    /// dimensions resolves to its content unchanged. Flexible-fill behavior
-    /// is impossible here — it exists only in the engine (allowed
-    /// divergence #4 in UPGRADE.md).
-    public var body: ViewOutput {
-        let resolved = content._resolveToViewOutput()
-        if let w = width, let h = height {
-            return resolved.width(w, align: horizontalAlignment)
-                .height(h, align: verticalAlignment)
-        }
-        if let w = width {
-            return resolved.width(w, align: horizontalAlignment)
-        }
-        if let h = height {
-            return resolved.height(h, align: verticalAlignment)
-        }
-        return resolved
     }
 }
 
@@ -110,12 +80,11 @@ public struct FrameView<Content: View>: View {
 //
 // Phase 4: fixed dimensions are ALLOCATION data — the frame owns them and
 // allocates the child box verbatim; flexible dimensions pass the assigned rect
-// through, floored by the child's report. `_sizeThatFits` remains the pure
-// query (fixed dims verbatim; flexible axes fill a non-`nil` offer, else the
-// child's ideal). Placement is the alignment fraction of the shortage on each
-// axis (`Int(Double(shortage) * fraction)`). No clipping: a child larger than
-// the frame overflows its bounds (the buffer is the backstop; `.clipped()` is
-// the opt-in).
+// through. `_sizeThatFits` remains the pure query (fixed dims verbatim;
+// flexible axes fill a non-`nil` offer, else the child's ideal). Placement is
+// the alignment fraction of the shortage on each axis
+// (`Int(Double(shortage) * fraction)`). Hard-box contract: the box is clamped
+// to the allocation and the child is clipped to the box.
 
 extension FrameView {
     /// Answer the frame's own size: fixed dimensions verbatim; flexible
@@ -137,32 +106,41 @@ extension FrameView {
     /// reconstruction and proposal echoing of the phase-3 engine are gone.
     /// Flexible dimensions pass the parent's assignment through.
     ///
-    /// The child is measured with the frame's own box as its query context —
-    /// a fixed height reaches a height-flexible child, matching the phase-3
-    /// fit proposal — then anchored at the alignment fraction of the shortage
-    /// per axis. Overflow is unmasked (`.clipped()` remains the opt-in).
+    /// The child is measured with the frame's visible box as its query
+    /// context — a fixed height reaches a height-flexible child — then
+    /// clamped to the box and anchored at the alignment fraction of the
+    /// shortage per axis. Nothing paints outside the box.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
-        let childProposal = ProposedSize(
+        // The frame's box: fixed dimensions are owned verbatim; flexible axes
+        // are the parent's assignment. Under the hard-box contract the box is
+        // additionally clamped to the allocation, so a frame that is handed
+        // less than it declared cannot paint outside.
+        let declared = ViewSize(
             width: width ?? rect.size.width,
             height: height ?? rect.size.height
         )
-        let childSize = content._sizeThatFits(childProposal)
-        // The frame's occupied rect is its allocation: fixed dimensions are
-        // owned verbatim; flexible axes are the parent's assignment. A child
-        // larger than the frame renders from the alignment offset with the
-        // shortage clamped to 0 and overflows visibly (no clip).
-        let occupied = ViewSize(
-            width: width ?? rect.size.width,
-            height: height ?? rect.size.height
+        let box = ViewRect(origin: rect.origin, size: declared).intersection(rect)
+        guard !box.isEmpty else { return }
+
+        let childProposal = ProposedSize(width: box.size.width, height: box.size.height)
+        let reported = content._sizeThatFits(childProposal)
+        let childSize = ViewSize(
+            width: min(reported.width, box.size.width),
+            height: min(reported.height, box.size.height)
         )
-        let colShortage = max(0, occupied.width - childSize.width)
-        let col = rect.origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
-        let rowShortage = max(0, occupied.height - childSize.height)
-        let row = rect.origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
-        content._embed(
-            into: &buffer,
-            at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
-        )
+
+        let colShortage = max(0, box.size.width - childSize.width)
+        let col = box.origin.col + Int(Double(colShortage) * horizontalAlignment.fraction)
+        let rowShortage = max(0, box.size.height - childSize.height)
+        let row = box.origin.row + Int(Double(rowShortage) * verticalAlignment.fraction)
+        let childRect = ViewRect(
+            origin: ViewOrigin(col: col, row: row),
+            size: childSize
+        ).intersection(box)
+
+        if !childRect.isEmpty {
+            buffer.embed(content, at: childRect)
+        }
     }
 }
 
@@ -176,16 +154,9 @@ extension View {
     /// content is placed within the frame's rect according to the alignment
     /// fractions.
     ///
-    /// A frame does **not** clip: content larger than the frame overflows its
-    /// bounds, with the terminal buffer as the final backstop. Use
-    /// ``View/clipped()`` to mask that overflow.
-    ///
-    /// - Note: On a ``ViewOutput`` receiver, calling `frame(width:height:)`
-    ///   with **both** dimensions resolves to the pre-existing eager
-    ///   `ViewOutput.frame` overload (minimum-enforcing, returns `ViewOutput`)
-    ///   rather than this one — width-only calls, or any non-`ViewOutput`
-    ///   receiver, use this tree-based frame. The eager overload is retired
-    ///   in Stage C (UPGRADE.md), which removes the ambiguity.
+    /// The frame is a **hard box**: content larger than the frame is clipped
+    /// to it (the hard-box contract), and the frame itself is clamped to the
+    /// rect its parent assigned.
     ///
     /// ```swift
     /// // Center a small view in the terminal window.

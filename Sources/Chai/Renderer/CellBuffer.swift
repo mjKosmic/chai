@@ -54,9 +54,17 @@ public struct CellBuffer: Sendable, Equatable {
     /// construct buffers without an explicit policy and pin **truncation** on
     /// them (inline-mode semantics). The renderer and the free
     /// ``layout(_:width:height:wrapping:)`` function always pass an explicit
-    /// policy, so this default only affects direct `write(_:)` calls — which
-    /// previously truncated through the leaf's hard-coded flag.
+    /// policy, so this default only affects direct `write(_:)` calls.
     private let wrapsOverflow: Bool
+
+    /// The rect new writes are currently clipped to, in buffer coordinates.
+    ///
+    /// `nil` means the whole buffer. This is the hard-box contract's scissor:
+    /// ``embed(_:at:)`` intersects it on every descent, and ``set(col:row:_:)``
+    /// refuses writes outside it. Invariant repair (clearing a stale
+    /// wide-character partner) may still touch a neighbouring cell so the
+    /// buffer never holds half a wide glyph.
+    private var clipRect: ViewRect?
 
     /// Create a buffer filled with the given cell.
     ///
@@ -71,6 +79,7 @@ public struct CellBuffer: Sendable, Equatable {
         self.height = max(height, 0)
         self.cells = Array(repeating: fill, count: self.width * self.height)
         self.wrapsOverflow = wrapping
+        self.clipRect = nil
     }
 
     // MARK: - Access
@@ -82,13 +91,35 @@ public struct CellBuffer: Sendable, Equatable {
     }
 
     /// Set a cell with wide character invariant enforcement.
+    ///
+    /// Writes outside the buffer or outside the active ``clipRect`` are
+    /// dropped. A wide character whose second column falls outside the active
+    /// clip is dropped as a whole (a blank cell is left in its place), so a
+    /// clipped write never splits a glyph.
     public mutating func set(col: Int, row: Int, _ cell: Cell) {
         guard row >= 0, row < height, col >= 0, col < width else { return }
+
+        // Hard-box scissor: no new content may land outside the allocation.
+        let rightEdge: Int
+        if let clip = clipRect {
+            guard col >= clip.origin.col,
+                  row >= clip.origin.row,
+                  col < clip.origin.col + clip.size.width,
+                  row < clip.origin.row + clip.size.height
+            else { return }
+            rightEdge = min(width, clip.origin.col + clip.size.width)
+        } else {
+            rightEdge = width
+        }
 
         let idx = row * width + col
         let oldCell = cells[idx]
 
         // Clean up the old cell's relationships before overwriting.
+        //
+        // Cleanup may touch a neighbouring cell just outside the clip: a
+        // wide glyph partially covered by a clipped write must not survive as
+        // half a glyph. That is invariant repair, not painting outside the box.
 
         // If the old cell was a wide primary (width 2), clear its continuation.
         if oldCell.width == 2 && col + 1 < width {
@@ -105,8 +136,8 @@ public struct CellBuffer: Sendable, Equatable {
 
         // Handle the new cell.
         if cell.width == 2 {
-            // Wide character: clip if at last column.
-            if col + 1 >= width {
+            // Wide character: clip if it would cross the clip's right edge.
+            if col + 1 >= rightEdge {
                 // Can't fit — place a space instead.
                 cells[idx] = .empty
                 return
@@ -197,13 +228,38 @@ public struct CellBuffer: Sendable, Equatable {
         }
     }
 
+    // MARK: - Hard-box embedding
+
+    /// Embed a view under the hard-box contract.
+    ///
+    /// The active clip becomes the intersection of the current clip and
+    /// `rect` for the duration of the call, so neither `view` nor any of its
+    /// descendants can write outside the allocation. Containers call this for
+    /// every child; the renderer calls it for the root. The previous clip is
+    /// restored afterwards, so sibling allocations are independent.
+    public mutating func embed(_ view: any View, at rect: ViewRect) {
+        let previous = clipRect
+        clipRect = previous?.intersection(rect) ?? rect
+        view._embed(into: &self, at: rect)
+        clipRect = previous
+    }
+
     // MARK: - Resize and clear
 
     /// Resize the buffer. Existing content is discarded.
+    ///
+    /// An active hard-box clip is preserved and intersected with the new
+    /// bounds, so a view that resizes the buffer from inside its `_embed`
+    /// cannot use the resize to escape its allocation.
     public mutating func resize(width: Int, height: Int) {
         self.width = max(width, 0)
         self.height = max(height, 0)
         self.cells = Array(repeating: .empty, count: self.width * self.height)
+        if let clip = clipRect {
+            clipRect = clip.intersection(
+                ViewRect(size: ViewSize(width: self.width, height: self.height))
+            )
+        }
     }
 
     /// Clear all cells.

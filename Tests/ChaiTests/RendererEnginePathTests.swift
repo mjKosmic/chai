@@ -6,8 +6,8 @@ import Latte
 //
 // Milestone M3 of the phase-2 layout engine: `Renderer.flush()` now builds
 // its ``CellBuffer`` through the layout engine (`_sizeThatFits` +
-// `_render`) instead of resolving the tree eagerly to a ``ViewOutput`` and
-// rasterizing the styled text. These tests pin every renderer-level policy
+// `_embed(into:at:)`) instead of resolving the tree eagerly to a ``ViewOutput``
+// and rasterizing the styled text. These tests pin every renderer-level policy
 // through the engine path:
 //
 // - Real trees (VStack/HStack, control flow) written via the generic
@@ -390,18 +390,18 @@ struct RendererEnginePathTests {
         )
     }
 
-    // MARK: - Clipped trees (A3)
+    // MARK: - Hard-box containment (frame clips its allocation)
 
-    @Test func clippedTreeShowsClippedRowsThroughEngine() async {
+    @Test func frameTreeShowsClippedRowsThroughEngine() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         await renderer.setSize(width: 8, height: 4)
         await renderer.enterAltScreen()
         mock.reset()
-        // The frame answers width 3; the clip masks the 6-wide raster to
-        // "abc". The eager path would show "abcdef" (no clipping).
+        // The frame answers width 3; the hard-box contract masks the 6-wide
+        // raster to "abc".
         await renderer.write(
-            ViewOutput("abcdef").frame(width: 3).clipped()
+            ViewOutput("abcdef").frame(width: 3)
         )
         await renderer.flush()
         #expect(mock.output.contains("abc" + ANSI.eraseLineRight))

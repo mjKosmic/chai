@@ -108,20 +108,6 @@ public struct VStack<Content: View>: View {
         self.alignment = alignment
         self.content = content()
     }
-
-    public var body: ViewOutput {
-        // A `ViewBuilder` closure's default join is vertical, so the
-        // content's resolved output is already the children stacked
-        // top-to-bottom.
-        let joined = content._resolveToViewOutput()
-
-        guard alignment != .left else { return joined }
-
-        let lines = joined.content.splitLines()
-        let maxWidth = lines.map(\.columnWidth).max() ?? 0
-        let aligned = lines.map { $0.aligned(toWidth: maxWidth, alignment) }
-        return ViewOutput(StyledText.fromLines(aligned))
-    }
 }
 
 // MARK: - HStack
@@ -154,36 +140,14 @@ public struct HStack<Content: View>: View {
         self.alignment = alignment
         self.content = content()
     }
-
-    public var body: ViewOutput {
-        let parts = content._childViews().map { $0._resolveToViewOutput() }
-        return Self.joinHorizontally(parts, align: alignment)
-    }
-
-    private static func joinHorizontally(_ components: [ViewOutput], align: VerticalAlignment) -> ViewOutput {
-        guard !components.isEmpty else { return ViewOutput("") }
-        guard components.count > 1 else { return components[0] }
-
-        var result = components[0].content
-        for component in components.dropFirst() {
-            if !component.content.isEmpty {
-                result = result.beside(component.content, align: align)
-            }
-        }
-        return ViewOutput(result)
-    }
 }
 
 // MARK: - VStack engine implementation
 //
-// Phase-2 layout engine (UPGRADE.md): the container renders children instead
-// of joining their resolved outputs. Parity with the eager `body` above is
-// verified by the corpus in Tests/LatteTests/LayoutParity.
-//
-// Phase 4 adds the allocation entrance (`_embed`): the stack computes one
-// shape, allocates each child a rect, and embeds it. `_sizeThatFits` is the
-// pure query kernel (report only — used for buffer sizing and clip
-// reservation).
+// Phase 4: the stack computes one shape (query + allocation), allocates each
+// child a rect, and embeds it. `_sizeThatFits` is the pure query kernel
+// (report only — used for buffer sizing and clip reservation). The corpus in
+// Tests/LatteTests/LayoutParity is the mechanical spec.
 
 extension VStack {
     /// The stack's allocation shape under an assigned width/height context.
@@ -194,8 +158,9 @@ extension VStack {
     /// (shrink-wrap — phase-4 decision 1), so a `Fill` child naturally claims
     /// the assigned width via its own report.
     ///
-    /// Main axis (height): each report is an allocated row height; the stack
-    /// never compresses a row (overflow stays visual). When a child is
+    /// Main axis (height): each report is an allocated row height. A row never
+    /// exceeds the stack's remaining allocation — the hard-box contract
+    /// clips the last row rather than letting it paint outside. When a child is
     /// flexible on the height axis and the assigned height exceeds the rigid
     /// total, the leftover is distributed by ``distributedMainAxis``.
     private func allocation(assignedWidth: Int?, assignedHeight: Int?) -> StackAllocation {
@@ -230,21 +195,38 @@ extension VStack {
     /// alignment fraction of the horizontal shortage — the same
     /// `Int(Double(shortage) * fraction)` formula as `aligned(toWidth:_:)`,
     /// measured against the stack's OCCUPIED width (shrink-wrap), not the
-    /// assigned rect width. Children whose reports exceed their row overflow
-    /// visually; nothing compresses.
+    /// assigned rect width. Children whose reports exceed the stack's
+    /// allocation are clamped to it and clipped; rows advance by the
+    /// allocated height, so nothing paints outside the stack.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         let shape = allocation(assignedWidth: rect.size.width, assignedHeight: rect.size.height)
         let children = content._childViews()
+        // Alignment is measured against the visible box: when the stack's
+        // content is larger than its allocation, the overflow is clipped, not
+        // used to push children outside the rect.
+        let visibleWidth = min(shape.occupied.width, rect.size.width)
+        let bottom = rect.origin.row + rect.size.height
         var row = rect.origin.row
+
         for index in children.indices {
-            let childSize = shape.childSizes[index]
-            let shortage = max(0, shape.occupied.width - childSize.width)
+            guard row < bottom else { break }
+            let remaining = bottom - row
+            let reported = shape.childSizes[index]
+            let width = min(reported.width, rect.size.width)
+            let height = min(reported.height, remaining)
+            guard height > 0 else { continue }
+
+            let shortage = max(0, visibleWidth - width)
             let col = rect.origin.col + Int(Double(shortage) * alignment.fraction)
-            children[index]._embed(
-                into: &buffer,
-                at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
-            )
-            row += childSize.height
+            let childRect = ViewRect(
+                origin: ViewOrigin(col: col, row: row),
+                size: ViewSize(width: width, height: height)
+            ).intersection(rect)
+
+            if !childRect.isEmpty {
+                buffer.embed(children[index], at: childRect)
+            }
+            row += height
         }
     }
 }
@@ -316,16 +298,29 @@ extension HStack {
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         let shape = allocation(assignedWidth: rect.size.width, assignedHeight: rect.size.height)
         let children = content._childViews()
+        let visibleHeight = min(shape.occupied.height, rect.size.height)
+        let right = rect.origin.col + rect.size.width
         var col = rect.origin.col
+
         for index in children.indices {
-            let childSize = shape.childSizes[index]
-            let shortage = max(0, shape.occupied.height - childSize.height)
+            guard col < right else { break }
+            let remaining = right - col
+            let reported = shape.childSizes[index]
+            let width = min(reported.width, remaining)
+            guard width > 0 else { continue }
+            let height = min(reported.height, rect.size.height)
+
+            let shortage = max(0, visibleHeight - height)
             let row = rect.origin.row + Int(Double(shortage) * alignment.fraction)
-            children[index]._embed(
-                into: &buffer,
-                at: ViewRect(origin: ViewOrigin(col: col, row: row), size: childSize)
-            )
-            col += childSize.width
+            let childRect = ViewRect(
+                origin: ViewOrigin(col: col, row: row),
+                size: ViewSize(width: width, height: height)
+            ).intersection(rect)
+
+            if !childRect.isEmpty {
+                buffer.embed(children[index], at: childRect)
+            }
+            col += width
         }
     }
 }

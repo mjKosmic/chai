@@ -22,10 +22,10 @@ struct StackTests {
         mutating func update(_ msg: any Message) -> Command? { nil }
     }
 
-    /// Splits a stack's output into lines for comparison.
-    private func lines(_ stack: some View) -> [Substring] {
-        stack._resolveToViewOutput().content.plainText
-            .split(separator: "\n", omittingEmptySubsequences: false)
+    /// Renders a stack through the allocation engine and returns its visible
+    /// rows (parity convention: trailing spaces stripped).
+    private func lines(_ stack: some View) -> [String] {
+        visibleRows(embedBuffer(stack, width: 40))
     }
 
     // MARK: - VStack
@@ -67,7 +67,7 @@ struct StackTests {
             Text("ab")
             Text("cdef")
         }
-        #expect(lines(stack) == [" ab ", "cdef"])
+        #expect(lines(stack) == [" ab", "cdef"])
     }
 
     @Test func vstackRightAlignmentPadsLines() {
@@ -130,10 +130,12 @@ struct StackTests {
             Text("err".fg(.red))
             Text("ok")
         }
-        let content = stack._resolveToViewOutput().content
-        // Center alignment pads every line to the stack's max width (3).
-        #expect(content.plainText == "err\nok ")
-        #expect(content.segments.contains { $0.text == "err" && $0.style != .default })
+        let buffer = embedBuffer(stack, width: 8)
+        // The stack is 3 wide ("err"); "ok" is 2 wide, so the center shortage
+        // is 1 and `Int(1 × 0.5)` = 0 — the block stays at col 0. The style
+        // survives.
+        #expect(visibleRows(buffer) == ["err", "ok"])
+        #expect(buffer[0, 0].foreground == .red)
     }
 
     @Test func styledContentSurvivesHStack() {
@@ -141,9 +143,9 @@ struct StackTests {
             Text("a".fg(.red))
             Text("b")
         }
-        let content = stack._resolveToViewOutput().content
-        #expect(content.plainText == "ab")
-        #expect(content.segments.first?.style != .default)
+        let buffer = embedBuffer(stack, width: 8)
+        #expect(visibleRows(buffer) == ["ab"])
+        #expect(buffer[0, 0].foreground == .red)
     }
 
     @Test func threeLevelNesting() {

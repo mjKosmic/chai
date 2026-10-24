@@ -1,13 +1,14 @@
 import Testing
 @testable import Chai
 
-// MARK: - Phase-3 A2: flexibility SPI + FlexibleSpacer / Fill primitives
+// MARK: - Phase-3 A2: flexibility SPI + Spacer / Fill primitives
 //
 // Milestone A2 of the phase-3 Stage A plan (UPGRADE.md): the `_flexibility()`
 // SPI plus two minimal new primitives. Leftover *distribution* is a stack
-// behavior and lives in `LatteTests/FlexibleSpacerTests.swift`; this suite
+// behavior and lives in `LatteTests/SpacerAndFillTests.swift`; this suite
 // pins the value type, the default rigidity, and the primitives' rigid
-// measurement/render in isolation.
+// measurement/render in isolation. (Stage C unified `FlexibleSpacer` into
+// `Spacer`: `Spacer()` / `Spacer(fraction:)` are the flexible forms.)
 //
 // Expectations were derived by running the code — never hand-computed.
 
@@ -45,46 +46,53 @@ struct ViewFlexibilityDefaultTests {
     }
 
     @Test func everyOrdinaryViewIsRigid() {
-        // The protocol-extension default is `.rigid` — only `FlexibleSpacer`
-        // overrides it in A2.
+        // The protocol-extension default is `.rigid` — only flexible
+        // `Spacer(fraction:)` overrides it.
         #expect(Text("x")._flexibility() == .rigid)
         #expect(ViewOutput("x")._flexibility() == .rigid)
-        #expect(Spacer()._flexibility() == .rigid)
+        #expect(Spacer(lines: 1)._flexibility() == .rigid)
+        #expect(Spacer(columns: 1)._flexibility() == .rigid)
         #expect(Empty()._flexibility() == .rigid)
         #expect(Fill()._flexibility() == .rigid)
         #expect(Label()._flexibility() == .rigid)
     }
+
+    @Test func zeroArgSpacerIsFlexible() {
+        // SwiftUI-style unification (UPGRADE.md, Stage C): `Spacer()` is the
+        // flexible spacer, not a one-line fixed spacer.
+        #expect(Spacer()._flexibility() == LayoutFlexibility(width: 1, height: 1))
+    }
 }
 
-// MARK: - FlexibleSpacer
+// MARK: - Spacer
 
-@Suite("FlexibleSpacer primitive")
-struct FlexibleSpacerPrimitiveTests {
+@Suite("Spacer primitive")
+struct SpacerPrimitiveTests {
 
     @Test func flexibilityReportsTheFractionOnBothAxes() {
-        #expect(FlexibleSpacer()._flexibility() == LayoutFlexibility(width: 1, height: 1))
-        #expect(FlexibleSpacer(fraction: 2)._flexibility() == LayoutFlexibility(width: 2, height: 2))
-        #expect(FlexibleSpacer(fraction: 0.5)._flexibility() == LayoutFlexibility(width: 0.5, height: 0.5))
+        #expect(Spacer()._flexibility() == LayoutFlexibility(width: 1, height: 1))
+        #expect(Spacer(fraction: 2)._flexibility() == LayoutFlexibility(width: 2, height: 2))
+        #expect(Spacer(fraction: 0.5)._flexibility() == LayoutFlexibility(width: 0.5, height: 0.5))
     }
 
     @Test func nonPositiveFractionIsRigid() {
-        #expect(FlexibleSpacer(fraction: 0)._flexibility() == .rigid)
-        #expect(FlexibleSpacer(fraction: -1)._flexibility() == .rigid)
+        #expect(Spacer(fraction: 0)._flexibility() == .rigid)
+        #expect(Spacer(fraction: -1)._flexibility() == .rigid)
     }
 
     @Test func rigidMeasurementIsZeroAtEveryProposal() {
         // A stack measures flexible children rigidly (0 on the flexible axis);
         // outside a stack nothing distributes leftover, so it stays 0×0.
-        #expect(FlexibleSpacer()._sizeThatFits(.unspecified) == .zero)
-        #expect(FlexibleSpacer()._sizeThatFits(ProposedSize(width: 8, height: 4)) == .zero)
-        #expect(FlexibleSpacer(fraction: 3)._sizeThatFits(ProposedSize(width: 8, height: nil)) == .zero)
+        #expect(Spacer()._sizeThatFits(.unspecified) == .zero)
+        #expect(Spacer()._sizeThatFits(ProposedSize(width: 8, height: 4)) == .zero)
+        #expect(Spacer(fraction: 3)._sizeThatFits(ProposedSize(width: 8, height: nil)) == .zero)
     }
 
     @Test func renderIsNoOp() {
         // Blank cells are the buffer default — a flexible spacer draws
         // nothing, and pre-existing cells are left untouched.
         var buffer = CellBuffer(width: 4, height: 1, fill: Cell(character: "x"))
-        FlexibleSpacer()._embed(
+        Spacer()._embed(
             into: &buffer,
             at: ViewRect(size: ViewSize(width: 4, height: 1))
         )
@@ -92,18 +100,9 @@ struct FlexibleSpacerPrimitiveTests {
         #expect(buffer[3, 0].character == "x")
     }
 
-    @Test func eagerBodyIsEmpty() {
-        // The eager path has no stack to distribute leftover space into, so
-        // the spacer resolves to empty content and an eager join skips it
-        // (allowed divergence #7 in UPGRADE.md).
-        let resolved = FlexibleSpacer()._resolveToViewOutput()
-        #expect(resolved.content.lineCount() == 0)
-        #expect(resolved.content.maxLineWidth == 0)
-    }
-
     @Test func asRootItIsZeroSized() {
         // A root view has no enclosing stack: nothing distributes leftover.
-        #expect(FlexibleSpacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
+        #expect(Spacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
     }
 }
 
@@ -131,12 +130,5 @@ struct FillPrimitiveTests {
         )
         #expect(buffer[0, 0].character == "x")
         #expect(buffer[3, 0].character == "x")
-    }
-
-    @Test func eagerBodyIsEmpty() {
-        // No proposal context eagerly → `Fill` claims nothing.
-        let resolved = Fill()._resolveToViewOutput()
-        #expect(resolved.content.lineCount() == 0)
-        #expect(resolved.content.maxLineWidth == 0)
     }
 }

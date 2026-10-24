@@ -28,7 +28,7 @@ There are no external dependencies — do not add any.
 ```
 Sources/Chai/
   Core/        Model.swift  Message.swift  Command.swift  Program.swift
-               View.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
+               View.swift  AnyView.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
                LayoutTypes.swift  Cursor.swift  Logger.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
   Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift
@@ -37,12 +37,12 @@ Sources/Latte/    Layout, styling, borders, composition
                    Extensions/ViewOutput+Layout.swift  ...)
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
 Tests/ChaiTests/  LatteTests/  SpicesTests/
-  LatteTests/LayoutParity/   parity harness + corpus + spec/engine suites (M0/M2 discipline)
+  LatteTests/LayoutParity/   corpus + engine spec suites (the parity discipline)
 Examples/GroceryList/Sources/main.swift   the phase-2 acceptance example (centers via .frame(...))
 ```
 
 The layout engine lives across the seam: value types and the `View` SPI
-(`_sizeThatFits`/`_render`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
+(`_sizeThatFits`/`_embed`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
 the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
 `Chai/Renderer/Renderer.swift`. See `ARCHITECTURE.md` → "The Layout Engine".
 
@@ -105,9 +105,9 @@ Do not attempt direct tuple indexing — it does not compile.
 ### `Program.run()` returns the final model state
 `run()` is `@discardableResult` and returns `M`. This is useful for testing and for programs that want to inspect state after exit. Preserve this return value when modifying `ProgramRunner.run()`.
 
-### Engine pitfalls (phase-2/4 hard-won rules)
+### Engine pitfalls (phase-2/4/5 hard-won rules)
 
 1. **Layout operates on child *views*, never on resolved outputs.** Containers must enumerate children via `_childViews()` and call `_sizeThatFits` (query) / `_embed` (allocation) on the *views*. The first engine attempt resolved children to `ViewOutput` before measurement — that flattens the tree, bypasses every child's layout overrides, and makes assignment meaningless; it was reverted. Do not reintroduce output-based layout.
-2. **Allocation is the contract (replaced A0's value-equality rule in phase 4).** The rect passed to a child's `_embed(into:at:)` **is** the parent's decision; there is no second pass to keep in sync. Consequences: (a) `_sizeThatFits` is a **pure report** — never treat an answer as binding; a container may overrule it (Fill-by-type, clip reservation, the Text floor); (b) containers must allocate child rects from their own rules and query context, never by re-measuring with a remembered proposal (there is none); (c) `_embed` must not depend on `body` for containers. The test-local `RectEchoView` pins that children observe their *allocated* rect, not the container's. Do not reintroduce proposal bookkeeping.
-3. **The eager `body` join is the parity spec.** Engine output must match `body` → `_resolveToViewOutput()` → `layout()` for the corpus, except for the closed divergence list in UPGRADE.md ("Allowed divergences") and the documented phase-4 **allocation deltas** (UPGRADE.md, "Phase 4 — allocation deltas", carried as `expectedEmbedRows`). New divergences must be added explicitly with `isKnownDivergent` + `expectedEngineRows` (and, when the delta is allocation-only, `expectedEmbedRows`) — no corpus case is ever skipped.
+2. **Allocation is the contract — and the box (phase 5).** The rect passed to a child's `_embed(into:at:)` **is** the parent's decision and its painting bound. Consequences: (a) `_sizeThatFits` is a **pure report** — never treat an answer as binding; a container may overrule it (Fill-by-type, the Text floor); (b) containers must allocate child rects from their own rules and query context, clamped to their own rect, never by re-measuring with a remembered proposal (there is none); (c) containers must embed children via `buffer.embed(child, at: rect)`, never `child._embed(into:&buffer,...)` directly — the helper installs the kernel clip that guarantees no paint escapes the rect; (d) `_embed` must not depend on `body` for containers. The test-local `RectEchoView` pins that children observe their *allocated* rect; `HardBoxTests` pins containment. Do not reintroduce proposal bookkeeping or unclipped child embeds.
+3. **The corpus is the engine spec; allocation is the contract.** The eager `_resolveToViewOutput()` path was deleted in P4b, so there is no second renderer: `ParityCorpus` pins one `expectedRows` per case, and every engine change must keep the corpus green — no case is ever skipped. The rect handed to `_embed(into:at:)` is the parent's decision; `_sizeThatFits` is a pure report, never binding.
 4. **Test-target warnings count against the zero-warning rule.** `swift build` alone does not compile tests. The gate is `swift test` (or `swift build --build-tests`) and zero warnings includes test targets.

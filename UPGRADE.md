@@ -8,10 +8,13 @@ declarative approach built on Swift `@resultBuilder`.
 Phase 2 (proposal-driven layout engine) **has landed** on
 `declarative-phase-2` (PR #20 — all milestones M0–M5 below, including
 this docs milestone). Phase 3 Stage A **landed** via PR #21 (`f8a15a7`);
-Stages B/C are re-scoped onto the phase-4 kernel. **Phase 4 (top-down
-allocation engine) is in progress** — P0–P3 landed (plan, kernel +
-side-by-side corpus, renderer flip/clean break); P4/PB/PD remain. A design
-spike validated the direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
+Stages B/C were re-scoped onto the phase-4 kernel. **Phase 4 (top-down
+allocation engine) has landed** — P0–P3 (plan, kernel + side-by-side corpus,
+renderer flip/clean break), P4a (Stage-C wrapper family), P4b (eager
+retirement, corpus collapse, `Spacer` unification), PB (`AnyView`) and PD
+(docs/rules). **Phase 5 (hard-box containment) has landed**: the allocated
+rect is now the painting bound, and `.clipped()` is gone. A design spike
+validated the phase-4 direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
 corpus cases).
 
 ---
@@ -187,14 +190,15 @@ implemented without proposals — that is the point. Its legacy `body`
 delegates to the existing `.width()`/`.height()` modifiers when both
 dimensions are fixed.
 
-**`frame()` overflow semantics (decided):** `frame()` does **not** clip.
-A child whose truthful answer exceeds the frame's fixed size overflows
-the frame's bounds (SwiftUI-consistent), with the terminal buffer as the
-final backstop; a `.clipped()` modifier is a phase-3 candidate. Shrinking
-content to fit is the phase-3 wrapping/flex story — `frame()` is
-placement, not shrinking. Note `frame()` is a proposal *generator*: it
-answers its fixed size to its parent regardless of the child's answer,
-and proposes that fixed size downward.
+**`frame()` overflow semantics (decided, superseded in phase 5):** `frame()`
+did **not** clip in phase 2. A child whose truthful answer exceeded the
+frame's fixed size overflowed the frame's bounds, with the terminal buffer as
+the final backstop; a `.clipped()` modifier was the phase-3 candidate.
+Shrinking content to fit was the wrapping/flex story — `frame()` was
+placement, not shrinking. Phase 5 reversed this: `frame()` is now a hard box
+(see "Phase 5 — Hard-box containment"), so this paragraph is history. Note
+`frame()` is a proposal *generator*: it answers its fixed size to its parent
+regardless of the child's answer, and proposes that fixed size downward.
 
 ### Spec & parity strategy
 
@@ -203,7 +207,10 @@ and proposes that fixed size downward.
   row text**. Raw cell equality is intentionally too strict: eager line
   alignment writes space cells where the engine leaves cells `.empty` —
   both render identically (`eraseLineRight` covers trailing empties).
-- **Allowed divergences** (closed list; additions must update this doc):
+- **Allowed divergences** (historical: this list was closed and **retired in
+  phase-4 P4b** when the eager `_resolveToViewOutput()` path was deleted; the
+  engine rows documented here are now simply the corpus spec — see "Phase 4 —
+  P4b"):
   1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N
      blank rows. The eager path adds separator newlines on top (the
      doubling quirk) — unpinned by tests, considered a bug.
@@ -399,15 +406,14 @@ flexible child the code path is unchanged. Only `FlexibleSpacer` overrides
 it in A2; `Fill` is a plain consumer (it answers the proposal verbatim on
 both axes) and is *not* flexible.
 
-**Wrapping-wrapper overlap (A1 → Stage C).** The A1 wrapping algorithm
-lives in Chai (`StyledText.wrappedToWidth(_:)`) because it operates on
-Chai's `StyledText` segment model and must preserve styles exactly. Latte
-has its own eager, string-level wrapper (`Latte/Layout/Wrap.swift`) used by
-the eager modifiers; the dependency direction (Latte imports Chai) forbids
-reusing it in the engine. The two coexist while the eager path lives and
-are reconciled in **Stage C**, when the eager path (`_resolveToViewOutput`)
-is retired and the eager wrapper goes with it — as noted in the A1 source
-file's header.
+**Wrapping-wrapper overlap (A1 → resolved in P4b).** The A1 wrapping
+algorithm lives in Chai (`StyledText.wrappedToWidth(_:)`) because it operates
+on Chai's `StyledText` segment model and must preserve styles exactly. Latte
+has its own string-level wrapper (`Latte/Layout/Wrap.swift`) used by the
+`String.wrapped()` utility; the dependency direction (Latte imports Chai)
+forbids reusing it in the engine. **The eager path retired in P4b and the
+engine never used `wrap()`**, so no reconciliation was needed: Latte's
+`wrap()` remains a public ANSI-aware String utility with its own tests.
 
 ### Deferred to phase 3 (seed list and suggested staging)
 
@@ -428,7 +434,9 @@ load-bearing:
    `Text`, fill/flex views, proportional `Spacer` variants, and
    `.clipped()`.
 2. **Stage B — `AnyView`** type erasure for heterogenous runtime-built
-   children (`buildArray` currently requires one homogeneous `V`).
+   children (`buildArray` currently requires one homogeneous `V`; landed in
+   PB on the phase-4 kernel, with `buildExpression`/`buildArray` existential
+   overloads).
 3. **Stage C — modifiers stay in the tree.** Rebuild
    `.bordered()/.padded()/.beside()/.above()` and the rest of the eager
    family as `ModifiedContent`-style wrappers, retire the eager
@@ -436,7 +444,7 @@ load-bearing:
    the divergence list — entry #4 self-retires; **preserve the engine
    `Spacer` semantics from entry #1** (exactly N blank rows), never the
    eager doubling quirk.
-   **`Spacer` naming (decided during Stage A review):** make
+   **`Spacer` naming (decided during Stage A review; landed in P4b):** make
    zero-argument `Spacer()` flexible, SwiftUI-style — in SwiftUI
    `Spacer()` *is* the flexible spacer, while Chai's `Spacer()` is
    fixed (`Spacer(lines: 1)`), a documented onboarding trap. Unify:
@@ -446,7 +454,7 @@ load-bearing:
    source-breaking rename, acceptable pre-alpha. A unified type with
    `init(fraction:)` / `init(lines:)` / `init(columns:)` carries both;
    internal representation is an implementation detail.
-   (Also: the A3 review found an overload trap to eliminate with the
+   (Also: the A3 review found an overload trap, eliminated in P4b with the
    eager `ViewOutput.frame` retirement — `ViewOutput(...).frame(width:
    height:)` with both dimensions silently resolves to the old eager
    frame, which does not clip, instead of the tree-based `View.frame`.)
@@ -465,12 +473,14 @@ Also resolved by A0: carry the proposal into `_render`. `FrameView._render` prev
 
 ---
 
-## Phase 4 — Top-down allocation engine (in progress — P0–P3 landed)
+## Phase 4 — Top-down allocation engine (landed)
 
-**Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C are
-re-scoped onto this phase's kernel (P4/PB below). **P0 (plan), P1/P2 (kernel +
-side-by-side) and P3 (renderer flip, clean break) have landed.** Evidence of
-record: `TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
+**Status:** phase 3 Stage A landed (PR #21, `f8a15a7`); Stages B/C were
+re-scoped onto this phase's kernel. **All milestones have landed: P0 (plan),
+P1/P2 (kernel + side-by-side), P3 (renderer flip, clean break), P4a (Stage-C
+wrapper family), P4b (eager retirement, corpus collapse, `Spacer`
+unification), PB (`AnyView`) and PD (docs/rules).** Evidence of record:
+`TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
 reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
 semantic probes byte-identical — the prediction this plan was built on). The
 spike suite was retired in P1 when its rules graduated into production
@@ -508,7 +518,7 @@ result-builder view layer. Two guardrails follow, effective immediately:
 | # | Decision | Settled |
 |---|---|---|
 | 1 | Stack occupancy at width | **Shrink-wrap** — a stack occupies `max` child width; filling an assigned rect is `FlexibleSpacer`/`Fill`/`frame`'s job. Today's effective rule; corpus pins hold. |
-| 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect; stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
+| 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect (clipped to it since phase 5); stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
 | 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as today's `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
 | 4 | `Text` compression floor | **Adopt** — and it applies to the **query as well as the allocation** (the PR #22 review caught the split): a positive width wraps at `max(width, minimumWrapWidth())`, so a narrow offer containing a wide character reports the minimum form's line count *and* paints it. Without the query-side floor, a report could claim more rows than the allocation painted (e.g. `Text("ab你")` offered 1: wrap-at-1 gives 3 rows, wrap-at-2 gives 2). The zero/negative path uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the floor guarantees a `Text` is never allocated below its narrowest producible width and that its write never splits a wide character. |
 | 5 | SPI break mode | **Clean break** — `_embed(into:at:rect:)` replaces `_render(into:at:size:proposal:)`; no permanent coexistence. The old SPI survives only as a transition artifact across P1–P2 on the phase branch and is deleted in P3; nothing merges with dual render SPIs. |
@@ -535,26 +545,128 @@ func _childViews() -> [any View]                                // unchanged (tr
   simple-path contract, and the spike ran entirely over such defaults.
 - **Queries are honest, never binding:** a `ViewSize` answer still leaks
   overflow signals (e.g. `ViewOutput`'s raster width) — a container may
-  overrule them (`Fill`-by-type, clip reservation). "An offer, not a box"
+  overrule them (`Fill`-by-type, hard-box clamping). "An offer, not a box"
   becomes "a report, not a bound; the rect is the box."
 - **Authority rules** (spike §2, verbatim-grade): `VStack` assigns row
-  rects — cross axis queried at the assigned width, rows never
-  compressed; leftover height via `_flexibility` shares (same
-  normalized-share/truncation-remainder math, byte-equal per the probes).
-  `HStack` measures columns at **ideal width** (the
+  rects — cross axis queried at the assigned width; leftover height via
+  `_flexibility` shares (same normalized-share/truncation-remainder math,
+  byte-equal per the probes). `HStack` measures columns at **ideal width** (the
   `hstackNeverProposesWidthSoTextCannotWrapInsideIt` pin becomes the
   allocator rule "columns measure at ideal width"), flexible shares
   first, then `Fill`-by-type absorbs the remainder — a case today's
   engine cannot express (`Fill` under an `HStack`, spike probe 4).
   `FrameView`: fixed dims are allocations (data), flexible dims pass the
-  rect through floored by the child query. `ClipView` reserves by the
-  same rules, then masks. `Text` wraps at its **allocated** width, with
-  the compression floor (decision 4).
+  rect through. `Text` wraps at its **allocated** width, with
+  the compression floor (decision 4). *(Phase 5 later made all of these
+  allocation boxes hard: child rects are clamped and painted content is
+  clipped to them; `ClipView` was removed.)*
 - **Renderer (landed at P3):** `flush()` keeps its two-pass *shape* — but
   both passes changed role: a pure query pass (`_sizeThatFits`, read-only —
   buffer height, and the inline-vs-terminal height context) then one
   allocation walk (`_embed(into:at:)` at the root rect). Buffer policy, suffix
   clamp, and the diff/paint machinery are untouched below the buffer.
+
+### P4a — Stage-C wrapper family (landed)
+
+The modifier family now has tree-based wrappers on the allocation kernel.
+P4a was **additive**: the eager `ViewOutput` modifiers and their legacy `body`
+implementations still existed for the simple path and the parity spec, and
+were deleted in P4b (below).
+
+- **`PaddingView`** (`Sources/Latte/Layout/PaddingView.swift`) backs
+  ``View/padded(top:right:bottom:left:)`` (and its 1- and 2-value forms) and
+  `.margined(...)` (margin is padding at the raster level, matching the eager
+  helper).
+- **`BorderView`** (`Sources/Latte/Layout/BorderView.swift`) backs
+  `.bordered(_:)`: one cell reserved on every side, glyphs painted at the
+  allocated origin, child embedded one cell inside.
+- **`.beside(_:align:)` / `.above(_:align:)`** (`CompositionWrappers.swift`)
+  are container sugar: `HStack` / `VStack` with the pair as children, so each
+  side keeps its own engine behavior instead of being flattened to a raster.
+- **Wrapper contract (pinned in `Tests/LatteTests/ModifierWrapperTests.swift`):**
+  - *Report* = child report + insets; the wrapper shrink-wraps (decision 1).
+    A larger assignment (the renderer's terminal-width root rect) stays blank
+    — `frame()` is the fill opt-in.
+  - *The assignment bounds the child query* (width/height minus the insets),
+    so a wrapping `Text` composes with padding/border; the child's report —
+    not the assigned rect — decides the painted extent.
+  - *Flexibility is forwarded* (`_flexibility()` returns the child's), so a
+    flexible child inside a wrapper still absorbs a stack's leftover.
+  - *`_childViews()` stays opaque* (default `[self]`): containers treat the
+    wrapper as one child, and its insets are part of its report.
+  - *`Fill`-by-type is not forwarded*: an `HStack`'s `Fill` rule inspects its
+    **direct** children, so `Fill()` nested inside a wrapper is rigid to the
+    stack (it still fills the rect a `frame()` allocates the wrapper). This is
+    the same "type rule sees the direct child" boundary as any other wrapper;
+    revisit only with a use case (feature freeze).
+- Legacy `body` implementations on the new wrappers reproduce the eager
+  output exactly (`pad`/`bordered` on the resolved raster), so P4a changes no
+  existing output and no corpus pin.
+
+### P4b — eager retirement (landed)
+
+The eager render path is gone; the allocation engine is the only renderer.
+
+- **`body` is no longer a render path.** `View._resolveToViewOutput()` is
+  deleted, and `View` now declares `associatedtype Body: View = Empty` with a
+  protocol-extension `var body: Empty` default. Engine-implemented views
+  (containers, structural views, wrappers, spacers, `Fill`) declare no body;
+  user composites keep `var body: some View`, whose defaults for
+  `_sizeThatFits`/`_embed` still resolve through it. `ViewOutput` keeps
+  `body == self` as the terminal leaf.
+- **Structural views gained a query kernel.** `TupleView`,
+  `ConditionalContent`, `OptionalView`, and `ForEachView` previously measured
+  through the eager body; they now implement `_sizeThatFits` with
+  `measureStackedVertically` (each child queried at the proposal width, width =
+  max report, height = sum), matching their `_embed`.
+- **`ViewOutput` modifiers retired.** `.padded/.margined/.bordered/.beside/
+  .above/.width/.height/.size/.frame` no longer exist on `ViewOutput`;
+  the tree wrappers (`View.padded`, `View.bordered`, `View.frame`,
+  `.beside/.above`) are the modifiers. `SimplePathContractTests`
+  now pins **both** simple shapes: `body: some View` with tree wrappers, and
+  `body: ViewOutput` with String-level Latte helpers.
+- **Raster helpers kept deliberately.** `ViewOutput.clampedWidth(_:)` /
+  `.clampedHeight(_:)` remain: they operate on a finished raster, have no
+  tree-based equivalent, and are pinned by
+  `ViewOutputRasterHelperTests`.
+- **Corpus collapsed to one spec.** `ParityCase` has a single
+  `expectedRows` (the engine rows); `isKnownDivergent`, `expectedEngineRows`,
+  `expectedEmbedRows`, `ParitySpecTests`, and `eagerBuffer` are deleted. The
+  historical divergence list #1–#10 is closed — #4–#10 retired with the eager
+  path, #1–#3 remain engine semantics (all corpus-pinned). The two HStack
+  `Fill` allocation deltas are now plain corpus expectations.
+- **`Spacer` unification (source-breaking).** `Spacer()` and
+  `Spacer(fraction:)` are flexible (SwiftUI-style); `Spacer(lines:)` and
+  `Spacer(columns:)` are the fixed forms; `FlexibleSpacer` is removed.
+  Flexible spacers measure 0×0 rigidly and report the fraction on both axes;
+  fixed spacers measure exactly their cell count. **Engine `Spacer`
+  semantics are preserved**: exactly N blank rows/columns, never the eager
+  doubling quirk (corpus case "vstack with spacer lines 2 reserves exactly
+  two blank rows").
+- **A1 wrapping reconciliation.** Latte's `wrap()` is *not* deleted: it is a
+  public String utility (`String.wrapped()`) and was never the engine's
+  wrapper. The engine continues to use `StyledText.wrappedToWidth(_:)`.
+
+### PB — `AnyView` on the allocation kernel (landed)
+
+`AnyView` (`Sources/Chai/Core/AnyView.swift`) erases a view while staying
+transparent to the engine: it forwards **all four** SPI methods.
+
+- `_sizeThatFits` / `_embed`: erasure never changes measurement or painting.
+- `_childViews()`: an erased structural view stays transparent — e.g.
+  `AnyView(TupleView(Text("a"), Text("b")))` in an `HStack` lays out two
+  columns, not one opaque block.
+- `_flexibility()`: an erased flexible `Spacer()` still absorbs a stack's
+  leftover. This is the PR #21 review's silent-failure case and is
+  explicitly pinned (`AnyViewTests.erasedFlexibleSpacerStillAbsorbsLeftover`).
+- `ViewBuilder.buildExpression(_ view: any View) -> AnyView` makes
+  heterogeneous loops expressible (`for row in rows { row }` with
+  `rows: [any View]`); `buildArray(_ components: [any View])` covers direct
+  erased arrays. Both are `@_disfavoredOverload` so a concrete view keeps the
+  generic overload (and its concrete type in single-expression builders).
+- The engine has **no view identity and no tree diffing**; erasure therefore
+  costs a hop, not a reconciliation. (This is why `AnyView` needs no identity
+  work beyond the four forwardings.)
 
 ### Milestones (each a PR-sized slice, TDD, zero warnings including test targets)
 
@@ -563,75 +675,65 @@ func _childViews() -> [any View]                                // unchanged (tr
 | P1 | **Allocation kernel + SPI** — `ViewRect`; `_embed` on all conformers (spike rules ported; per-conformer dispatch); `Text` compression floor; **simple-path contract suite**; corpus additions (the two `Fill`-in-`HStack` cases) | corpus green through the new `_embed` path with the live engine untouched (side-by-side harness); zero warnings — ✅ landed |
 | P2 | **Side-by-side window** — the corpus drives both engines on every case; the spike's 38/38 prediction is the acceptance bar | walker==engine 38/38 held (every case without a documented allocation delta); no other pin changes — ✅ landed (window closed at P3; the suite folded into `ParityEngineTests`) |
 | P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green** (the phase's proof point, the M3 precedent); old SPI fully gone — ✅ landed |
-| P4 | **Stage C on the new kernel** — `ModifiedContent`-style wrappers (allocate inset rect, embed child), eager-path retirement (`_resolveToViewOutput`, eager frame/wrap, divergence collapse #4–#10), `Spacer` naming unification, `ViewOutput.frame` retirement, HStack-remaining-width candidate (use-case-gated; now a one-rule change) | wrapper tests; divergence list collapses as predicted; **engine `Spacer` semantics from entry #1 preserved** (exactly N blank rows, never the eager doubling quirk) |
-| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`) | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) |
-| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; **preserve** buffer-as-only-hard-wall + overflow semantics); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready |
+| P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
+| P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
+| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
+| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
 
-Ordering: P1 → P2 → P3 are strictly sequential (P2's coexistence is
-transition-only; P3 deletes the old SPI — decision 5). PB may land any
-time after P1 (it forwards, it does not allocate). P4 requires P3 —
-**do not build Stage C on the old SPI**; that was the trap the spike was
-started in time to avoid. PD closes the phase.
+Ordering: P1 → P2 → P3 were strictly sequential (P2's coexistence was
+transition-only; P3 deleted the old SPI — decision 5). **P4a → P4b**: the
+wrapper family had to exist and be tested before the eager modifiers it
+replaces were deleted, or the simple path would lose its Latte helpers. Both
+landed, then PB and PD closed the phase.
 
-### Pickup notes for the remaining milestones
+### Pickup notes for the milestones
 
-The plan above is self-contained for *what* remains; these are the concrete
+The plan above is self-contained for *what landed*; these are the concrete
 entry points for a cold start.
 
-**P4 (Stage C) — working inventory.**
+**P4a (Stage C wrappers) — landed.**
 
-- **Retire the eager path:** `View._resolveToViewOutput()`
-  (`Sources/Chai/Core/View.swift`), the `ViewOutput` eager modifiers
-  (`Sources/Latte/Extensions/ViewOutput+Layout.swift`:
-  `.bordered/.padded/.beside/.above/.width/.height`), the eager string wrapper
-  (`Sources/Latte/Layout/Wrap.swift`, see the A1 "Wrapping-wrapper overlap"
-  note above), the legacy `body` implementations on
-  `FrameView`/`ClipView`/`VStack`/`HStack`/structural views, and the
-  `ViewOutput.frame` eager overload.
-- **Rebuild modifiers as wrappers:** a `ModifiedContent`-style wrapper's
-  `_embed` allocates an inset rect (borders/padding are rect insets) and
-  embeds its child; alignment and composition stay container rules.
-- **Corpus/tests:** the eager leg is `eagerBuffer` + `ParitySpecTests`
-  (`eagerMatchesPinnedSpec`) and the divergences' `expectedRows`/
-  `isKnownDivergent` fields. #4–#10 self-retire with the eager path; #1–#3
-  remain engine semantics. **Preserve entry #1's engine `Spacer` semantics**
-  (exactly N blank rows, never the eager doubling quirk).
-- **Source-breaking seed:** the `Spacer` unification shape, the
-  `ViewOutput.frame` overload trap, and the HStack-remaining-width rationale
-  are detailed in "Deferred to phase 3" above — that seed list is still the
-  detailed spec; the phase-4 rules here are what is in force. The
-  HStack-remaining-width change is now a one-rule change (the column query
-  context) plus corpus growth, and remains use-case-gated by the feature
-  freeze.
+- The wrapper family lives in `Sources/Latte/Layout/PaddingView.swift`,
+  `BorderView.swift`, and `CompositionWrappers.swift`; the contract and its
+  pins are in the "P4a — Stage-C wrapper family" section above and
+  `Tests/LatteTests/ModifierWrapperTests.swift`.
+- Eager `body` implementations on the wrappers (added in P4a for the parity
+  spec) were deleted in P4b with the rest of the eager path.
 
-**PB (`AnyView`).**
+**P4b (eager retirement) — landed.**
 
-- `ViewBuilder.buildArray` currently requires one homogeneous `V`
-  (`Sources/Chai/Core/ViewBuilder.swift`).
-- `AnyView` must forward **all four** SPI methods: `_sizeThatFits`, `_embed`,
-  `_childViews`, `_flexibility`. `_flexibility` is the silent failure
-  (PR #21 review): a non-forwarding wrapper is rigid, so flexible children
-  inside it stop absorbing leftover. Test that explicitly.
+- The eager path is deleted (see "P4b — eager retirement" above). The
+  remaining phase work is PB (`AnyView` forwarding) and PD (docs/rules).
+- The HStack-remaining-width change remains deferred by the feature freeze —
+  it is **not** part of P4b.
 
-**PD (docs).**
+**PB (`AnyView`) — landed.**
 
-- ARCHITECTURE.md: rewrite the three proposal-semantics subsections around
-  allocation (the phase-4 banner currently marks them historical), preserve
-  the buffer-as-only-hard-wall and overflow semantics, and drop the
-  `engineBuffer`/`ProposalEchoView` references in them.
-- AGENTS.md and CLAUDE.md are synced on pitfall #2 today; keep them in
-  lockstep when editing either.
-- UPGRADE.md: flip the phase-4 status to landed when P4/PB/PD close.
-- **Known nuance to document** (PR #22 review, remaining coverage gap): in an
-  HStack, a custom child that both reports height-flexibility and paints
-  observes the allocation-time height context (`rect.size.height`) rather than
-  the top-level query context (`nil`). Built-ins are unaffected (spacers and
-  `Fill` paint nothing); the allocation-time context is the accurate one.
+- See "PB — `AnyView` on the allocation kernel" above. `AnyView` forwards all
+  four SPI methods; `buildExpression(_ view: any View)` and
+  `buildArray(_ components: [any View])` are the heterogeneous builder hooks.
+  The remaining phase work is PD (docs/rules).
 
-**Baseline at P3 + review:** `swift build --build-tests` zero warnings (known
-SpicesTests `viewAs` deprecations only); `swift test` **1283 tests / 109
-suites**. Gates: zero warnings includes test targets; corpus additions must
-carry explicit expectations (`expectedEmbedRows` for allocation-only deltas).
+**PD (docs) — landed.**
+
+- ARCHITECTURE.md now describes query/allocation semantics: "An offer, not a
+  box" became "a report, not a bound; the rect is the box", the taxonomy is
+  reporters/containers/allocators/consumers, and the fit/render value-equality
+  section became "the rect is the contract". The minimum-query and `.infinity`
+  sections keep their content with allocation language; the phase-4 no-clip
+  semantics are recorded there as superseded by phase 5's hard box (see
+  "Phase 5 — Hard-box containment"). The parity discipline and
+  `frame()` sections now describe the post-P4b state.
+- AGENTS.md and CLAUDE.md pitfall #2 states the corpus/allocation contract in
+  lockstep.
+- UPGRADE.md's phase-4 status is flipped to landed (this section).
+
+**Final baseline:** `swift build --build-tests` zero warnings (known
+SpicesTests `viewAs` deprecations only); `swift test` **1277 tests / 109
+suites**. Gates: zero warnings includes test targets; the corpus is the single
+engine spec (`expectedRows`) and no case is skipped. (The count drops from
+P4a's 1305/110 because the eager-parity suites and eager-modifier tests
+retired with the eager path; no engine coverage was removed.)
 
 ### Allocation deltas (P1 findings, on record)
 
@@ -662,10 +764,10 @@ there):
   `RendererEnginePathTests.fillClaimsOfferedHeightThroughEngine` ("x" is now
   at col 3 inside the 4-wide frame; its assertion is substring-based and
   unchanged). `hstackChildClaimsTheOfferedHeight` is unaffected (it queries at
-  a `nil` width). A second, pixel-identical consequence: the phase-3
-  `ParityEngineTests` (M2) now runs the allocation path — the window's
-  delta-aware expectations are `expectedEmbedRows ?? expectedEngineRows ??
-  expectedRows`.
+  a `nil` width).
+- **P4b consequence:** the corpus collapsed to one spec (`expectedRows`), so
+  these deltas are now plain engine expectations; the
+  `expectedEmbedRows`/`expectedEngineRows` precedence machinery is gone.
 - **Compression floor (query-side, fixed after the PR #22 review):** a narrow
   *positive* width containing a wide character is resolved at
   `max(width, minimumWrapWidth())` by both the query and the allocation. Before
@@ -680,14 +782,15 @@ there):
 
 ### Divergence list & corpus fate
 
-- The list does **not** shrink automatically — the walker reproduced
-  today's semantics deliberately. Entries #4–#10 self-retire at P4 with
-  the eager path (the engine-vs-eager *comparison itself* retires with
-  it); #1–#3 remain engine semantics.
-- The `Fill`-in-`HStack` rule is an **allocation delta**, not an
-  eager-vs-engine divergence: eager and the (now-deleted) phase-3 engine
-  agreed on those rows; the corpus carries the delta in `expectedEmbedRows`
-  (documented above).
+- **Closed at P4b.** The walker reproduced the old semantics deliberately;
+  the eager path's retirement removed the comparison itself. Entries #4–#10
+  retired with the eager path; #1–#3 remain engine semantics and are
+  corpus-pinned. `ParityCase` now carries a single `expectedRows`, and
+  `ParitySpecTests`/`eagerBuffer` are deleted.
+- The `Fill`-in-`HStack` rule is an **allocation rule**, not a divergence:
+  its rows are pinned directly in the corpus ("hstack leading Fill shifts its
+  sibling", "trailing Fill grows the stack's occupied width") and in
+  `AllocationRulesTests`.
 
 ### Risks & mitigations
 
@@ -702,6 +805,59 @@ there):
 Estimated smaller than phase 2: no builders/tree work, no eager-parity
 dilemma — the corpus already carries the divergences and the spike
 matched the engine on all 38.
+
+---
+
+## Phase 5 — Hard-box containment (landed)
+
+**Scope (decided):** a child may never paint outside the rect its parent
+allocated. The allocated rect becomes both the layout box and the painting
+bound; the buffer is no longer the mechanism that bounds overflow.
+
+**Why:** phase 4's "overflow stays visual; the buffer is the only hard wall"
+was unintuitive at composition boundaries — a fixed 10×1 status box could
+paint its second wrapped row into the row below, and the result depended on
+painter order. The hard-box contract replaces that with one invariant:
+**paint ⊆ allocated rect**.
+
+### Decisions
+
+1. **Containers clamp child rects to their own allocation.** `VStack` rows,
+   `HStack` columns, structural stacks, frames, and wrappers intersect every
+   child rect with the parent's rect (and use the remaining sequential space).
+   Alignment is measured against the *visible* box, so an overflowing child is
+   not pushed outside by alignment math.
+2. **The kernel clips every `_embed` to its rect.** `CellBuffer.embed(_:at:)`
+   intersects the active clip with the child's rect; `CellBuffer.set` refuses
+   writes outside it. A custom conformer cannot bleed even if it ignores its
+   rect. Every container calls the helper (never `child._embed` directly).
+3. **`.clipped()` and `ClipView` are removed.** Clipping is the default; the
+   raster clamping helpers (`ViewOutput.clampedWidth/clampedHeight`) remain for
+   *content* truncation, which is a different operation.
+4. **Root allocation is the buffer.** Alt-screen assigns the full screen to the
+   root (so the wrap policy applies inside); inline assigns the content-sized
+   height, with the suffix clamp expressed as a negative origin.
+5. **Reports stay unclamped.** `_sizeThatFits` may exceed the query; that is
+   measurement, not painting. Containers may clamp the allocation, never the
+   report.
+6. **Wide characters follow the box.** A width-2 character that would straddle
+   a clip edge is dropped whole; the buffer never holds half a glyph.
+
+### Consequences
+
+- `Text("…long…").frame(width: 10, height: 1)` shows the first wrapped row and
+  nothing below it; no `.clipped()` call.
+- `frame()` is now a true box (this reverses the phase-2 "frame does not clip"
+  decision).
+- The phase-4 no-clip divergence/`ClipView` machinery and the "overflow is
+  visual" docs are gone. `HardBoxTests` pins the new contract; the old
+  `ClipTests` suite retired.
+- `HStack`'s ideal-width **query** still guides allocation (the remaining-width
+  candidate stays deferred), but its **paint** is contained: a wide column is
+  clamped to the remaining allocation and wraps there.
+
+**Baseline at phase 5 close:** `swift build --build-tests` zero warnings;
+`swift test` **1266 tests / 109 suites**.
 
 ---
 
@@ -726,11 +882,46 @@ matched the engine on all 38.
   `q`-key check moved *before* the `picker`/`menu` updates so the key can't
   be consumed by a child first. In your own models, handle global quit keys
   before delegating to component `update`s.
-- **Two `frame()`s coexist during phase 2** (detailed in ARCHITECTURE.md,
+- **Two `frame()`s coexisted during phase 2** (detailed in ARCHITECTURE.md,
   "Two `frame()`s coexisting"): the eager
   `ViewOutput.frame(width:height:horizontalAlignment:verticalAlignment:)`
   (non-optional `Int`s, minimum-enforcing, returns `ViewOutput`) and the
   tree-based `View.frame(width:height:horizontalAlignment:verticalAlignment:)`
-  (`Int?` dimensions, proposal semantics, returns `FrameView`). Overload
-  resolution sends `ViewOutput` receivers to the eager one, so existing
-  code is unaffected. Phase 3 may retire the eager one.
+  (`Int?` dimensions, proposal semantics, returns `FrameView`). **Phase-4 P4b
+  retired the eager overload**: every receiver now uses the tree-based frame,
+  whose fixed dimensions are exact allocations. Since **phase 5** the frame is
+  also a hard box: content larger than the frame is clipped to it (see below).
+  `ViewOutput(...).frame(...)` calls with both dimensions change semantics
+  accordingly — use `.clamped*` or String helpers if raster truncation is
+  intended.
+- **Phase-4 P4b breaking changes (pre-alpha clean breaks):**
+  - `View._resolveToViewOutput()` is gone. The eager render path no longer
+    exists; nothing may resolve a tree to a `ViewOutput`.
+  - `ViewOutput` lost the modifier family `.padded/.margined/.bordered/
+    .beside/.above/.width/.height/.size/.frame`. Use the tree modifiers on
+    `View` (`.padded`, `.bordered`, `.frame`, `.beside`, `.above`), or
+    String-level helpers when a `body: ViewOutput` is wanted.
+    `ViewOutput.clampedWidth(_:)` and `.clampedHeight(_:)` remain as raster
+    helpers.
+  - Containers, structural views, wrappers, spacers, and `Fill` no longer
+    implement `body`; `View.Body` defaults to `Empty`, and `body` is not a
+    render path. User composites keep `var body: some View`.
+  - `Spacer()` is now **flexible** (SwiftUI-style), not `Spacer(lines: 1)`.
+    Use `Spacer(lines: n)` / `Spacer(columns: n)` for fixed space.
+  - `FlexibleSpacer` is removed; `Spacer()` / `Spacer(fraction:)` replace it
+    (fractions are relative shares, exactly as before).
+  - The parity corpus carries a single `expectedRows`; the
+    `isKnownDivergent`/`expectedEngineRows`/`expectedEmbedRows` fields and
+    `ParitySpecTests` are gone.
+- **Phase-5 breaking changes (pre-alpha clean breaks):**
+  - **`View.clipped()` and `ClipView` are removed.** Every allocated rect
+    clips automatically; there is no opt-in.
+  - **`frame()` now clips.** A fixed frame is a hard box; content larger than
+    it is masked. Previously it overflowed visually and required `.clipped()`.
+  - **No view may paint outside its allocated rect.** Containers clamp child
+    rects to their own allocation, and the kernel clips every `_embed`.
+    Overflow no longer bleeds into siblings; the buffer is the final backstop,
+    not the primary mask.
+  - **Custom `_embed` conformers are clipped too.** Paint through
+    `CellBuffer.set`/`write` and the kernel contains it; there is no way to
+    draw outside the rect.

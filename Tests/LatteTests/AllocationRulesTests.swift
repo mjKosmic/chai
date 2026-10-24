@@ -13,13 +13,31 @@ import Latte
 // convention: zero-width cells skipped, wide cells counted once, trailing
 // spaces stripped. Expectations were derived by running the code.
 
+/// A view that reports a fixed width and paints the width it was allocated.
+/// Used to observe the stack's clamping independently of `Text`'s wrapping.
+private struct WidthProbe: View {
+    let reported: Int
+
+    func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        ViewSize(width: reported, height: 1)
+    }
+
+    func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        buffer.write(
+            StyledText("W:\(rect.size.width)"),
+            at: rect.origin.col,
+            row: rect.origin.row
+        )
+    }
+}
+
 @Suite("Phase-4 allocation rules")
 struct AllocationRulesTests {
 
     private func embed(_ view: some View, width: Int, height: Int) -> [String] {
         var buffer = CellBuffer(width: width, height: height)
-        view._embed(
-            into: &buffer,
+        buffer.embed(
+            view,
             at: ViewRect(size: ViewSize(width: width, height: height))
         )
         return visibleRows(buffer)
@@ -39,7 +57,7 @@ struct AllocationRulesTests {
     @Test func vstackStretchesFlexibleRowsToTheAssignedHeight() {
         let tree = VStack(alignment: .right) {
             Text("ab")
-            FlexibleSpacer()
+            Spacer()
         }
         // Rigid total 1, assigned height 6 → the spacer absorbs the 5-row
         // leftover. The stack still shrink-wraps to width 2.
@@ -54,15 +72,27 @@ struct AllocationRulesTests {
         #expect(embed(tree, width: 8, height: 5) == ["a", "b", "", "", ""])
     }
 
-    @Test func vstackDoesNotCompressAnOverflowingRow() {
+    @Test func vstackClampsAnOverflowingRowToItsAllocation() {
         let tree = VStack {
             ViewOutput("abcd")
             Text("e")
         }
-        // The raster reports 4 wide; the stack allocates row 0 four columns
-        // (the buffer truncates at the buffer edge) and row 1 still starts at
-        // row 1 — nothing compresses.
+        // The raster reports 4 wide; the stack allocates row 0
+        // min(4, rect.width) = 2 columns, so the kernel clip drops "cd".
+        // Row 1 still starts at row 1 — nothing compresses.
         #expect(embed(tree, width: 2, height: 2) == ["ab", "e"])
+    }
+
+    @Test func vstackDropsRowsBeyondItsAllocation() {
+        let tree = VStack {
+            Text("a")
+            Text("b")
+            Text("c")
+        }
+        .frame(height: 2)
+        // The frame's box is 2 rows tall; the stack clamps each child row to
+        // the remaining allocation, so "c" gets no rect at all.
+        #expect(embed(tree, width: 3, height: 3) == ["a", "b", ""])
     }
 
     // MARK: HStack columns (ideal-width measurement)
@@ -73,21 +103,32 @@ struct AllocationRulesTests {
             Text("bb")
         }
         // The assignment is 4 columns, but columns keep ideal widths (6 + 2):
-        // no wrapping, overflow stays visual.
+        // no wrapping; the paint is clipped to the assignment.
         #expect(
             tree._sizeThatFits(ProposedSize(width: 4, height: nil)) == ViewSize(width: 8, height: 1)
         )
         #expect(embed(tree, width: 4, height: 1) == ["aaaa"])
     }
 
-    @Test func hstackWideCharactersOverflowTheBufferEdge() {
+    @Test func hstackWideCharactersAreClippedAtTheAllocation() {
         let tree = HStack {
             Text("你")
             Text("好")
         }
-        // Columns keep their 2-column intrinsic widths; the second wide
-        // character does not fit the 3-column buffer and is dropped there.
+        // Columns keep their 2-column intrinsic widths; the second column is
+        // clamped to the remaining 1 column, where the 2-wide glyph cannot
+        // fit and is dropped by the clip.
         #expect(embed(tree, width: 3, height: 1) == ["你"])
+    }
+
+    @Test func hstackClampsAColumnToTheRemainingAllocation() {
+        let tree = HStack {
+            WidthProbe(reported: 6)
+            Text("b")
+        }
+        // The first column reports 6 but the assignment is 3; the stack
+        // allocates it 3 columns and leaves nothing for the second.
+        #expect(embed(tree, width: 3, height: 1) == ["W:3"])
     }
 
     // MARK: Fill (decision 2: a consumer that claims its allocated rect)
@@ -149,7 +190,7 @@ struct AllocationRulesTests {
     @Test func flexibleSiblingsTakePriorityOverFill() {
         let tree = HStack {
             Text("A")
-            FlexibleSpacer()
+            Spacer()
             Fill()
             Text("B")
         }
@@ -165,9 +206,9 @@ struct AllocationRulesTests {
 
     @Test func flexibleSpacersShareTheAssignedLeftover() {
         let tree = HStack {
-            FlexibleSpacer()
+            Spacer()
             Text("mid")
-            FlexibleSpacer()
+            Spacer()
         }
         // Rigid 3, leftover 17 → 8 columns per spacer; "mid" at col 8.
         #expect(embed(tree, width: 20, height: 1) == ["        mid"])
@@ -176,9 +217,9 @@ struct AllocationRulesTests {
     @Test func trailingRemainderStaysUnallocated() {
         let tree = HStack {
             Text("A")
-            FlexibleSpacer()
+            Spacer()
             Text("B")
-            FlexibleSpacer()
+            Spacer()
             Text("C")
         }
         var buffer = CellBuffer(width: 10, height: 1)
@@ -188,13 +229,13 @@ struct AllocationRulesTests {
         #expect(buffer[9, 0] == .empty)
     }
 
-    @Test func narrowFrameAllocatesTheMinimumTextForm() {
+    @Test func narrowFrameCannotShowTheMinimumTextForm() {
         let tree = Text("ab你").frame(width: 1)
-        // The frame answers width 1, but the `Text`'s report (2 wide, 2 rows)
-        // is its minimum form; the allocation paints exactly those two rows —
-        // no stray blank row from a differently-measured report.
+        // The frame answers width 1; the hard-box contract clips the Text's
+        // minimum form (2 wide) to the 1-column box. Row 0 shows "a" only;
+        // the wide character cannot fit in one column and is dropped.
         #expect(tree._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
-        #expect(embed(tree, width: 2, height: 2) == ["ab", "你"])
+        #expect(embed(tree, width: 2, height: 2) == ["a", ""])
     }
 
     // MARK: Frame (fixed dims are allocations)
@@ -217,7 +258,7 @@ struct AllocationRulesTests {
     @Test func frameWithAFlexibleChildStretchesIt() {
         let tree = VStack {
             Text("t")
-            FlexibleSpacer()
+            Spacer()
         }
         .frame(width: 4, height: 5)
         // The frame's fixed height reaches the height-flexible child through
@@ -225,51 +266,11 @@ struct AllocationRulesTests {
         #expect(embed(tree, width: 4, height: 5) == ["t", "", "", "", ""])
     }
 
-    @Test func frameDoesNotClipOverflow() {
+    @Test func frameClipsOverflow() {
         let tree = ViewOutput("abcd")
             .frame(width: 2)
-        // The frame occupies 2 columns but its raster child overflows to the
-        // right; no clip (the pinned no-clip decision).
-        #expect(embed(tree, width: 4, height: 1) == ["abcd"])
-    }
-
-    // MARK: Clip (masks at the reserved rect)
-
-    @Test func clipMasksAtTheReservedRect() {
-        let tree = ViewOutput("abcd")
-            .frame(width: 2)
-            .clipped()
+        // The frame occupies 2 columns; the 4-wide raster is clipped to it.
         #expect(embed(tree, width: 4, height: 1) == ["ab"])
-    }
-
-    @Test func clipBlitsBlanksOverContentBeneath() {
-        var buffer = CellBuffer(width: 4, height: 1)
-        ViewOutput("wxyz")._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 4, height: 1))
-        )
-        // `Spacer(columns: 2)` reserves 2×1 and paints nothing; the clip's
-        // blank cells still replace 'w' and 'x' (blank-inclusive blit,
-        // painter order) — only the reserved rect is overwritten.
-        Spacer(columns: 2).clipped()._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 2, height: 1))
-        )
-        #expect(visibleRows(buffer) == ["  yz"])
-    }
-
-    @Test func clipReplacesOnlyItsReservedRect() {
-        var buffer = CellBuffer(width: 4, height: 1)
-        ViewOutput("wxyz")._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 4, height: 1))
-        )
-        ViewOutput("a").clipped()._embed(
-            into: &buffer,
-            at: ViewRect(size: ViewSize(width: 2, height: 1))
-        )
-        // Reserved 1×1: 'a' replaces 'w'; 'x' is outside the mask and stays.
-        #expect(visibleRows(buffer) == ["axyz"])
     }
 
     // MARK: Structural roots

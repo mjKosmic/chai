@@ -5,9 +5,9 @@ import Latte
 // MARK: - M1 layout engine tests
 //
 // Milestone M1 of the phase-2 layout engine: the proposal-driven engine SPI
-// (`_sizeThatFits` / `_render` / `_childViews`) with body-resolving defaults,
-// leaf implementations (`ViewOutput`, `Spacer`), and the `maxLineWidth` move
-// into Chai's `StyledText`.
+// (`_sizeThatFits` / `_embed(into:at:)` / `_childViews()`) with body-resolving
+// defaults, leaf implementations (`ViewOutput`, `Spacer`), and the
+// `maxLineWidth` move into Chai's `StyledText`.
 //
 // Expectations were derived by running the code — CJK widths, offset writes,
 // and truncated rows are pinned from observed output, never hand-computed.
@@ -117,9 +117,15 @@ struct EngineMeasurementTests {
         #expect(Spacer(lines: 2)._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 2))
     }
 
-    @Test func zeroArgSpacerMeasuresOneLine() {
-        // `Spacer()` is `Spacer(lines: 1)` — one blank line, no columns.
-        #expect(Spacer()._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 1))
+    @Test func zeroArgSpacerIsFlexible() {
+        // `Spacer()` is the flexible spacer: rigidly 0×0, with fraction 1 on
+        // both axes (a stack distributes leftover into it).
+        #expect(Spacer()._sizeThatFits(.unspecified) == .zero)
+        #expect(Spacer()._flexibility() == LayoutFlexibility(width: 1, height: 1))
+    }
+
+    @Test func fixedSpacerMeasuresItsLineCount() {
+        #expect(Spacer(lines: 1)._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 1))
     }
 
     @Test func zeroSizedSpacerMeasuresZero() {
@@ -268,9 +274,9 @@ struct EngineChildViewsTests {
         }
     }
 
-    /// Resolve each child view to its plain-text output.
+    /// Resolve each child view to its rendered plain text.
     private func resolvedTexts(_ views: [any View]) -> [String] {
-        views.map { $0._resolveToViewOutput().content.plainText }
+        views.map { engineText($0) }
     }
 
     @Test func defaultChildViewsIsSelf() {
