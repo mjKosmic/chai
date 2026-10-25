@@ -40,7 +40,7 @@ extension StyledText {
     ///   into one segment, but no style is ever invented or merged with a
     ///   different style.
     ///
-    /// ## Degenerate proposals and content
+    /// ## Degenerate queries and content
     ///
     /// `width <= 0` returns the content **unchanged** (the caller treats a
     /// non-positive width context as unusable). A character wider than `width` on

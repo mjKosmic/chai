@@ -127,7 +127,7 @@ struct RendererEnginePathTests {
 
     @Test func inlineViewOutputTruncatesThroughEngine() async {
         // The non-wrapping contrast at the same terminal: `ViewOutput` stays a
-        // raster leaf that ignores proposals (the pinned A1 decision), so the
+        // raster leaf that ignores the query context (the pinned A1 decision), so the
         // over-wide first row truncates and the following logical row is NOT
         // stolen by wrapping.
         let mock = MockTerminal()
@@ -333,21 +333,21 @@ struct RendererEnginePathTests {
             .frame(horizontalAlignment: .center, verticalAlignment: .middle)
         )
         await renderer.flush()
-        // Flexible frame: fills the 20-wide offer → centered at col 8.
+        // Flexible frame: fills the 20-wide assignment → centered at col 8.
         #expect(mock.output.contains("        abcd"))
         mock.reset()
-        // Shrink the terminal: the flexible frame re-fills the new offer and
+        // Shrink the terminal: the flexible frame re-fills the new assignment and
         // re-centers (4-wide stack in 10 columns → col 3).
         await renderer.setSize(width: 10, height: 5)
         await renderer.flush()
         #expect(mock.output.contains("   abcd"))
     }
 
-    // MARK: - Fill claims offered space (A2)
+    // MARK: - Fill claims queried space (A2)
 
-    @Test func fillClaimsOfferedHeightThroughEngine() async {
+    @Test func fillClaimsQueriedHeightThroughEngine() async {
         // `Fill` answers the query context, so the HStack is as tall as the frame's
-        // 3-row offer (1×3). The bottom-aligned frame then has no vertical
+        // 3-row assignment (1×3). The bottom-aligned frame then has no vertical
         // shortage and places the stack at the TOP — "x" is painted on row 0
         // and rows 1–2 are painted blank (the space `Fill` claimed).
         let mock = MockTerminal()
@@ -410,7 +410,7 @@ struct RendererEnginePathTests {
     }
 
     @Test func zeroProbedTextIsMeasuredCorrectly() async {
-        // The renderer root never offers zero — it proposes the terminal
+        // The renderer root never queries zero — it queries the terminal
         // width — so `.zero` is a unit-level measurement pin (see
         // `MinimumSizeTests`). Kept here as the renderer-path counterpart
         // so the A3 minimum semantics are pinned on both surfaces.

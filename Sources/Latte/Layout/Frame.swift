@@ -35,10 +35,10 @@ import Chai
 /// box, not a reflow instruction — but nothing paints outside it.
 public struct FrameView<Content: View>: View {
     /// The fixed width, or `nil` for a flexible width that fills the parent's
-    /// offer.
+    /// assignment.
     let width: Int?
     /// The fixed height, or `nil` for a flexible height that fills the
-    /// parent's offer.
+    /// parent's assignment.
     let height: Int?
     /// How the content is aligned horizontally within the frame's width.
     /// Defaults to ``HorizontalAlignment/left``.
@@ -81,17 +81,17 @@ public struct FrameView<Content: View>: View {
 // Phase 4: fixed dimensions are ALLOCATION data — the frame owns them and
 // allocates the child box verbatim; flexible dimensions pass the assigned rect
 // through. `_measure` remains the pure query (fixed dims verbatim;
-// flexible axes fill a non-`nil` offer, else the child's ideal). Placement is
+// flexible axes fill a non-`nil` assignment, else the child's ideal). Placement is
 // the alignment fraction of the shortage on each axis
 // (`Int(Double(shortage) * fraction)`). Hard-box contract: the box is clamped
 // to the allocation and the child is clipped to the box.
 
 extension FrameView {
     /// Answer the frame's own size: fixed dimensions verbatim; flexible
-    /// dimensions fill a non-`nil` offer, else the child's ideal.
+    /// dimensions fill a non-`nil` assignment, else the child's ideal.
     public func _measure(in available: AvailableSize) -> ViewSize {
-        let childSize = content._measure(in: 
-            AvailableSize(width: width ?? available.width, height: height ?? available.height)
+        let childSize = content._measure(
+            in: AvailableSize(width: width ?? available.width, height: height ?? available.height)
         )
         return ViewSize(
             width: width ?? (available.width ?? childSize.width),
@@ -122,8 +122,8 @@ extension FrameView {
         let box = ViewRect(origin: rect.origin, size: declared).intersection(rect)
         guard !box.isEmpty else { return }
 
-        let childProposal = AvailableSize(width: box.size.width, height: box.size.height)
-        let reported = content._measure(in: childProposal)
+        let childQuery = AvailableSize(width: box.size.width, height: box.size.height)
+        let reported = content._measure(in: childQuery)
         let childSize = ViewSize(
             width: min(reported.width, box.size.width),
             height: min(reported.height, box.size.height)

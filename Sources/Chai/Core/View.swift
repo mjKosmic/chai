@@ -106,7 +106,7 @@ extension ViewOutput: View {
     /// Empty content measures 0×0 because ``StyledText/lineCount()`` already
     /// returns 0 for empty content — an empty output occupies nothing.
     ///
-    /// Proposals are ignored: a `ViewOutput` is a fully-formed raster. The
+    /// The query context is ignored: a `ViewOutput` is a fully-formed raster. The
     /// ideal size is the unwrapped size; `Text` is the view that wraps at an
     /// allocated width.
     public func _measure(in available: AvailableSize) -> ViewSize {
@@ -224,7 +224,7 @@ extension Text {
         return max(1, widest)
     }
 
-    /// Proposal-aware measurement: the measured size is the **resolved**
+    /// Query-aware measurement: the measured size is the **resolved**
     /// content's `(maxLineWidth, lineCount())` — the wrapped result for a
     /// positive width (floored at the minimum producible width), the minimum
     /// form for a zero or negative width, and the unwrapped ideal for `nil`.

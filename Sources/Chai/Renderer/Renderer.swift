@@ -193,7 +193,7 @@ actor Renderer {
         let altScreenHeight = termHeight > 0 ? termHeight : 24
 
         // The query context: inline mode asks for the ideal height (the buffer
-        // is content-sized, clamped below); alt-screen proposes the fixed
+        // is content-sized, clamped below); alt-screen queries the fixed
         // terminal size, so flexible roots report the height they will fill.
         let query = AvailableSize(width: w, height: altScreenActive ? altScreenHeight : nil)
 

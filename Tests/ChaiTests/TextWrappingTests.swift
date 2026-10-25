@@ -242,7 +242,7 @@ struct TextWrappingTableTests {
 
     @Test func trailingWhitespaceIsTrimmedToFit() {
         // A trailing run is preserved up to the width; the excess is trimmed
-        // so the final line never exceeds the offer.
+        // so the final line never exceeds the query width.
         #expect(StyledText("abc  ").wrappedToWidth(3).plainText == "abc")
         #expect(StyledText("abc  ").wrappedToWidth(5).plainText == "abc  ")
         #expect(StyledText("ab    ").wrappedToWidth(5).plainText == "ab   ")
@@ -290,13 +290,13 @@ struct TextWrappingIntegrationTests {
         return visibleRows(buffer)
     }
 
-    @Test func positiveWidthProposalMeasuresTheWrappedSize() {
+    @Test func positiveWidthQueryMeasuresTheWrappedSize() {
         let available = AvailableSize(width: 11, height: nil)
         // "The quick" / "brown fox" → widest line 9, 2 lines.
         #expect(Text("The quick brown fox")._measure(in: available) == ViewSize(width: 9, height: 2))
     }
 
-    @Test func narrowerProposalWrapsToMoreLines() {
+    @Test func narrowerQueryWrapsToMoreLines() {
         // "The" / "qui" / "ck" / "bro" / "wn" / "fox" → 3×6.
         #expect(
             Text("The quick brown fox")._measure(in: AvailableSize(width: 3, height: nil))
@@ -304,13 +304,13 @@ struct TextWrappingIntegrationTests {
         )
     }
 
-    @Test func nilProposalMeasuresTheUnwrappedIdeal() {
+    @Test func unconstrainedQueryMeasuresTheUnwrappedIdeal() {
         #expect(Text("The quick brown fox")._measure(in: .unconstrained) == ViewSize(width: 19, height: 1))
     }
 
     @Test func nonPositiveWidthQueryMeasuresTheMinimum() {
         // A3 spec delta: a zero (or negative) width query is the minimum
-        // offer, not "unwrapped". "The quick brown fox" compresses to width 1
+        // query, not "unwrapped". "The quick brown fox" compresses to width 1
         // (the widest single character); the three word-break spaces are
         // consumed → 16 rows.
         #expect(
@@ -319,7 +319,7 @@ struct TextWrappingIntegrationTests {
         )
     }
 
-    @Test func wideEnoughProposalMeasuresTheUnwrappedIdeal() {
+    @Test func wideEnoughQueryMeasuresTheUnwrappedIdeal() {
         #expect(
             Text("The quick brown fox")._measure(in: AvailableSize(width: 40, height: nil))
                 == ViewSize(width: 19, height: 1)
@@ -358,7 +358,7 @@ struct TextWrappingIntegrationTests {
         #expect(Text("\n")._measure(in: AvailableSize(width: 5, height: nil)) == .zero)
     }
 
-    @Test func renderWritesTheWrappedContentAtTheProposal() {
+    @Test func renderWritesTheWrappedContentAtTheQueryWidth() {
         // The query width (5) and the allocated width are the same value: the
         // rendered rows are exactly the measured wrapped rows.
         let available = AvailableSize(width: 5, height: nil)

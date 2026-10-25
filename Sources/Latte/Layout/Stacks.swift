@@ -165,8 +165,8 @@ extension VStack {
     /// total, the leftover is distributed by ``distributedMainAxis``.
     private func allocation(assignedWidth: Int?, assignedHeight: Int?) -> StackAllocation {
         let children = content._childViews()
-        let childProposal = AvailableSize(width: assignedWidth, height: nil)
-        let reports = children.map { $0._measure(in: childProposal) }
+        let childQuery = AvailableSize(width: assignedWidth, height: nil)
+        let reports = children.map { $0._measure(in: childQuery) }
         let distributed = distributedMainAxis(
             rigidSizes: reports.map(\.height),
             fractions: children.map { $0._flexibility().height },
@@ -250,8 +250,8 @@ extension HStack {
     /// anchored by the alignment fraction against the occupied height.
     private func allocation(assignedWidth: Int?, assignedHeight: Int?) -> StackAllocation {
         let children = content._childViews()
-        let childProposal = AvailableSize(width: nil, height: assignedHeight)
-        let reports = children.map { $0._measure(in: childProposal) }
+        let childQuery = AvailableSize(width: nil, height: assignedHeight)
+        let reports = children.map { $0._measure(in: childQuery) }
         let distributed = distributedMainAxis(
             rigidSizes: reports.map(\.width),
             fractions: children.map { $0._flexibility().width },

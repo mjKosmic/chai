@@ -43,9 +43,9 @@ struct FrameMeasurementTests {
 
     @Test func widthFixedHeightFlexible() {
         let frame = Text("ab").frame(width: 10)
-        // Flexible height: child ideal when the offer is nil.
+        // Flexible height: child ideal when the query is unconstrained.
         #expect(frame._measure(in: .unconstrained) == ViewSize(width: 10, height: 1))
-        // Flexible height fills a non-nil offer; fixed width ignores the offer.
+        // Flexible height fills a non-nil assignment; fixed width ignores the query.
         #expect(
             frame._measure(in: AvailableSize(width: 5, height: 4)) == ViewSize(width: 10, height: 4)
         )
@@ -53,9 +53,9 @@ struct FrameMeasurementTests {
 
     @Test func heightFixedWidthFlexible() {
         let frame = Text("ab").frame(height: 3)
-        // Flexible width: child ideal when the offer is nil.
+        // Flexible width: child ideal when the query is unconstrained.
         #expect(frame._measure(in: .unconstrained) == ViewSize(width: 2, height: 3))
-        // Flexible width fills a non-nil offer; fixed height ignores the offer.
+        // Flexible width fills a non-nil assignment; fixed height ignores the query.
         #expect(
             frame._measure(in: AvailableSize(width: 7, height: 1)) == ViewSize(width: 7, height: 3)
         )
@@ -63,7 +63,7 @@ struct FrameMeasurementTests {
 
     @Test func neitherDimFixedPassesThrough() {
         let frame = Text("ab").frame()
-        // No offer: the frame takes the child's ideal size.
+        // No assignment (unconstrained query): the frame takes the child's ideal size.
         #expect(frame._measure(in: .unconstrained) == ViewSize(width: 2, height: 1))
         // Offer present: the frame fills it on both axes.
         #expect(

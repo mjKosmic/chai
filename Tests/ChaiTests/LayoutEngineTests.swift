@@ -89,12 +89,12 @@ struct EngineMeasurementTests {
 
     // MARK: Body-resolving defaults (Empty / custom views; Text consumes the query context)
 
-    @Test func textMeasuresIdealSizeAtUnspecifiedProposal() {
+    @Test func textMeasuresIdealSizeAtUnconstrainedQuery() {
         #expect(Text("hi")._measure(in: .unconstrained) == ViewSize(width: 2, height: 1))
         #expect(Text("a\nb")._measure(in: .unconstrained) == ViewSize(width: 1, height: 2))
     }
 
-    @Test func textMeasuresCjkIdealSizeAtUnspecifiedProposal() {
+    @Test func textMeasuresCjkIdealSizeAtUnconstrainedQuery() {
         #expect(Text("你好")._measure(in: .unconstrained) == ViewSize(width: 4, height: 1))
     }
 
@@ -132,15 +132,15 @@ struct EngineMeasurementTests {
         #expect(Spacer(columns: 0)._measure(in: .unconstrained) == .zero)
     }
 
-    // MARK: Non-wrapping leaves ignore proposals
+    // MARK: Non-wrapping leaves ignore the query context
     //
     // `ViewOutput` and `Spacer` are not query consumers. `Text` IS
     // (A1) — see `TextWrappingTests`; the probe below documents its minimum
     // semantics at a non-positive width (A3): it compresses to the narrowest
     // producible width (see `MinimumSizeTests`).
 
-    @Test func leavesIgnoreProposals() {
-        // A `ViewOutput` is a fully-formed raster: proposals do not change
+    @Test func leavesIgnoreTheQuery() {
+        // A `ViewOutput` is a fully-formed raster: the query does not change
         // the ideal measurement.
         #expect(ViewOutput("abc")._measure(in: AvailableSize(width: 1, height: 1)) == ViewSize(width: 3, height: 1))
         #expect(ViewOutput("abcd")._measure(in: AvailableSize(width: 2, height: nil)) == ViewSize(width: 4, height: 1))

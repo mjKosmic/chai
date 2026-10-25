@@ -80,7 +80,7 @@ struct SpacerPrimitiveTests {
         #expect(Spacer(fraction: -1)._flexibility() == .rigid)
     }
 
-    @Test func rigidMeasurementIsZeroAtEveryProposal() {
+    @Test func rigidMeasurementIsZeroAtEveryQuery() {
         // A stack measures flexible children rigidly (0 on the flexible axis);
         // outside a stack nothing distributes leftover, so it stays 0×0.
         #expect(Spacer()._measure(in: .unconstrained) == .zero)
@@ -111,12 +111,12 @@ struct SpacerPrimitiveTests {
 @Suite("Fill primitive")
 struct FillPrimitiveTests {
 
-    @Test func answersTheOfferOnBothAxes() {
+    @Test func answersTheQueryOnBothAxes() {
         #expect(Fill()._measure(in: AvailableSize(width: 4, height: 2)) == ViewSize(width: 4, height: 2))
     }
 
-    @Test func nilDimensionIsNotAnOffer() {
-        // A `nil` dimension is ideal, not an offer → 0 on that axis.
+    @Test func nilDimensionIsUnconstrained() {
+        // A `nil` dimension is unconstrained → 0 on that axis.
         #expect(Fill()._measure(in: AvailableSize(width: 4, height: nil)) == ViewSize(width: 4, height: 0))
         #expect(Fill()._measure(in: AvailableSize(width: nil, height: 2)) == ViewSize(width: 0, height: 2))
         #expect(Fill()._measure(in: .unconstrained) == .zero)

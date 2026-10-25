@@ -110,8 +110,8 @@ extension PaddingView {
         ).intersection(rect)
         guard !inset.isEmpty else { return }
 
-        let reported = content._measure(in: 
-            AvailableSize(width: inset.size.width, height: inset.size.height)
+        let reported = content._measure(
+            in: AvailableSize(width: inset.size.width, height: inset.size.height)
         )
         let childSize = ViewSize(
             width: min(reported.width, inset.size.width),

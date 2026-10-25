@@ -79,8 +79,8 @@ extension BorderView {
             )
         ).intersection(rect)
 
-        let reported = content._measure(in: 
-            AvailableSize(width: inset.size.width, height: inset.size.height)
+        let reported = content._measure(
+            in: AvailableSize(width: inset.size.width, height: inset.size.height)
         )
 
         // The box is drawn at the report (child plus the frame), but never

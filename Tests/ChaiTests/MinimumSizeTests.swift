@@ -15,9 +15,9 @@ import Latte
 // *by construction*:
 //
 // - `ViewOutput` is a fully-formed raster → it answers its ideal size (and may
-//   legitimately exceed the zero offer — legal overrule).
+//   legitimately exceed the zero query — a legal overrule).
 // - Fixed `Spacer(lines:)`/`Spacer(columns:)` → their rigid size; flexible
-//   `Spacer()`/`Empty` → 0×0; `Fill` → the offered rect, i.e. (0, 0) at
+//   `Spacer()`/`Empty` → 0×0; `Fill` → the queried rect, i.e. (0, 0) at
 //   `.zero`.
 // - Containers follow their normal allocation rules — no special-casing.
 //
@@ -123,23 +123,23 @@ struct TextMinimumSemanticsTests {
         #expect(Text("a\n\nb")._measure(in: .zero) == ViewSize(width: 1, height: 3))
     }
 
-    @Test func zeroWidthProposalUsesMinimumSemantics() {
-        // A zero *width* query (height irrelevant) is the minimum offer.
+    @Test func zeroWidthQueryUsesMinimumSemantics() {
+        // A zero *width* query (height irrelevant) is the minimum context.
         #expect(Text("hi")._measure(in: AvailableSize(width: 0, height: 0)) == ViewSize(width: 1, height: 2))
         #expect(Text("hi")._measure(in: AvailableSize(width: 0, height: nil)) == ViewSize(width: 1, height: 2))
     }
 
-    @Test func negativeWidthProposalClampsToMinimum() {
-        // A negative offer is clamped to zero — one rule, same result.
+    @Test func negativeWidthQueryClampsToMinimum() {
+        // A negative query is clamped to zero — one rule, same result.
         #expect(Text("hi")._measure(in: AvailableSize(width: -3, height: nil)) == ViewSize(width: 1, height: 2))
     }
 
-    @Test func nilWidthProposalStillMeasuresTheUnwrappedIdeal() {
+    @Test func unconstrainedWidthStillMeasuresTheUnwrappedIdeal() {
         // `nil` is ideal, not minimum: the content is not compressed.
         #expect(Text("hello world")._measure(in: .unconstrained) == ViewSize(width: 11, height: 1))
     }
 
-    @Test func positiveWidthProposalStillWrapsToThatWidth() {
+    @Test func positiveWidthQueryStillWrapsToThatWidth() {
         // Minimum semantics do not disturb the positive-width path.
         #expect(Text("abcdefgh")._measure(in: AvailableSize(width: 5, height: nil)) == ViewSize(width: 5, height: 2))
     }
@@ -182,9 +182,9 @@ struct TextMinimumSemanticsTests {
 @Suite("Minimum semantics — non-compressible leaves")
 struct MinimumNonCompressibleTests {
 
-    @Test func viewOutputOverrulesTheZeroOffer() {
-        // A `ViewOutput` is a fully-formed raster: it ignores proposals and
-        // answers its ideal size — here 4 columns, wider than the zero offer.
+    @Test func viewOutputOverrulesTheZeroQuery() {
+        // A `ViewOutput` is a fully-formed raster: it ignores the query context and
+        // answers its ideal size — here 4 columns, wider than the zero query.
         // This is legal (a report is never clamped).
         #expect(ViewOutput("abcd")._measure(in: .zero) == ViewSize(width: 4, height: 1))
     }
@@ -200,8 +200,8 @@ struct MinimumNonCompressibleTests {
         #expect(Empty()._measure(in: .zero) == .zero)
     }
 
-    @Test func fillAnswersTheZeroOffer() {
-        // `Fill` answers the offer verbatim: at `.zero` that is (0, 0).
+    @Test func fillAnswersTheZeroQuery() {
+        // `Fill` answers the query verbatim: at `.zero` that is (0, 0).
         #expect(Fill()._measure(in: .zero) == .zero)
     }
 }
@@ -212,7 +212,7 @@ struct MinimumNonCompressibleTests {
 struct MinimumContainerTests {
 
     @Test func vstackComposesTrueMinimums() {
-        // VStack proposes `(width: 0, height: nil)` to each child, so both
+        // VStack queries each child with `(width: 0, height: nil)`, so both
         // Text children compress: (1, 3) and (1, 2) → max width 1, Σ heights 5.
         let stack = VStack {
             Text("abc")
@@ -233,7 +233,7 @@ struct MinimumContainerTests {
     }
 
     @Test func hstackAtZeroYieldsIdealWidthNotMinimum() {
-        // DOCUMENTED CONSEQUENCE (not a bug): HStack proposes `(nil, 0)` to its
+        // DOCUMENTED CONSEQUENCE (not a bug): HStack queries its children with `(nil, 0)`
         // children — it measures columns at *ideal* width — so a Text child
         // answers its unwrapped ideal, not its minimum. At `.zero` the stack
         // therefore measures the sum of the children's ideal widths.
@@ -263,18 +263,18 @@ struct MinimumFrameTests {
 
     @Test func fixedDimensionsAnswerFixed() {
         // Both axes fixed: the frame answers them verbatim regardless of the
-        // zero offer.
+        // zero query.
         #expect(Text("ab").frame(width: 6, height: 3)._measure(in: .zero) == ViewSize(width: 6, height: 3))
     }
 
-    @Test func fullyFlexibleFrameFillsTheZeroOffer() {
-        // Both axes flexible: the frame fills the (non-`nil`) zero offer on
+    @Test func fullyFlexibleFrameFillsTheZeroQuery() {
+        // Both axes flexible: the frame fills the (non-`nil`) zero assignment on
         // each axis, so it answers 0×0.
         #expect(Text("ab").frame()._measure(in: .zero) == ViewSize(width: 0, height: 0))
     }
 
     @Test func fixedWidthFlexibleHeightForwardsZeroToChildAndFillsIt() {
-        // Fixed width answers 2; the flexible height fills the zero offer
+        // Fixed width answers 2; the flexible height fills the zero assignment
         // (height 0). The child query is `(2, 0)` — the fixed width with
         // the forwarded zero height.
         #expect(Text("abcd").frame(width: 2)._measure(in: .zero) == ViewSize(width: 2, height: 0))
