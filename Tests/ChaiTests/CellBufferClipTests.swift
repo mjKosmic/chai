@@ -32,7 +32,7 @@ private struct Probe: View {
     var report = ViewSize(width: 1, height: 1)
     let paint: @Sendable (inout CellBuffer, ViewRect) -> Void
 
-    func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize { report }
+    func _measure(in available: AvailableSize) -> ViewSize { report }
 
     func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         paint(&buffer, rect)

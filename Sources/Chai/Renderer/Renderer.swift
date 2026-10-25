@@ -35,7 +35,7 @@ actor Renderer {
     ///
     /// Stored as an existential rather than resolved eagerly: ``flush()``
     /// lays the tree out through the phase-4 allocation engine
-    /// (``View/_sizeThatFits(_:)`` as the pure query + ``View/_embed(into:at:)``
+    /// (``View/_measure(in:)`` as the pure query + ``View/_embed(into:at:)``
     /// as the single allocation walk) into a ``CellBuffer``. `nil` (nothing
     /// written yet) renders as an empty view.
     private var pendingView: (any View)? = nil
@@ -186,18 +186,18 @@ actor Renderer {
         //
         // Phase 4: the query pass below is read-only (buffer height, and the
         // `nil`-vs-terminal height context), then ONE allocation walk renders
-        // the tree from the root rect. There is no proposal to carry into the
+        // the tree from the root rect. There is no query value to carry into the
         // render pass: the root's assignment is the rect.
 
         let w = termWidth > 0 ? termWidth : Self.fallbackWidth
         let altScreenHeight = termHeight > 0 ? termHeight : 24
 
         // The query context: inline mode asks for the ideal height (the buffer
-        // is content-sized, clamped below); alt-screen proposes the fixed
+        // is content-sized, clamped below); alt-screen queries the fixed
         // terminal size, so flexible roots report the height they will fill.
-        let query = ProposedSize(width: w, height: altScreenActive ? altScreenHeight : nil)
+        let query = AvailableSize(width: w, height: altScreenActive ? altScreenHeight : nil)
 
-        let measured = view._sizeThatFits(query)
+        let measured = view._measure(in: query)
 
         let bufferHeight: Int
         if measured.height == 0 {

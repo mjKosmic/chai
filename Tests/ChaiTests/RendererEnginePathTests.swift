@@ -5,16 +5,16 @@ import Latte
 // MARK: - M3 renderer engine-path tests
 //
 // Milestone M3 of the phase-2 layout engine: `Renderer.flush()` now builds
-// its ``CellBuffer`` through the layout engine (`_sizeThatFits` +
+// its ``CellBuffer`` through the layout engine (`_measure` +
 // `_embed(into:at:)`) instead of resolving the tree eagerly to a ``ViewOutput``
 // and rasterizing the styled text. These tests pin every renderer-level policy
 // through the engine path:
 //
 // - Real trees (VStack/HStack, control flow) written via the generic
 //   `write` render correctly after `flush`.
-// - Inline truncation vs wrapping (A1): a proposal-consuming `Text` root
+// - Inline truncation vs wrapping (A1): a query-consuming `Text` root
 //   WRAPS at the terminal width, while a non-wrapping `ViewOutput` root
-//   truncates at it — the two cases pin the proposal-consumer boundary.
+//   truncates at it — the two cases pin the query-consumer boundary.
 // - Inline suffix clamp: content taller than the terminal shows its LAST
 //   `termHeight` rows (the engine's negative-row-origin equivalent of
 //   `StyledText.suffix(lines:)`).
@@ -96,17 +96,17 @@ struct RendererEnginePathTests {
         // The echo reports min(20, 12) = 12 wide, so the stack allocates it a
         // 12-wide rect (the stack shrink-wraps to 12; the terminal's 20 columns
         // are the ROOT assignment, not the child's). The echo renders its
-        // ALLOCATION — "W:12" — which is the phase-4 contract (no proposal is
+        // ALLOCATION — "W:12" — which is the phase-4 contract (no query value is
         // carried into the render pass; the rect is the fact).
         #expect(mock.output.contains("W:12"))
     }
 
-    // MARK: - Inline wrapping vs truncation (A1 proposal-consumer boundary)
+    // MARK: - Inline wrapping vs truncation (A1 query-consumer boundary)
 
     @Test func inlineTextWrapsThroughEngine() async {
-        // A1 spec delta: `Text` is a proposal consumer, so the over-wide first
+        // A1 spec delta: `Text` is a query consumer, so the over-wide first
         // row now WRAPS at the 5-column terminal instead of being truncated.
-        // The engine measures the root VStack at the terminal proposal, the
+        // The engine measures the root VStack at the terminal query context, the
         // `Text("abcdefgh")` child wraps to "abcde"/"fgh", and the buffer is
         // sized to the wrapped height (3 rows). The inline truncate policy is
         // still in force — it is simply no longer reached, because the wrapped
@@ -127,7 +127,7 @@ struct RendererEnginePathTests {
 
     @Test func inlineViewOutputTruncatesThroughEngine() async {
         // The non-wrapping contrast at the same terminal: `ViewOutput` stays a
-        // raster leaf that ignores proposals (the pinned A1 decision), so the
+        // raster leaf that ignores the query context (the pinned A1 decision), so the
         // over-wide first row truncates and the following logical row is NOT
         // stolen by wrapping.
         let mock = MockTerminal()
@@ -145,7 +145,7 @@ struct RendererEnginePathTests {
     }
 
     @Test func rootTextWrapsThroughEngine() async {
-        // Root `Text` at a narrow terminal: the renderer's fit proposal is the
+        // Root `Text` at a narrow terminal: the renderer's query context is the
         // terminal width, and the root Text wraps into rows.
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
@@ -157,7 +157,7 @@ struct RendererEnginePathTests {
     }
 
     @Test func rootViewOutputTruncatesThroughEngine() async {
-        // Root `ViewOutput` at the same narrow terminal: ignored proposal →
+        // Root `ViewOutput` at the same narrow terminal: ignored query →
         // one truncated row, no "fgh".
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
@@ -273,7 +273,7 @@ struct RendererEnginePathTests {
         await renderer.enterAltScreen()
         mock.reset()
         // A non-wrapping child, so the overflow actually reaches the buffer:
-        // `Text` would wrap itself at the terminal proposal (A1) and never
+        // `Text` would wrap itself at the terminal query context (A1) and never
         // exercise the alt-screen buffer policy.
         await renderer.write(ViewOutput("abcdefgh"))
         await renderer.flush()
@@ -333,21 +333,21 @@ struct RendererEnginePathTests {
             .frame(horizontalAlignment: .center, verticalAlignment: .middle)
         )
         await renderer.flush()
-        // Flexible frame: fills the 20-wide offer → centered at col 8.
+        // Flexible frame: fills the 20-wide assignment → centered at col 8.
         #expect(mock.output.contains("        abcd"))
         mock.reset()
-        // Shrink the terminal: the flexible frame re-fills the new offer and
+        // Shrink the terminal: the flexible frame re-fills the new assignment and
         // re-centers (4-wide stack in 10 columns → col 3).
         await renderer.setSize(width: 10, height: 5)
         await renderer.flush()
         #expect(mock.output.contains("   abcd"))
     }
 
-    // MARK: - Fill claims offered space (A2)
+    // MARK: - Fill claims queried space (A2)
 
-    @Test func fillClaimsOfferedHeightThroughEngine() async {
-        // `Fill` answers the proposal, so the HStack is as tall as the frame's
-        // 3-row offer (1×3). The bottom-aligned frame then has no vertical
+    @Test func fillClaimsQueriedHeightThroughEngine() async {
+        // `Fill` answers the query context, so the HStack is as tall as the frame's
+        // 3-row assignment (1×3). The bottom-aligned frame then has no vertical
         // shortage and places the stack at the TOP — "x" is painted on row 0
         // and rows 1–2 are painted blank (the space `Fill` claimed).
         let mock = MockTerminal()
@@ -410,10 +410,10 @@ struct RendererEnginePathTests {
     }
 
     @Test func zeroProbedTextIsMeasuredCorrectly() async {
-        // The renderer root never offers zero — it proposes the terminal
+        // The renderer root never queries zero — it queries the terminal
         // width — so `.zero` is a unit-level measurement pin (see
-        // `ProposedSizeZeroTests`). Kept here as the renderer-path counterpart
+        // `MinimumSizeTests`). Kept here as the renderer-path counterpart
         // so the A3 minimum semantics are pinned on both surfaces.
-        #expect(Text("abcd")._sizeThatFits(.zero) == ViewSize(width: 1, height: 4))
+        #expect(Text("abcd")._measure(in: .zero) == ViewSize(width: 1, height: 4))
     }
 }

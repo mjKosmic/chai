@@ -519,7 +519,7 @@ result-builder view layer. Two guardrails follow, effective immediately:
 |---|---|---|
 | 1 | Stack occupancy at width | **Shrink-wrap** — a stack occupies `max` child width; filling an assigned rect is `FlexibleSpacer`/`Fill`/`frame`'s job. Today's effective rule; corpus pins hold. |
 | 2 | Leaf stretching | **None** — leaves render at intrinsic size, top-left in their rect (clipped to it since phase 5); stretch stays a container decision (preserves all output). `Fill` remains a consumer that claims its assigned rect — its type semantics, not leaf stretching. |
-| 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as today's `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
+| 3 | Container dispatch | **Per-conformer allocation methods** — containers implement `_embed` with their own rules, the same self-implementation convention as the phase-3 `_sizeThatFits`/`_render`. No marker protocol, no visitor; the `Mirror` probe was spike-only. Stage-C wrappers therefore stay generic (a wrapper allocates an inset rect and embeds its child). |
 | 4 | `Text` compression floor | **Adopt** — and it applies to the **query as well as the allocation** (the PR #22 review caught the split): a positive width wraps at `max(width, minimumWrapWidth())`, so a narrow offer containing a wide character reports the minimum form's line count *and* paints it. Without the query-side floor, a report could claim more rows than the allocation painted (e.g. `Text("ab你")` offered 1: wrap-at-1 gives 3 rows, wrap-at-2 gives 2). The zero/negative path uses the A3 minimum form. The spike's "silent drop" was the buffer edge, not the wrap; the floor guarantees a `Text` is never allocated below its narrowest producible width and that its write never splits a wide character. |
 | 5 | SPI break mode | **Clean break** — `_embed(into:at:rect:)` replaces `_render(into:at:size:proposal:)`; no permanent coexistence. The old SPI survives only as a transition artifact across P1–P2 on the phase branch and is deleted in P3; nothing merges with dual render SPIs. |
 
@@ -528,7 +528,7 @@ result-builder view layer. Two guardrails follow, effective immediately:
 **New engine SPI (clean break landed at P3, per decision 5):**
 
 ```swift
-func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize        // PURE QUERY (role change; signature unchanged)
+func _measure(in available: AvailableSize) -> ViewSize   // PURE QUERY (report)
 func _flexibility() -> LayoutFlexibility                         // PURE REPORT (unchanged)
 func _embed(into buffer: inout CellBuffer, at rect: ViewRect)    // replaces _render(into:at:size:proposal:) — deleted
 func _childViews() -> [any View]                                // unchanged (transparency)
@@ -561,7 +561,7 @@ func _childViews() -> [any View]                                // unchanged (tr
   allocation boxes hard: child rects are clamped and painted content is
   clipped to them; `ClipView` was removed.)*
 - **Renderer (landed at P3):** `flush()` keeps its two-pass *shape* — but
-  both passes changed role: a pure query pass (`_sizeThatFits`, read-only —
+  both passes changed role: a pure query pass (`_measure(in:)`, read-only —
   buffer height, and the inline-vs-terminal height context) then one
   allocation walk (`_embed(into:at:)` at the root rect). Buffer policy, suffix
   clamp, and the diff/paint machinery are untouched below the buffer.
@@ -612,11 +612,11 @@ The eager render path is gone; the allocation engine is the only renderer.
   protocol-extension `var body: Empty` default. Engine-implemented views
   (containers, structural views, wrappers, spacers, `Fill`) declare no body;
   user composites keep `var body: some View`, whose defaults for
-  `_sizeThatFits`/`_embed` still resolve through it. `ViewOutput` keeps
+  `_measure(in:)`/`_embed` still resolve through it. `ViewOutput` keeps
   `body == self` as the terminal leaf.
 - **Structural views gained a query kernel.** `TupleView`,
   `ConditionalContent`, `OptionalView`, and `ForEachView` previously measured
-  through the eager body; they now implement `_sizeThatFits` with
+  through the eager body; they now implement `_measure(in:)` with
   `measureStackedVertically` (each child queried at the proposal width, width =
   max report, height = sum), matching their `_embed`.
 - **`ViewOutput` modifiers retired.** `.padded/.margined/.bordered/.beside/
@@ -652,7 +652,7 @@ The eager render path is gone; the allocation engine is the only renderer.
 `AnyView` (`Sources/Chai/Core/AnyView.swift`) erases a view while staying
 transparent to the engine: it forwards **all four** SPI methods.
 
-- `_sizeThatFits` / `_embed`: erasure never changes measurement or painting.
+- `_measure(in:)` / `_embed`: erasure never changes measurement or painting.
 - `_childViews()`: an erased structural view stays transparent — e.g.
   `AnyView(TupleView(Text("a"), Text("b")))` in an `HStack` lays out two
   columns, not one opaque block.
@@ -677,7 +677,7 @@ transparent to the engine: it forwards **all four** SPI methods.
 | P3 | **Renderer flip + clean break** — `flush()` query pass then root `_embed` at the terminal rect; delete `_render(into:at:size:proposal:)`, the negotiation internals, and `ProposalEchoView` ×2 targets; re-pin or retire the echo tests; re-pin the two leading-`Fill` frame expectations (see "Allocation deltas") | **all suites green** (the phase's proof point, the M3 precedent); old SPI fully gone — ✅ landed |
 | P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
 | P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
-| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_sizeThatFits`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
+| PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_measure(in:)`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
 | PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
 
 Ordering: P1 → P2 → P3 were strictly sequential (P2's coexistence was
@@ -799,7 +799,7 @@ there):
 - **Not-corpus-settleable territory** (painter order under clip, dynamic
   resize, alt-screen/`println` interplay) — corpus growth work, not
   blockers; treat exactly as the phase-2 movers did.
-- **`_sizeThatFits` re-documentation** ("offer" → "report") is real docs
+- **`_measure(in:)` re-documentation** ("offer" → "report") is real docs
   work — scheduled in PD, not hand-waved.
 
 Estimated smaller than phase 2: no builders/tree work, no eager-parity
@@ -837,7 +837,7 @@ painter order. The hard-box contract replaces that with one invariant:
 4. **Root allocation is the buffer.** Alt-screen assigns the full screen to the
    root (so the wrap policy applies inside); inline assigns the content-sized
    height, with the suffix clamp expressed as a negative origin.
-5. **Reports stay unclamped.** `_sizeThatFits` may exceed the query; that is
+5. **Reports stay unclamped.** `_measure(in:)` may exceed the query; that is
    measurement, not painting. Containers may clamp the allocation, never the
    report.
 6. **Wide characters follow the box.** A width-2 character that would straddle
@@ -858,6 +858,33 @@ painter order. The hard-box contract replaces that with one invariant:
 
 **Baseline at phase 5 close:** `swift build --build-tests` zero warnings;
 `swift test` **1266 tests / 109 suites**.
+
+---
+
+## SPI naming — `_measure(in: AvailableSize)` (landed)
+
+The layout SPI kept its phase-2 vocabulary through the phase-4/5 rewrites; this
+slice removes it. Pure rename, zero behavior change:
+
+| Was | Is |
+|---|---|
+| `ProposedSize` | `AvailableSize` |
+| `_sizeThatFits(_ proposal: ProposedSize)` | `_measure(in available: AvailableSize)` |
+| `ProposedSize.unspecified` | `AvailableSize.unconstrained` |
+
+**Why:** "proposal" was the negotiation vocabulary the phase-4 rearchitecture
+deleted. A query context is not an offer, and the answer is a report — the name
+now says so. It also pairs with `_embed` (measure → embed) and gives the kernel
+a coherent four-method vocabulary: `_measure(in:)` / `_embed(into:at:)` /
+`_childViews()` / `_flexibility()`. The minimum query keeps its `.zero`
+spelling (it is literally a zero-sized context).
+
+Historical sections above (phases 2–3) keep the old names: they describe the
+API as it was. No typealiases or deprecated shims were left behind (pre-alpha
+clean-break policy).
+
+**Baseline:** `swift build --build-tests` zero warnings; `swift test`
+**1278 tests / 110 suites** (renames only; no expectation changed).
 
 ---
 

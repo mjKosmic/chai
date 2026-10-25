@@ -4,8 +4,8 @@ import Latte
 
 // MARK: - M1 layout engine tests
 //
-// Milestone M1 of the phase-2 layout engine: the proposal-driven engine SPI
-// (`_sizeThatFits` / `_embed(into:at:)` / `_childViews()`) with body-resolving
+// Milestone M1 of the phase-2 layout engine: the measurement-driven engine SPI
+// (`_measure` / `_embed(into:at:)` / `_childViews()`) with body-resolving
 // defaults, leaf implementations (`ViewOutput`, `Spacer`), and the
 // `maxLineWidth` move into Chai's `StyledText`.
 //
@@ -17,22 +17,22 @@ import Latte
 @Suite("Layout Types")
 struct LayoutTypesTests {
 
-    @Test func proposedSizeMembers() {
-        let proposal = ProposedSize(width: 3, height: nil)
-        #expect(proposal.width == 3)
-        #expect(proposal.height == nil)
+    @Test func availableSizeMembers() {
+        let available = AvailableSize(width: 3, height: nil)
+        #expect(available.width == 3)
+        #expect(available.height == nil)
     }
 
-    @Test func proposedSizeDefaultIsUnspecified() {
-        let defaultProposal = ProposedSize()
-        #expect(defaultProposal == ProposedSize(width: nil, height: nil))
-        #expect(ProposedSize.unspecified == defaultProposal)
+    @Test func availableSizeDefaultIsUnconstrained() {
+        let defaultAvailable = AvailableSize()
+        #expect(defaultAvailable == AvailableSize(width: nil, height: nil))
+        #expect(AvailableSize.unconstrained == defaultAvailable)
     }
 
-    @Test func proposedSizeEquatable() {
-        let a = ProposedSize(width: 1, height: 2)
-        let b = ProposedSize(width: 1, height: 2)
-        let c = ProposedSize(width: 2, height: 1)
+    @Test func availableSizeEquatable() {
+        let a = AvailableSize(width: 1, height: 2)
+        let b = AvailableSize(width: 1, height: 2)
+        let c = AvailableSize(width: 2, height: 1)
         #expect(a == b)
         #expect(a != c)
     }
@@ -67,87 +67,87 @@ struct EngineMeasurementTests {
     // MARK: ViewOutput
 
     @Test func viewOutputMeasuresIdealSizePlain() {
-        #expect(ViewOutput("abc")._sizeThatFits(.unspecified) == ViewSize(width: 3, height: 1))
+        #expect(ViewOutput("abc")._measure(in: .unconstrained) == ViewSize(width: 3, height: 1))
     }
 
     @Test func viewOutputMeasuresIdealSizeMultiline() {
-        #expect(ViewOutput("a\nb")._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
-        #expect(ViewOutput("a\nbb")._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 2))
+        #expect(ViewOutput("a\nb")._measure(in: .unconstrained) == ViewSize(width: 1, height: 2))
+        #expect(ViewOutput("a\nbb")._measure(in: .unconstrained) == ViewSize(width: 2, height: 2))
     }
 
     @Test func viewOutputMeasuresCjkWidth() {
         // "你好" occupies 4 display columns (2 per wide char), 1 line.
-        #expect(ViewOutput("你好")._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 1))
+        #expect(ViewOutput("你好")._measure(in: .unconstrained) == ViewSize(width: 4, height: 1))
         // Multi-line with a CJK line: the widest line wins.
-        #expect(ViewOutput("你好\nx")._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 2))
+        #expect(ViewOutput("你好\nx")._measure(in: .unconstrained) == ViewSize(width: 4, height: 2))
     }
 
     @Test func viewOutputEmptyMeasuresZero() {
-        #expect(ViewOutput("")._sizeThatFits(.unspecified) == .zero)
-        #expect(ViewOutput(StyledText())._sizeThatFits(.unspecified) == .zero)
+        #expect(ViewOutput("")._measure(in: .unconstrained) == .zero)
+        #expect(ViewOutput(StyledText())._measure(in: .unconstrained) == .zero)
     }
 
-    // MARK: Body-resolving defaults (Empty / custom views; Text is proposal-aware)
+    // MARK: Body-resolving defaults (Empty / custom views; Text consumes the query context)
 
-    @Test func textMeasuresIdealSizeAtUnspecifiedProposal() {
-        #expect(Text("hi")._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 1))
-        #expect(Text("a\nb")._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
+    @Test func textMeasuresIdealSizeAtUnconstrainedQuery() {
+        #expect(Text("hi")._measure(in: .unconstrained) == ViewSize(width: 2, height: 1))
+        #expect(Text("a\nb")._measure(in: .unconstrained) == ViewSize(width: 1, height: 2))
     }
 
-    @Test func textMeasuresCjkIdealSizeAtUnspecifiedProposal() {
-        #expect(Text("你好")._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 1))
+    @Test func textMeasuresCjkIdealSizeAtUnconstrainedQuery() {
+        #expect(Text("你好")._measure(in: .unconstrained) == ViewSize(width: 4, height: 1))
     }
 
     @Test func emptyMeasuresZeroThroughDefault() {
-        #expect(Empty()._sizeThatFits(.unspecified) == .zero)
-        #expect(Text("")._sizeThatFits(.unspecified) == .zero)
+        #expect(Empty()._measure(in: .unconstrained) == .zero)
+        #expect(Text("")._measure(in: .unconstrained) == .zero)
     }
 
     @Test func customViewMeasuresThroughBody() {
-        #expect(Label(text: "xyz")._sizeThatFits(.unspecified) == ViewSize(width: 3, height: 1))
+        #expect(Label(text: "xyz")._measure(in: .unconstrained) == ViewSize(width: 3, height: 1))
     }
 
     // MARK: Spacer
 
     @Test func spacerColumnsMeasure() {
-        #expect(Spacer(columns: 5)._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 1))
+        #expect(Spacer(columns: 5)._measure(in: .unconstrained) == ViewSize(width: 5, height: 1))
     }
 
     @Test func spacerLinesMeasure() {
-        #expect(Spacer(lines: 2)._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 2))
+        #expect(Spacer(lines: 2)._measure(in: .unconstrained) == ViewSize(width: 0, height: 2))
     }
 
     @Test func zeroArgSpacerIsFlexible() {
         // `Spacer()` is the flexible spacer: rigidly 0×0, with fraction 1 on
         // both axes (a stack distributes leftover into it).
-        #expect(Spacer()._sizeThatFits(.unspecified) == .zero)
+        #expect(Spacer()._measure(in: .unconstrained) == .zero)
         #expect(Spacer()._flexibility() == LayoutFlexibility(width: 1, height: 1))
     }
 
     @Test func fixedSpacerMeasuresItsLineCount() {
-        #expect(Spacer(lines: 1)._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 1))
+        #expect(Spacer(lines: 1)._measure(in: .unconstrained) == ViewSize(width: 0, height: 1))
     }
 
     @Test func zeroSizedSpacerMeasuresZero() {
-        #expect(Spacer(columns: 0)._sizeThatFits(.unspecified) == .zero)
+        #expect(Spacer(columns: 0)._measure(in: .unconstrained) == .zero)
     }
 
-    // MARK: Non-wrapping leaves ignore proposals
+    // MARK: Non-wrapping leaves ignore the query context
     //
-    // `ViewOutput` and `Spacer` are not proposal consumers. `Text` IS
+    // `ViewOutput` and `Spacer` are not query consumers. `Text` IS
     // (A1) — see `TextWrappingTests`; the probe below documents its minimum
     // semantics at a non-positive width (A3): it compresses to the narrowest
-    // producible width (see `ProposedSizeZeroTests`).
+    // producible width (see `MinimumSizeTests`).
 
-    @Test func leavesIgnoreProposals() {
-        // A `ViewOutput` is a fully-formed raster: proposals do not change
+    @Test func leavesIgnoreTheQuery() {
+        // A `ViewOutput` is a fully-formed raster: the query does not change
         // the ideal measurement.
-        #expect(ViewOutput("abc")._sizeThatFits(ProposedSize(width: 1, height: 1)) == ViewSize(width: 3, height: 1))
-        #expect(ViewOutput("abcd")._sizeThatFits(ProposedSize(width: 2, height: nil)) == ViewSize(width: 4, height: 1))
-        // A non-positive width proposal is the MINIMUM offer for `Text` (A3):
+        #expect(ViewOutput("abc")._measure(in: AvailableSize(width: 1, height: 1)) == ViewSize(width: 3, height: 1))
+        #expect(ViewOutput("abcd")._measure(in: AvailableSize(width: 2, height: nil)) == ViewSize(width: 4, height: 1))
+        // A non-positive width query is the minimum context for `Text` (A3):
         // "hi" compresses to width 1, one row per character.
-        #expect(Text("hi")._sizeThatFits(ProposedSize(width: 0, height: 0)) == ViewSize(width: 1, height: 2))
-        #expect(Spacer(columns: 5)._sizeThatFits(ProposedSize(width: 1, height: 1)) == ViewSize(width: 5, height: 1))
+        #expect(Text("hi")._measure(in: AvailableSize(width: 0, height: 0)) == ViewSize(width: 1, height: 2))
+        #expect(Spacer(columns: 5)._measure(in: AvailableSize(width: 1, height: 1)) == ViewSize(width: 5, height: 1))
     }
 }
 

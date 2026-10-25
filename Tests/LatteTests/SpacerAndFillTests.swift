@@ -6,10 +6,10 @@ import Latte
 //
 // Milestone A2 of the phase-3 Stage A plan (UPGRADE.md): a stack whose main
 // axis has at least one positively-flexible child fills a non-`nil` main-axis
-// proposal and splits the leftover between the flexible children. The pinned
-// formula (fit and render both recompute it from the same proposal):
+// assignment and splits the leftover between the flexible children. The pinned
+// formula (the query and allocation share one `StackAllocation` shape):
 //
-//     stackSize = proposal ?? rigidTotal
+//     stackSize = assignment ?? rigidTotal
 //     leftover  = max(0, stackSize - rigidTotal)
 //     totalFlex = Σ positive fractions
 //     child[i]  = rigid[i] + Int(Double(leftover) * (fraction[i] / totalFlex))
@@ -35,10 +35,10 @@ struct SpacerHStackTests {
             Spacer()
             Text("R")
         }
-        // Rigid total 2; the flexing stack fills the 10-column offer; the
+        // Rigid total 2; the flexing stack fills the 10-column assignment; the
         // spacer takes all 8 leftover columns.
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
+            stack._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
         )
         #expect(visibleRows(embedBuffer(stack, width: 10)) == ["L        R"])
     }
@@ -56,7 +56,7 @@ struct SpacerHStackTests {
         // column is left unallocated at the TRAILING end of the stack (after
         // "C"), which the visible-row convention strips.
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
+            stack._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
         )
         let buffer = embedBuffer(stack, width: 10)
         #expect(visibleRows(buffer) == ["A   B   C"])
@@ -104,40 +104,40 @@ struct SpacerHStackTests {
             Text("B")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 2, height: 1)
+            stack._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 2, height: 1)
         )
         #expect(visibleRows(embedBuffer(stack, width: 10)) == ["AB"])
     }
 
-    @Test func nilWidthProposalStaysContentSized() {
-        // No offer → no leftover to distribute: the spacer contributes 0.
+    @Test func unconstrainedWidthStaysContentSized() {
+        // No assignment → no leftover to distribute: the spacer contributes 0.
         let stack = HStack {
             Text("L")
             Spacer()
             Text("R")
         }
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 1))
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 2, height: 1))
         #expect(
-            stack._sizeThatFits(ProposedSize(width: nil, height: 4)) == ViewSize(width: 2, height: 1)
+            stack._measure(in: AvailableSize(width: nil, height: 4)) == ViewSize(width: 2, height: 1)
         )
     }
 
     @Test func flexStackNeverReportsBelowItsRigidContent() {
         // PR #21 review: a 0-wide spacer must not hide overflow from the
-        // parent (an offer, not a bound) — a flexing stack floors its answer
-        // at the rigid total even when the offer is smaller.
+        // parent (a query, not a bound) — a flexing stack floors its answer
+        // at the rigid total even when the assignment is smaller.
         let stack = HStack {
             Text("aaaa")
             Spacer()
             Text("bbbb")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 3, height: nil)) == ViewSize(width: 8, height: 1)
+            stack._measure(in: AvailableSize(width: 3, height: nil)) == ViewSize(width: 8, height: 1)
         )
     }
 
-    @Test func negativeMainAxisProposalFloorsAtRigidTotal() {
-        // PR #21 review: a negative offer used to produce a negative ViewSize
+    @Test func negativeMainAxisAssignmentFloorsAtRigidTotal() {
+        // PR #21 review: a negative query used to produce a negative ViewSize
         // (no other view does that — Text clamps negatives to the minimum).
         let stack = HStack {
             Text("aaaa")
@@ -145,27 +145,27 @@ struct SpacerHStackTests {
             Text("bbbb")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: -4, height: nil)) == ViewSize(width: 8, height: 1)
+            stack._measure(in: AvailableSize(width: -4, height: nil)) == ViewSize(width: 8, height: 1)
         )
     }
 
-    @Test func rigidStackDoesNotFillAWideProposal() {
+    @Test func rigidStackDoesNotFillAWideAssignment() {
         // The pre-A2 path, unchanged: without a flexible child the stack is
-        // content-sized no matter how wide the offer is.
+        // content-sized no matter how wide the assignment is.
         let stack = HStack {
             Text("a")
             Spacer(columns: 3)
             Text("b")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 5, height: 1)
+            stack._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 5, height: 1)
         )
     }
 
     @Test func flexibleSpacerNestedInAFlexingHStackIsPlacedAtItsFinalSize() {
         // A nested stack is one child of the outer HStack, so the outer
         // stack's own leftover goes to the outer spacer; the inner HStack is
-        // offered the outer VStack's width proposal and flexes within it.
+        // queried at the outer VStack's width and flexes within it.
         let nested = VStack {
             Text("hi")
             HStack {
@@ -175,7 +175,7 @@ struct SpacerHStackTests {
             }
         }
         #expect(
-            nested._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 2)
+            nested._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 10, height: 2)
         )
         #expect(visibleRows(embedBuffer(nested, width: 10)) == ["hi", "a        b"])
     }
@@ -194,15 +194,15 @@ struct SpacerVStackTests {
         }
     }
 
-    @Test func nilHeightProposalStaysContentSized() {
-        #expect(stack._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
+    @Test func unconstrainedHeightStaysContentSized() {
+        #expect(stack._measure(in: .unconstrained) == ViewSize(width: 1, height: 2))
     }
 
-    @Test func heightProposalIsFilledAndDistributed() {
+    @Test func heightAssignmentIsFilledAndDistributed() {
         // Rigid total 2, assigned height 6, leftover 4 → the spacer's final
         // height is 4.
-        let proposed = ProposedSize(width: nil, height: 6)
-        #expect(stack._sizeThatFits(proposed) == ViewSize(width: 1, height: 6))
+        let available = AvailableSize(width: nil, height: 6)
+        #expect(stack._measure(in: available) == ViewSize(width: 1, height: 6))
         var buffer = CellBuffer(width: 1, height: 6)
         stack._embed(
             into: &buffer,
@@ -212,20 +212,20 @@ struct SpacerVStackTests {
     }
 
     @Test func fixedFrameHeightFeedsTheFlexingStack() {
-        // Through a fixed-height frame the offer reaches the stack as
-        // `ProposedSize(width: 3, height: 6)`.
+        // Through a fixed-height frame the assignment reaches the stack as
+        // `AvailableSize(width: 3, height: 6)`.
         let framed = VStack {
             Text("T")
             Spacer()
             Text("B")
         }
         .frame(height: 6)
-        #expect(framed._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 6))
+        #expect(framed._measure(in: .unconstrained) == ViewSize(width: 1, height: 6))
         #expect(visibleRows(embedBuffer(framed, width: 3)) == ["T", "", "", "", "", "B"])
     }
 
     @Test func twoEqualSpacersSplitEvenlyAndLeaveTheOddRemainderAtTheBottom() {
-        // Rigid total 3, offer 10, leftover 7, totalFlex 2 → 3 each; the
+        // Rigid total 3, assignment 10, leftover 7, totalFlex 2 → 3 each; the
         // unallocated remainder is the last row (the trailing end).
         let framed = VStack {
             Text("T")
@@ -243,21 +243,21 @@ struct SpacerVStackTests {
         // Only a stack's DIRECT children report flexibility, and a `VStack`
         // is an ordinary composite child (not a structural view). The outer
         // VStack is therefore rigid, and the inner stack never receives the
-        // height offer (a VStack proposes `nil` height to its children).
+        // height context (a VStack queries its children with `nil` height).
         let nested = VStack {
             VStack {
                 Spacer()
             }
         }
-        #expect(nested._sizeThatFits(ProposedSize(width: nil, height: 7)) == .zero)
+        #expect(nested._measure(in: AvailableSize(width: nil, height: 7)) == .zero)
     }
 
     @Test func outsideAStackTheSpacerIsZeroSized() {
         // As a root view, and inside a frame, nothing distributes leftover
         // space — the spacer measures 0×0 and the frame's fixed rect is blank.
-        #expect(Spacer()._sizeThatFits(ProposedSize(width: 20, height: 5)) == .zero)
+        #expect(Spacer()._measure(in: AvailableSize(width: 20, height: 5)) == .zero)
         let framed = Spacer().frame(width: 5, height: 4)
-        #expect(framed._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 4))
+        #expect(framed._measure(in: .unconstrained) == ViewSize(width: 5, height: 4))
         #expect(visibleRows(embedBuffer(framed, width: 5)) == ["", "", "", ""])
     }
 }
@@ -272,7 +272,7 @@ struct FlexibilitySPITests {
     /// author" path the SPI is documented for.
     private struct HalfFlex: View {
         var body: ViewOutput { ViewOutput("") }
-        func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize { .zero }
+        func _measure(in available: AvailableSize) -> ViewSize { .zero }
         func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {}
         func _flexibility() -> LayoutFlexibility {
             LayoutFlexibility(width: 0.5, height: 0.5)
@@ -305,7 +305,7 @@ struct FlexibilitySPITests {
             Text("B")
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 2, height: 1)
+            stack._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 2, height: 1)
         )
         #expect(visibleRows(embedBuffer(stack, width: 10)) == ["AB"])
     }
@@ -316,26 +316,26 @@ struct FlexibilitySPITests {
 @Suite("Fill in stacks and frames")
 struct FillInStacksTests {
 
-    @Test func hstackChildClaimsTheOfferedHeight() {
-        // `Fill` is a consumer: in an HStack it is offered `(nil, height)` and
+    @Test func hstackChildClaimsTheQueriedHeight() {
+        // `Fill` is a consumer: in an HStack it is queried with `(nil, height)` and
         // answers the height, making the HStack that tall.
         let withFill = HStack {
             Fill()
             Text("x")
         }
         #expect(
-            withFill._sizeThatFits(ProposedSize(width: nil, height: 3)) == ViewSize(width: 1, height: 3)
+            withFill._measure(in: AvailableSize(width: nil, height: 3)) == ViewSize(width: 1, height: 3)
         )
         let withoutFill = HStack {
             Text("x")
         }
         #expect(
-            withoutFill._sizeThatFits(ProposedSize(width: nil, height: 3)) == ViewSize(width: 1, height: 1)
+            withoutFill._measure(in: AvailableSize(width: nil, height: 3)) == ViewSize(width: 1, height: 1)
         )
     }
 
     @Test func fillDisplacesSiblingsInABottomAlignedFrame() {
-        // The frame offers `(4, 3)`; `Fill` makes the HStack fill the assigned
+        // The frame assigns `(4, 3)`; `Fill` makes the HStack fill the assigned
         // width, so the bottom-aligned frame has no vertical shortage and "x"
         // lands on row 0. Phase-4 allocation delta (UPGRADE.md, "Phase 4 —
         // allocation deltas"): the leading `Fill` also claims the horizontal
@@ -356,21 +356,20 @@ struct FillInStacksTests {
     }
 
     @Test func fillInsideAFixedFrameOccupiesTheFrame() {
-        #expect(Fill().frame(width: 5, height: 3)._sizeThatFits(.unspecified) == ViewSize(width: 5, height: 3))
+        #expect(Fill().frame(width: 5, height: 3)._measure(in: .unconstrained) == ViewSize(width: 5, height: 3))
     }
 
-    @Test func fillInAVStackClaimsTheProposedWidth() {
-        // Engine-only consequence of `Fill`'s consumer semantics: a VStack
-        // offers its width proposal to its children, so `Fill` makes the
-        // stack as wide as the offer — visible through a non-left alignment.
-        // The eager path has no proposal context and resolves `Fill` to
+    @Test func fillInAVStackClaimsTheAssignedWidth() {
+        // Consequence of `Fill`'s consumer semantics: a VStack
+        // queries its children at its width, so `Fill` claims that
+        // width — visible through a non-left alignment.
         // empty, so it stays content-sized.
         let stack = VStack(alignment: .right) {
             Text("ab")
             Fill()
         }
         #expect(
-            stack._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
+            stack._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
         #expect(visibleRows(embedBuffer(stack, width: 8)) == ["      ab"])
     }

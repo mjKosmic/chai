@@ -7,7 +7,7 @@ import Chai
 // entrance, the `ViewRect` assignment value, and the leaf rules.
 //
 // Pinned decisions exercised here:
-// - The rect is an ASSIGNMENT, not an offer: leaves render at intrinsic size,
+// - The rect is an ASSIGNMENT: leaves render at intrinsic size,
 //   anchored top-left in their rect (decision 2 — no leaf stretching).
 // - `Text` wraps at the width it was ALLOCATED and applies the compression
 //   floor (decision 4): a wide/CJK character is never squeezed into a narrower
@@ -177,13 +177,13 @@ struct LeafAllocationTests {
     @Test func textQueryAndAllocationAgreeOnNarrowMixedContent() {
         // Regression (PR #22 review): a positive width below the minimum
         // producible width used to resolve differently in the query (wrap at
-        // the offer) and the allocation (wrap at the floor), so the report's
+        // the query width) and the allocation (wrap at the floor), so the report's
         // line count disagreed with the painted rows. One resolution rule now
-        // serves both: "ab你" needs width 2, so at an offer/rect of 1 it
+        // serves both: "ab你" needs width 2, so at a query/rect of 1 it
         // reports AND paints the 2-column form.
         let text = Text("ab你")
         #expect(
-            text._sizeThatFits(ProposedSize(width: 1, height: nil)) == ViewSize(width: 2, height: 2)
+            text._measure(in: AvailableSize(width: 1, height: nil)) == ViewSize(width: 2, height: 2)
         )
         var buffer = CellBuffer(width: 3, height: 2)
         text._embed(into: &buffer, at: ViewRect(size: ViewSize(width: 1, height: 2)))

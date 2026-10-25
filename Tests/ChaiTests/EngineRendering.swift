@@ -13,7 +13,7 @@ import Chai
 /// The root rect is `width` wide and as tall as the view's query report
 /// (inline-mode rendering); rows beyond that report are not painted.
 func engineRows(_ view: some View, width: Int = 80) -> [String] {
-    let size = view._sizeThatFits(ProposedSize(width: width, height: nil))
+    let size = view._measure(in: AvailableSize(width: width, height: nil))
     var buffer = CellBuffer(width: width, height: size.height)
     buffer.embed(
         view,

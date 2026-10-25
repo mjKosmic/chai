@@ -96,7 +96,7 @@ struct GroceryList: Model {
     }
 
     var body: some View {
-        // A1: the header is a proposal-consuming `Text`, so it WRAPS to the
+        // A1: the header consumes the query context, so it WRAPS to the
         // frame's width (the char-level fallback guarantees it fits any
         // positive width) instead of overflowing. The HStack below is centered
         // with the header as one block via `.frame(...)`.

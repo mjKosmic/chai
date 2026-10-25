@@ -10,9 +10,9 @@ import Chai
 //
 // Phase 4 (top-down allocation) keeps this math but changes its role: the
 // "assignment" is the stack's assigned rect dimension when allocating
-// (`_embed`) and the query context when reporting (`_sizeThatFits`). The
-// shares are container-internal decisions, not a leftover smuggled through a
-// proposal. The formula is byte-equal to A2's: normalized shares, `Int()`
+// (`_embed`) and the query context when reporting (`_measure(in:)`). The
+// shares are container-internal decisions, not a leftover smuggled through
+// negotiation. The formula is byte-equal to A2's: normalized shares, `Int()`
 // truncation, remainder left unallocated at the trailing end.
 
 /// The stack's main-axis size and its children's final main-axis sizes, after
@@ -23,7 +23,7 @@ import Chai
 ///   - fractions: Each child's main-axis flexibility fraction (`nil`,
 ///     non-positive, or non-finite means rigid).
 ///   - assigned: The stack's assigned main-axis size (`nil` = content-sized).
-///     For `_sizeThatFits` this is the query context; for `_embed` it is the
+///     For `_measure` this is the query context; for `_embed` it is the
 ///     assigned rect dimension.
 /// - Returns: `nil` when no child is positively flexible (the caller uses its
 ///   rigid path); otherwise the stack's main-axis size and the children's
@@ -65,7 +65,7 @@ private func distributedMainAxis(
 //
 // Phase 4 (top-down allocation): a stack computes ONE shape — the occupied
 // size plus every child's allocated size — and both the query kernel
-// (`_sizeThatFits`, used for reservation and buffer sizing) and the allocation
+// (`_measure`, used for reservation and buffer sizing) and the allocation
 // walk (`_embed`) resolve through it. The two can never disagree about sizes;
 // only placement differs (cursor advancement + alignment anchoring).
 
@@ -145,7 +145,7 @@ public struct HStack<Content: View>: View {
 // MARK: - VStack engine implementation
 //
 // Phase 4: the stack computes one shape (query + allocation), allocates each
-// child a rect, and embeds it. `_sizeThatFits` is the pure query kernel
+// child a rect, and embeds it. `_measure` is the pure query kernel
 // (report only — used for buffer sizing and clip reservation). The corpus in
 // Tests/LatteTests/LayoutParity is the mechanical spec.
 
@@ -165,8 +165,8 @@ extension VStack {
     /// total, the leftover is distributed by ``distributedMainAxis``.
     private func allocation(assignedWidth: Int?, assignedHeight: Int?) -> StackAllocation {
         let children = content._childViews()
-        let childProposal = ProposedSize(width: assignedWidth, height: nil)
-        let reports = children.map { $0._sizeThatFits(childProposal) }
+        let childQuery = AvailableSize(width: assignedWidth, height: nil)
+        let reports = children.map { $0._measure(in: childQuery) }
         let distributed = distributedMainAxis(
             rigidSizes: reports.map(\.height),
             fractions: children.map { $0._flexibility().height },
@@ -185,8 +185,8 @@ extension VStack {
 
     /// Report the occupied size under the query context (the pure sizing
     /// pass — used for reservation and buffer sizing, never binding).
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        allocation(assignedWidth: proposal.width, assignedHeight: proposal.height).occupied
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        allocation(assignedWidth: available.width, assignedHeight: available.height).occupied
     }
 
     /// Allocate each child a row rect and embed it (phase 4).
@@ -250,8 +250,8 @@ extension HStack {
     /// anchored by the alignment fraction against the occupied height.
     private func allocation(assignedWidth: Int?, assignedHeight: Int?) -> StackAllocation {
         let children = content._childViews()
-        let childProposal = ProposedSize(width: nil, height: assignedHeight)
-        let reports = children.map { $0._sizeThatFits(childProposal) }
+        let childQuery = AvailableSize(width: nil, height: assignedHeight)
+        let reports = children.map { $0._measure(in: childQuery) }
         let distributed = distributedMainAxis(
             rigidSizes: reports.map(\.width),
             fractions: children.map { $0._flexibility().width },
@@ -285,8 +285,8 @@ extension HStack {
 
     /// Report the occupied size under the query context (the pure sizing
     /// pass — used for reservation and buffer sizing, never binding).
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        allocation(assignedWidth: proposal.width, assignedHeight: proposal.height).occupied
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        allocation(assignedWidth: available.width, assignedHeight: available.height).occupied
     }
 
     /// Allocate each child a column rect and embed it (phase 4).

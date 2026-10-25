@@ -6,6 +6,10 @@
 > `UPGRADE.md` → "Phase 4 — Top-down allocation engine"; the pickup notes for
 > those milestones are in its "Pickup notes for the remaining milestones"
 > subsection. The five owner decisions below were settled at P0.
+>
+> The SPI was later renamed (post-phase-5): `ProposedSize` → `AvailableSize`,
+> `_sizeThatFits` → `_measure(in:)`, `.unspecified` → `.unconstrained`. The old
+> names in this document are the API as it was at kickoff.
 
 **Date:** Oct 2026 · **State at kickoff:** phase 3 Stage A merged (PR #21, `f8a15a7`); a design
 spike validated the direction; the five owner decisions were pending. They were

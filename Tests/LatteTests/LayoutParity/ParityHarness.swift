@@ -35,7 +35,7 @@ import Latte
 /// terminal rather than centering in it: the stack shrinks to its own max
 /// width. `frame()` is the view that opts into terminal-width placement.
 func embedBuffer(_ view: some View, width: Int, height: Int? = nil) -> CellBuffer {
-    let measured = view._sizeThatFits(ProposedSize(width: width, height: nil))
+    let measured = view._measure(in: AvailableSize(width: width, height: nil))
     var buffer = CellBuffer(width: width, height: height ?? measured.height)
     buffer.embed(
         view,

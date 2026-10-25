@@ -15,7 +15,7 @@ struct HardBoxTests {
     /// A custom view that reports a size and then deliberately paints beyond
     /// its rect — the kernel must contain it.
     private struct Overwriter: View {
-        func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        func _measure(in available: AvailableSize) -> ViewSize {
             ViewSize(width: 3, height: 1)
         }
 
@@ -38,7 +38,7 @@ struct HardBoxTests {
     private struct WidthProbe: View {
         let reported: Int
 
-        func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+        func _measure(in available: AvailableSize) -> ViewSize {
             ViewSize(width: reported, height: 1)
         }
 

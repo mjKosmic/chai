@@ -6,7 +6,7 @@ import Latte
 //
 // The tested guarantee behind the phase-4 positioning decision (UPGRADE.md,
 // "Phase 4 — positioning"): a complete app can be built **without engine
-// concepts** — no `_sizeThatFits`, no `_embed`, no custom `View` conformer.
+// concepts** — no `_measure`, no `_embed`, no custom `View` conformer.
 //
 // P4b retired the eager `ViewOutput` modifier family, so the contract now has
 // two equally supported shapes, both pinned here:

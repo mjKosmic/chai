@@ -18,7 +18,7 @@ import Latte
 private struct WidthProbe: View {
     let reported: Int
 
-    func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+    func _measure(in available: AvailableSize) -> ViewSize {
         ViewSize(width: reported, height: 1)
     }
 
@@ -105,7 +105,7 @@ struct AllocationRulesTests {
         // The assignment is 4 columns, but columns keep ideal widths (6 + 2):
         // no wrapping; the paint is clipped to the assignment.
         #expect(
-            tree._sizeThatFits(ProposedSize(width: 4, height: nil)) == ViewSize(width: 8, height: 1)
+            tree._measure(in: AvailableSize(width: 4, height: nil)) == ViewSize(width: 8, height: 1)
         )
         #expect(embed(tree, width: 4, height: 1) == ["aaaa"])
     }
@@ -142,7 +142,7 @@ struct AllocationRulesTests {
         // width delta pinned by the corpus (`PHASE-4 DELTA` case) and by
         // UPGRADE.md ("Phase 4 — allocation deltas").
         #expect(
-            tree._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
+            tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
         #expect(embed(tree, width: 8, height: 1) == ["       x"])
     }
@@ -158,7 +158,7 @@ struct AllocationRulesTests {
         // UPGRADE.md ("Phase 4 — allocation deltas") and pinned by the corpus
         // case "PHASE-4 DELTA: trailing Fill grows the stack's occupied width".
         #expect(
-            tree._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
+            tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
     }
 
@@ -182,7 +182,7 @@ struct AllocationRulesTests {
         // unallocated at the trailing end (the same convention as flexible
         // shares), so the occupied width is 9, not the assigned 10.
         #expect(
-            tree._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 9, height: 1)
+            tree._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 9, height: 1)
         )
         #expect(embed(tree, width: 10, height: 1) == ["        z"])
     }
@@ -197,7 +197,7 @@ struct AllocationRulesTests {
         // The flexible share absorbs the whole leftover (8), leaving the
         // `Fill` nothing to claim: order is flex shares first, then Fill.
         #expect(
-            tree._sizeThatFits(ProposedSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
+            tree._measure(in: AvailableSize(width: 10, height: nil)) == ViewSize(width: 10, height: 1)
         )
         #expect(embed(tree, width: 10, height: 1) == ["A        B"])
     }
@@ -234,7 +234,7 @@ struct AllocationRulesTests {
         // The frame answers width 1; the hard-box contract clips the Text's
         // minimum form (2 wide) to the 1-column box. Row 0 shows "a" only;
         // the wide character cannot fit in one column and is dropped.
-        #expect(tree._sizeThatFits(.unspecified) == ViewSize(width: 1, height: 2))
+        #expect(tree._measure(in: .unconstrained) == ViewSize(width: 1, height: 2))
         #expect(embed(tree, width: 2, height: 2) == ["a", ""])
     }
 
@@ -250,7 +250,7 @@ struct AllocationRulesTests {
         let tree = Text("ab")
             .frame(horizontalAlignment: .center)
         #expect(
-            tree._sizeThatFits(ProposedSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
+            tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
         #expect(embed(tree, width: 8, height: 1) == ["   ab"])
     }

@@ -21,12 +21,12 @@ struct ModifierWrapperTests {
 
     @Test func paddingReportsChildPlusInsets() {
         let view = Text("ab").padded(1)
-        #expect(view._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 3))
+        #expect(view._measure(in: .unconstrained) == ViewSize(width: 4, height: 3))
     }
 
     @Test func paddingSupportsAsymmetricInsets() {
         let view = Text("ab").padded(top: 1, right: 2, bottom: 3, left: 4)
-        #expect(view._sizeThatFits(.unspecified) == ViewSize(width: 8, height: 5))
+        #expect(view._measure(in: .unconstrained) == ViewSize(width: 8, height: 5))
     }
 
     @Test func paddingBoundsTheChildQuery() {
@@ -34,7 +34,7 @@ struct ModifierWrapperTests {
         // wrap width: "abcdef" hard-wraps into two 4-column lines.
         let view = Text("abcdef").padded(1)
         #expect(
-            view._sizeThatFits(ProposedSize(width: 6, height: nil))
+            view._measure(in: AvailableSize(width: 6, height: nil))
                 == ViewSize(width: 6, height: 4)
         )
     }
@@ -75,7 +75,7 @@ struct ModifierWrapperTests {
         // The root assignment is the terminal width; the wrapper still reports
         // and paints its content-sized box (shrink-wrap, decision 1).
         let view = Text("x").padded(1)
-        let measured = view._sizeThatFits(ProposedSize(width: 40, height: nil))
+        let measured = view._measure(in: AvailableSize(width: 40, height: nil))
         #expect(measured == ViewSize(width: 3, height: 3))
         #expect(visibleRows(embedBuffer(view, width: 40)) == ["", " x", ""])
     }
@@ -86,8 +86,8 @@ struct ModifierWrapperTests {
                 == visibleRows(embedBuffer(Text("ab").padded(1), width: 10))
         )
         #expect(
-            Text("ab").margined(1)._sizeThatFits(.unspecified)
-                == Text("ab").padded(1)._sizeThatFits(.unspecified)
+            Text("ab").margined(1)._measure(in: .unconstrained)
+                == Text("ab").padded(1)._measure(in: .unconstrained)
         )
     }
 
@@ -95,13 +95,13 @@ struct ModifierWrapperTests {
 
     @Test func borderReportsChildPlusOneCellOnEachSide() {
         let view = Text("ab").bordered(.ascii)
-        #expect(view._sizeThatFits(.unspecified) == ViewSize(width: 4, height: 3))
+        #expect(view._measure(in: .unconstrained) == ViewSize(width: 4, height: 3))
     }
 
     @Test func borderBoundsTheChildQuery() {
         let view = Text("abcdef").bordered(.ascii)
         #expect(
-            view._sizeThatFits(ProposedSize(width: 6, height: nil))
+            view._measure(in: AvailableSize(width: 6, height: nil))
                 == ViewSize(width: 6, height: 4)
         )
     }

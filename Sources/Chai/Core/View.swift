@@ -32,7 +32,7 @@ public protocol View: Sendable {
     ///
     /// The declarative description of a user-facing composite view. The
     /// layout engine does **not** resolve `body` to render: it calls
-    /// ``_sizeThatFits(_:)`` and ``_embed(into:at:)``, whose defaults resolve
+    /// ``_measure(in:)`` and ``_embed(into:at:)``, whose defaults resolve
     /// through `body` for ordinary composites. Views that implement the
     /// engine SPI directly (containers, leaves) may omit `body`; it then
     /// defaults to ``Empty`` (phase 4 removed the eager
@@ -51,10 +51,10 @@ public protocol View: Sendable {
     /// ``_embed(into:at:)``; the query never binds. See `UPGRADE.md`, "Phase 4
     /// — Top-down allocation engine".
     ///
-    /// - Parameter proposal: The query context a parent is asking about; see
-    ///   ``ProposedSize`` for the meaning of `nil` dimensions.
+    /// - Parameter available: The query context a parent is asking about; see
+    ///   ``AvailableSize`` for the meaning of `nil` dimensions.
     /// - Returns: The size this view reports under that context.
-    func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize
+    func _measure(in available: AvailableSize) -> ViewSize
 
     /// Embed this view into the rect its parent assigned.
     ///
@@ -106,10 +106,10 @@ extension ViewOutput: View {
     /// Empty content measures 0×0 because ``StyledText/lineCount()`` already
     /// returns 0 for empty content — an empty output occupies nothing.
     ///
-    /// Proposals are ignored: a `ViewOutput` is a fully-formed raster. The
+    /// The query context is ignored: a `ViewOutput` is a fully-formed raster. The
     /// ideal size is the unwrapped size; `Text` is the view that wraps at an
     /// allocated width.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+    public func _measure(in available: AvailableSize) -> ViewSize {
         ViewSize(width: content.maxLineWidth, height: content.lineCount())
     }
 
@@ -132,8 +132,8 @@ extension View {
     public var body: Empty { Empty() }
 
     /// The default engine implementation resolves through ``body``.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        body._sizeThatFits(proposal)
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        body._measure(in: available)
     }
 
     /// The default allocation entrance resolves through ``body``.
@@ -224,7 +224,7 @@ extension Text {
         return max(1, widest)
     }
 
-    /// Proposal-aware measurement: the measured size is the **resolved**
+    /// Query-aware measurement: the measured size is the **resolved**
     /// content's `(maxLineWidth, lineCount())` — the wrapped result for a
     /// positive width (floored at the minimum producible width), the minimum
     /// form for a zero or negative width, and the unwrapped ideal for `nil`.
@@ -233,8 +233,8 @@ extension Text {
     /// (``resolvedContent(width:)``), so the report's line count always matches
     /// the painted rows — including the mixed ASCII/wide case where the
     /// minimum floor is wider than the queried width.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        let resolved = resolvedContent(width: proposal.width)
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        let resolved = resolvedContent(width: available.width)
         return ViewSize(width: resolved.maxLineWidth, height: resolved.lineCount())
     }
 
@@ -362,10 +362,10 @@ public struct Fill: View {
 // MARK: - Fill engine implementation
 
 extension Fill {
-    /// Report the query context on both axes: `(proposal.width ?? 0, proposal.height ?? 0)`.
+    /// Report the query context on both axes: `(available.width ?? 0, available.height ?? 0)`.
     /// A `nil` dimension is ideal, not a context, so it reports 0 there.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
-        ViewSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        ViewSize(width: available.width ?? 0, height: available.height ?? 0)
     }
 
     /// `Fill` claims exactly the rect it is allocated: the container's
@@ -404,8 +404,8 @@ public struct Empty: View {
 // recursion).
 
 extension Empty {
-    /// Empty occupies no space under any proposal.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+    /// Empty occupies no space under any query context.
+    public func _measure(in available: AvailableSize) -> ViewSize {
         .zero
     }
 
@@ -423,8 +423,8 @@ extension Spacer {
     /// cells they request: `(columns, 1)` for a horizontal spacer and
     /// `(0, lines)` for a vertical one; a zero-count fixed spacer is 0×0.
     ///
-    /// The proposal is ignored: a spacer's size is explicit, never negotiated.
-    public func _sizeThatFits(_ proposal: ProposedSize) -> ViewSize {
+    /// The query context is ignored: a spacer's size is explicit, never context-dependent.
+    public func _measure(in available: AvailableSize) -> ViewSize {
         switch kind {
         case .flexible:
             return .zero

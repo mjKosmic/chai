@@ -6,9 +6,9 @@ import Latte
 //
 // Milestone M4 of the phase-2 layout engine: `FrameView` + the
 // `View.frame(width:height:horizontalAlignment:verticalAlignment:)` modifier.
-// The frame is a proposal *generator*: fixed dimensions are proposed to the
-// child and answered to the parent verbatim; flexible dimensions fill a
-// non-`nil` offer and fall back to the child's ideal when the offer is `nil`.
+// The frame is an allocator: fixed dimensions are assigned to the
+// child and owned verbatim; flexible dimensions pass the parent's
+// assignment through, falling back to the child's report when there is none.
 //
 // Expectations were derived by running the code (see the M4 report);
 // alignment offsets pin the exact fraction math —
@@ -26,10 +26,10 @@ struct FrameMeasurementTests {
 
     @Test func bothDimsFixedAnswerExactSize() {
         let frame = Text("ab").frame(width: 10, height: 3)
-        #expect(frame._sizeThatFits(.unspecified) == ViewSize(width: 10, height: 3))
-        // Fixed dims answer regardless of the parent's proposal.
+        #expect(frame._measure(in: .unconstrained) == ViewSize(width: 10, height: 3))
+        // Fixed dims answer regardless of the parent's query context.
         #expect(
-            frame._sizeThatFits(ProposedSize(width: 2, height: 1)) == ViewSize(width: 10, height: 3)
+            frame._measure(in: AvailableSize(width: 2, height: 1)) == ViewSize(width: 10, height: 3)
         )
     }
 
@@ -38,36 +38,36 @@ struct FrameMeasurementTests {
         // a frame cannot report (and a parent cannot propagate) a negative
         // size. Spacer counts and padding insets clamp the same way.
         let frame = Text("ab").frame(width: -3, height: -2)
-        #expect(frame._sizeThatFits(.unspecified) == ViewSize(width: 0, height: 0))
+        #expect(frame._measure(in: .unconstrained) == ViewSize(width: 0, height: 0))
     }
 
     @Test func widthFixedHeightFlexible() {
         let frame = Text("ab").frame(width: 10)
-        // Flexible height: child ideal when the offer is nil.
-        #expect(frame._sizeThatFits(.unspecified) == ViewSize(width: 10, height: 1))
-        // Flexible height fills a non-nil offer; fixed width ignores the offer.
+        // Flexible height: child ideal when the query is unconstrained.
+        #expect(frame._measure(in: .unconstrained) == ViewSize(width: 10, height: 1))
+        // Flexible height fills a non-nil assignment; fixed width ignores the query.
         #expect(
-            frame._sizeThatFits(ProposedSize(width: 5, height: 4)) == ViewSize(width: 10, height: 4)
+            frame._measure(in: AvailableSize(width: 5, height: 4)) == ViewSize(width: 10, height: 4)
         )
     }
 
     @Test func heightFixedWidthFlexible() {
         let frame = Text("ab").frame(height: 3)
-        // Flexible width: child ideal when the offer is nil.
-        #expect(frame._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 3))
-        // Flexible width fills a non-nil offer; fixed height ignores the offer.
+        // Flexible width: child ideal when the query is unconstrained.
+        #expect(frame._measure(in: .unconstrained) == ViewSize(width: 2, height: 3))
+        // Flexible width fills a non-nil assignment; fixed height ignores the query.
         #expect(
-            frame._sizeThatFits(ProposedSize(width: 7, height: 1)) == ViewSize(width: 7, height: 3)
+            frame._measure(in: AvailableSize(width: 7, height: 1)) == ViewSize(width: 7, height: 3)
         )
     }
 
     @Test func neitherDimFixedPassesThrough() {
         let frame = Text("ab").frame()
-        // No offer: the frame takes the child's ideal size.
-        #expect(frame._sizeThatFits(.unspecified) == ViewSize(width: 2, height: 1))
+        // No assignment (unconstrained query): the frame takes the child's ideal size.
+        #expect(frame._measure(in: .unconstrained) == ViewSize(width: 2, height: 1))
         // Offer present: the frame fills it on both axes.
         #expect(
-            frame._sizeThatFits(ProposedSize(width: 8, height: 5)) == ViewSize(width: 8, height: 5)
+            frame._measure(in: AvailableSize(width: 8, height: 5)) == ViewSize(width: 8, height: 5)
         )
     }
 }
@@ -77,7 +77,7 @@ struct FrameMeasurementTests {
 @Suite("Frame Placement")
 struct FramePlacementTests {
 
-    /// Render a frame view at the given proposal and buffer size, returning
+    /// Render a frame view at the given query context and buffer size, returning
     /// the visible rows (parity convention).
     private func rendered(
         _ view: some View,
@@ -85,8 +85,8 @@ struct FramePlacementTests {
         height: Int
     ) -> [String] {
         var buffer = CellBuffer(width: width, height: height)
-        let proposal = ProposedSize(width: width, height: height)
-        let size = view._sizeThatFits(proposal)
+        let available = AvailableSize(width: width, height: height)
+        let size = view._measure(in: available)
         view._embed(into: &buffer, at: ViewRect(size: size))
         return visibleRows(buffer)
     }
@@ -196,9 +196,9 @@ struct FramePlacementTests {
 struct FrameOverflowTests {
 
     /// A non-wrapping raster leaf: its `body` is a `ViewOutput`, so its
-    /// measured and rendered size ignores the frame's width proposal — exactly
+    /// measured and rendered size ignores the frame's width query — exactly
     /// the pre-A1 `Text` behavior. Used to pin the frame's clipping semantics
-    /// independently of A1's proposal-consuming `Text`, which wraps its
+    /// independently of A1's query-consuming `Text`, which wraps its
     /// content to the frame's fixed width and therefore no longer overflows
     /// horizontally (see `textWrapsAtFrameWidthAndClipsHeight` below).
     private struct Raster: View {
@@ -212,7 +212,7 @@ struct FrameOverflowTests {
         // clips the child to the frame's box: only "ab" on row 0 survives.
         var buffer = CellBuffer(width: 4, height: 2)
         let frame = Raster("abcd\nef").frame(width: 2, height: 1)
-        let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
+        let size = frame._measure(in: AvailableSize(width: 2, height: 1))
         #expect(size == ViewSize(width: 2, height: 1))
         frame._embed(into: &buffer, at: ViewRect(size: size))
 
@@ -228,7 +228,7 @@ struct FrameOverflowTests {
         // The buffer is larger than the frame; the frame still clips.
         let frame = Raster("abcd\nef").frame(width: 2, height: 1)
         var buffer = CellBuffer(width: 2, height: 1)
-        let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
+        let size = frame._measure(in: AvailableSize(width: 2, height: 1))
         frame._embed(into: &buffer, at: ViewRect(size: size))
         #expect(visibleRows(buffer) == ["ab"])
     }
@@ -238,7 +238,7 @@ struct FrameOverflowTests {
         // 0, so the child starts at the box origin and is clipped to it.
         var buffer = CellBuffer(width: 4, height: 2)
         let frame = Raster("abcd\nef").frame(width: 2, height: 1, horizontalAlignment: .right)
-        let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
+        let size = frame._measure(in: AvailableSize(width: 2, height: 1))
         frame._embed(into: &buffer, at: ViewRect(size: size))
         #expect(buffer[0, 0].character == "a")
         #expect(visibleRows(buffer) == ["ab", ""])
@@ -250,7 +250,7 @@ struct FrameOverflowTests {
         // A 1-row frame with long content shows the first wrapped line.
         var buffer = CellBuffer(width: 4, height: 3)
         let frame = Text("abcd\nef").frame(width: 2, height: 1)
-        let size = frame._sizeThatFits(ProposedSize(width: 2, height: 1))
+        let size = frame._measure(in: AvailableSize(width: 2, height: 1))
         #expect(size == ViewSize(width: 2, height: 1))
         frame._embed(into: &buffer, at: ViewRect(size: size))
         // "abcd" wraps to "ab"/"cd"; "ef" would be a third row, but only the
@@ -312,7 +312,7 @@ struct FrameDegenerateTests {
     @Test func zeroWidthFramePaintsNothing() {
         var buffer = CellBuffer(width: 4, height: 1)
         let frame = Text("abcd").frame(width: 0)
-        let size = frame._sizeThatFits(.unspecified)
+        let size = frame._measure(in: .unconstrained)
         // Fixed width 0 answers 0; the Text child's minimum form (1 wide,
         // 4 rows) sets the flexible height.
         #expect(size == ViewSize(width: 0, height: 4))
@@ -324,7 +324,7 @@ struct FrameDegenerateTests {
     @Test func zeroHeightFramePaintsNothing() {
         var buffer = CellBuffer(width: 4, height: 1)
         let frame = Text("abcd").frame(height: 0)
-        let size = frame._sizeThatFits(.unspecified)
+        let size = frame._measure(in: .unconstrained)
         #expect(size == ViewSize(width: 4, height: 0))
         frame._embed(into: &buffer, at: ViewRect(size: size))
         // A zero-height box has no painting area.
