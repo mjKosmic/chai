@@ -7,7 +7,7 @@ import Latte
 // The eager `_resolveToViewOutput()` bridge was retired in P4b, so the corpus
 // no longer has two renderers to compare: every case asserts its pinned rows
 // through the phase-4 allocation walk (`_embed`). The historical
-// eager-vs-engine divergence list (#1–#10 in UPGRADE.md) is closed — its rows
+// eager-vs-engine divergence list (#1–#10 in docs/history/VIEW-LAYER-MIGRATION-LOG.md) is closed — its rows
 // are now simply the engine semantics, pinned here.
 
 @Suite("Layout Parity — engine spec")

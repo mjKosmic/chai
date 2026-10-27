@@ -1,4 +1,9 @@
-# TOP-DOWN SPIKE — phase-4 investigation report
+# Phase 4 — Top-Down Allocation Spike
+
+> **Location:** this historical document lives in `docs/history/`. Repository
+> paths mentioned below (`Sources/…`, `Tests/…`) are relative to the repository
+> root; references to `VIEW-LAYER-MIGRATION-LOG.md` are to the sibling file in
+> this directory.
 
 **Status: retired (documented history).** The report below is the design
 evidence of record for phase 4. Its walker and corpus copy
@@ -360,7 +365,7 @@ PR-sized slice at a time.**
   `_render`–to-`_embed` rename touches each wrapper.
 - **4.4 — Docs & deletion.** ARCHITECTURE.md "The Layout Engine" rewrite
   (rect-first), Remove `ViewOutput.frame` ambiguity (already a Stage-C
-  target), and rewrite UPGRADE.md's phase-2 Architectural "fit/render
+  target), and rewrite VIEW-LAYER-MIGRATION-LOG.md's phase-2 Architectural "fit/render
   value-equality" + "proposal semantics" sections to the query/rect story.
 
 Total: roughly 5–6 PR-sized slices, smaller than phase 2 (no builders/tree

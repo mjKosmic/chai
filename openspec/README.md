@@ -52,7 +52,7 @@ npx -y @fission-ai/openspec@latest update
 ## Relationship to the other docs
 
 - `ARCHITECTURE.md` — design of record (how the system is built).
-- `UPGRADE.md` — chronological migration log and phase plans.
+- `docs/history/VIEW-LAYER-MIGRATION-LOG.md` — chronological migration log and phase plans.
 - `openspec/specs/` — behavior contract (what the system must do now).
 - `openspec/changes/archive/` — why past changes were made, with their design
   and completed tasks.

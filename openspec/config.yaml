@@ -22,7 +22,7 @@ context: |
   - The layout engine contract is "children report; parents decide": measurement is a
     pure report, the allocated ViewRect is the layout and painting box, and paint may
     not escape that rect (phase-5 hard-box contract).
-  - ARCHITECTURE.md is the design of record; UPGRADE.md is the migration log.
+  - ARCHITECTURE.md is the design of record; docs/history/VIEW-LAYER-MIGRATION-LOG.md is the migration log.
     OpenSpec specs are the behavior contract and take precedence for current behavior.
 
 # Per-artifact rules (optional)
@@ -37,7 +37,7 @@ rules:
     - "Cover terminal edge cases where relevant: CJK/wide characters, ANSI styling, narrow or degenerate rects, inline vs alt-screen."
     - Prefer durable capability names; do not create a new capability for a single implementation task.
   design:
-    - Reference ARCHITECTURE.md and UPGRADE.md instead of restating them.
+    - Reference ARCHITECTURE.md and docs/history/VIEW-LAYER-MIGRATION-LOG.md instead of restating them.
     - Record layout decisions in terms of measure/embed allocation semantics and the hard-box invariant.
     - Call out concurrency, Sendable boundaries, and any public API impact.
   tasks:
@@ -55,4 +55,4 @@ operations:
   archive:
     guidance:
       - Confirm the delta specs merged into openspec/specs and no active change is left behind.
-      - Update ARCHITECTURE.md/UPGRADE.md when the archived behavior or design record changed.
+      - Update ARCHITECTURE.md and docs/history/VIEW-LAYER-MIGRATION-LOG.md when the archived behavior or design record changed.

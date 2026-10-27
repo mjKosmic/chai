@@ -2,7 +2,7 @@ import Chai
 
 // MARK: - Flexible leftover distribution (A2, re-roled in phase 4)
 //
-// Phase-3 A2 (UPGRADE.md): a stack whose main axis has at least one
+// Phase-3 A2 (docs/history/VIEW-LAYER-MIGRATION-LOG.md): a stack whose main axis has at least one
 // positively-flexible child FILLS a non-`nil` main-axis assignment and splits
 // the leftover between the flexible children proportionally. When no child is
 // flexible this helper returns `nil` and the caller keeps its pre-A2 code path
@@ -263,7 +263,7 @@ extension HStack {
         // This is a container decision (allocation authority), not a child
         // answer: at an ideal-width query `Fill` reports 0, so without this
         // rule it could never fill an HStack. The pins it changes are
-        // documented in UPGRADE.md ("Phase 4 — allocation deltas").
+        // documented in docs/history/VIEW-LAYER-MIGRATION-LOG.md ("Phase 4 — allocation deltas").
         if let assignedWidth, children.contains(where: { $0 is Fill }) {
             let unassigned = max(0, assignedWidth - widths.reduce(0, +))
             let fills = children.filter { $0 is Fill }.count

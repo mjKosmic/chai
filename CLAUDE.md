@@ -35,7 +35,7 @@ specs, design, tasks); `openspec/changes/archive/` preserves completed changes.
   change with `openspec new change <name>`.
 - Implement from `tasks.md` and check tasks off as they land.
 - Archive completed changes so their delta specs merge into `openspec/specs/`.
-- `ARCHITECTURE.md` remains the design of record and `UPGRADE.md` the migration
+- `ARCHITECTURE.md` remains the design of record and `docs/history/VIEW-LAYER-MIGRATION-LOG.md` the migration
   log. Keep implementation detail out of specs; specs describe behavior.
 - Validate with `npx -y @fission-ai/openspec@latest validate --all --strict`.
 

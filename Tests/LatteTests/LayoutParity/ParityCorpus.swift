@@ -8,7 +8,7 @@ import Latte
 // `ParityHarness.swift`). This is the engine spec: after P4b retired the eager
 // `_resolveToViewOutput()` path, there is no second renderer to compare
 // against, and the historical eager-vs-engine divergence list (#1–#10 in
-// UPGRADE.md) is closed. `expectedRows` is the single source of truth.
+// docs/history/VIEW-LAYER-MIGRATION-LOG.md) is closed. `expectedRows` is the single source of truth.
 //
 // Expected rows were derived by actually running the code — never hand-computed
 // (CJK widths and alignment padding are pinned from observed output).

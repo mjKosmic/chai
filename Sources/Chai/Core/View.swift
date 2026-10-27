@@ -48,7 +48,7 @@ public protocol View: Sendable {
     /// **Phase-4 role: a pure query.** The answer is a *report* with no
     /// authority — containers use it for allocation decisions (and buffer
     /// sizing / clip reservation) but may overrule it. Allocation happens in
-    /// ``_embed(into:at:)``; the query never binds. See `UPGRADE.md`, "Phase 4
+    /// ``_embed(into:at:)``; the query never binds. See `docs/history/VIEW-LAYER-MIGRATION-LOG.md`, "Phase 4
     /// — Top-down allocation engine".
     ///
     /// - Parameter available: The query context a parent is asking about; see
@@ -63,7 +63,7 @@ public protocol View: Sendable {
     /// the painting bound: the kernel clips every write in this subtree to it.
     /// The default resolves through ``body``; leaf views rasterize at the
     /// rect's origin, and containers override this with their allocation
-    /// rules (children report, parents decide — see `UPGRADE.md`, "Phase 4 —
+    /// rules (children report, parents decide — see `docs/history/VIEW-LAYER-MIGRATION-LOG.md`, "Phase 4 —
     /// Top-down allocation engine").
     ///
     /// - Parameters:
@@ -140,7 +140,7 @@ extension View {
     ///
     /// A view whose `body` is a ``ViewOutput`` therefore embeds correctly with
     /// no engine code — the simple path (`body: ViewOutput` + strings) stays
-    /// complete and supported (see UPGRADE.md, "Simple-path contract").
+    /// complete and supported (see docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Simple-path contract").
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         body._embed(into: &buffer, at: rect)
     }

@@ -10,7 +10,7 @@ import Latte
 // `StyledText.wrappedToWidth(_:)` function, so the two passes agree by
 // construction — the A0 fit/render value-equality contract).
 //
-// This suite pins the wrapping rules from UPGRADE.md ("Phase 3 — Stage A"):
+// This suite pins the wrapping rules from docs/history/VIEW-LAYER-MIGRATION-LOG.md ("Phase 3 — Stage A"):
 //
 // 1. Whitespace (space/tab) is a break opportunity; the whitespace at a break
 //    is consumed; interior runs are preserved when no break happens there.

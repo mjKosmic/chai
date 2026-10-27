@@ -143,7 +143,7 @@ public struct LayoutFlexibility: Sendable, Equatable {
 /// in ``View/_embed(into:at:)``. Under the hard-box contract it is both the
 /// layout box and the painting bound: the kernel clips every write in the
 /// child's subtree to it, and containers clamp child rects to their own
-/// allocation. See `UPGRADE.md`, "Phase 5 — Hard-box containment".
+/// allocation. See `docs/history/VIEW-LAYER-MIGRATION-LOG.md`, "Phase 5 — Hard-box containment".
 public struct ViewRect: Sendable, Equatable {
 
     /// The top-left corner of the rect.

@@ -4,7 +4,7 @@ import Latte
 
 // MARK: - Phase-3 A2: Spacer in stacks + Fill in the engine
 //
-// Milestone A2 of the phase-3 Stage A plan (UPGRADE.md): a stack whose main
+// Milestone A2 of the phase-3 Stage A plan (docs/history/VIEW-LAYER-MIGRATION-LOG.md): a stack whose main
 // axis has at least one positively-flexible child fills a non-`nil` main-axis
 // assignment and splits the leftover between the flexible children. The pinned
 // formula (the query and allocation share one `StackAllocation` shape):
@@ -337,7 +337,7 @@ struct FillInStacksTests {
     @Test func fillDisplacesSiblingsInABottomAlignedFrame() {
         // The frame assigns `(4, 3)`; `Fill` makes the HStack fill the assigned
         // width, so the bottom-aligned frame has no vertical shortage and "x"
-        // lands on row 0. Phase-4 allocation delta (UPGRADE.md, "Phase 4 —
+        // lands on row 0. Phase-4 allocation delta (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Phase 4 —
         // allocation deltas"): the leading `Fill` also claims the horizontal
         // remainder (columns 0–2), so "x" shifts to col 3. The phase-3 engine
         // (which never offered width to HStack children) placed it at col 0.

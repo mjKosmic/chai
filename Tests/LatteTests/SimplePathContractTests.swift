@@ -4,7 +4,7 @@ import Latte
 
 // MARK: - Simple-path contract (phase 4, P1; rebuilt on the wrappers in P4b)
 //
-// The tested guarantee behind the phase-4 positioning decision (UPGRADE.md,
+// The tested guarantee behind the phase-4 positioning decision (docs/history/VIEW-LAYER-MIGRATION-LOG.md,
 // "Phase 4 — positioning"): a complete app can be built **without engine
 // concepts** — no `_measure`, no `_embed`, no custom `View` conformer.
 //

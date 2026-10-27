@@ -2,7 +2,7 @@ import Chai
 
 // MARK: - View.beside / View.above (Stage C composition)
 //
-// Phase 4 P4a (UPGRADE.md, "Stage C on the new kernel"): the eager
+// Phase 4 P4a (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Stage C on the new kernel"): the eager
 // `ViewOutput.beside(_:align:)` / `.above(_:align:)` transforms become
 // container sugar. Composition is a container rule — `beside` is an
 // `HStack`, `above` is a `VStack` — so the two views stay in the tree and

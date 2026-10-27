@@ -7,7 +7,7 @@ import Chai
 ///
 /// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` is the
 /// phase-2 acceptance feature, re-expressed in phase 4 as an **allocator**
-/// (UPGRADE.md, "Phase 4"): a fixed dimension is an allocation decision the
+/// (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Phase 4"): a fixed dimension is an allocation decision the
 /// frame owns and hands down; a flexible dimension passes the parent's
 /// assignment through.
 ///

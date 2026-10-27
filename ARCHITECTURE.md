@@ -2,7 +2,7 @@
 
 Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](https://github.com/charmbracelet/bubbletea). It implements the **Elm Architecture** (Model-Update-View) using modern Swift concurrency — `async`/`await`, actors, `AsyncStream`, and structured `Task`s — with zero runtime dependencies outside the Swift standard library.
 
-The **behavior contract** for the framework lives in [`openspec/specs/`](openspec/specs/) (OpenSpec). This document explains the design and implementation behind that behavior; `UPGRADE.md` is the chronological migration log. When the two disagree, the OpenSpec spec describes required behavior and this document should be brought into line.
+The **behavior contract** for the framework lives in [`openspec/specs/`](openspec/specs/) (OpenSpec). This document explains the design and implementation behind that behavior; `docs/history/VIEW-LAYER-MIGRATION-LOG.md` is the chronological migration log. When the two disagree, the OpenSpec spec describes required behavior and this document should be brought into line.
 
 The repository is a monorepo containing three libraries:
 
@@ -513,7 +513,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 
 The behavior contract for this engine is [`openspec/specs/layout-engine/spec.md`](openspec/specs/layout-engine/spec.md); this section explains the design behind it.
 
-The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_measure(in:)` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. What survives from the proposal model is only the **query language** (`AvailableSize`), not render-pass bookkeeping.
+The layout engine is the phase-4 **allocation** path (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_measure(in:)` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. What survives from the proposal model is only the **query language** (`AvailableSize`), not render-pass bookkeeping.
 
 ### The measure/render flow
 
@@ -632,7 +632,7 @@ SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `ze
 
 Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero context), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the queried rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width context it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
 
-Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in UPGRADE.md). `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
+Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in docs/history/VIEW-LAYER-MIGRATION-LOG.md). `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
 
 ### Why there is no `.infinity`
 

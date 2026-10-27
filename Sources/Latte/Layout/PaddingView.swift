@@ -2,7 +2,7 @@ import Chai
 
 // MARK: - PaddingView (Stage C wrapper)
 //
-// Phase 4 P4a (UPGRADE.md, "Stage C on the new kernel"): modifier wrappers
+// Phase 4 P4a (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Stage C on the new kernel"): modifier wrappers
 // stay in the tree. A padding wrapper is a CONTAINER, not a raster transform:
 // it reports the child's size plus its insets, and its allocation entrance
 // gives the child an inset rect. The assignment bounds the child's query (so

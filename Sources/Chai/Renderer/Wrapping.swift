@@ -1,6 +1,6 @@
 // MARK: - Word wrapping (phase-3 A1)
 
-// The A1 wrapping rules (UPGRADE.md "Phase 3 — Stage A") live here, in Chai,
+// The A1 wrapping rules (docs/history/VIEW-LAYER-MIGRATION-LOG.md "Phase 3 — Stage A") live here, in Chai,
 // because they operate on Chai's ``StyledText`` segment model. Latte has its
 // own string-level wrapper (`Sources/Latte/Layout/Wrap.swift`) that works on
 // ANSI-embedded `String`s and resets/re-opens SGR styles across wrapped lines;
@@ -55,7 +55,7 @@ extension StyledText {
     ///
     /// Measurement and allocation must resolve with this SAME function so the
     /// reported line count matches the painted rows — the phase-4 query is a
-    /// pure report the allocator sizes rects from (see UPGRADE.md, "Phase 4").
+    /// pure report the allocator sizes rects from (see docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Phase 4").
     func wrappedToWidth(_ width: Int) -> StyledText {
         guard width > 0, !segments.isEmpty else { return self }
 

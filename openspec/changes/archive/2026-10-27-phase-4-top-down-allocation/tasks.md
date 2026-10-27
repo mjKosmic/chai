@@ -2,7 +2,7 @@
 
 ## 1. Plan and SPI
 
-- [x] 1.1 Settle the five phase-4 owner decisions and write the phase-4 plan into `UPGRADE.md`; verify the plan matches the kickoff handoff.
+- [x] 1.1 Settle the five phase-4 owner decisions and write the phase-4 plan into `docs/history/VIEW-LAYER-MIGRATION-LOG.md`; verify the plan matches the kickoff handoff.
 - [x] 1.2 Introduce the allocation SPI (`_embed(into:at:)` with `ViewRect`) and keep measurement as a pure query; verify the engine and Latte suites compile and pass.
 
 ## 2. Allocation kernel

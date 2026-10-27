@@ -1,4 +1,13 @@
-# Upgrade Plan: Declarative View Builders
+# View Layer Migration Log
+
+**Scope:** the declarative view tree (phase 1) and the layout engine (phases
+2–5), plus the SPI rename and the breaking changes those phases introduced.
+
+> **Location:** this historical document lives in `docs/history/`. Repository
+> paths mentioned below (`ARCHITECTURE.md`, `Sources/…`, `Tests/…`) are
+> relative to the repository root; references to
+> `PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` are to the sibling file in this
+> directory.
 
 This document tracks the migration from imperative view composition
 (`view() -> ViewOutput` with fluent chaining) to a SwiftUI-inspired
@@ -14,7 +23,7 @@ renderer flip/clean break), P4a (Stage-C wrapper family), P4b (eager
 retirement, corpus collapse, `Spacer` unification), PB (`AnyView`) and PD
 (docs/rules). **Phase 5 (hard-box containment) has landed**: the allocated
 rect is now the painting bound, and `.clipped()` is gone. A design spike
-validated the phase-4 direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
+validated the phase-4 direction (`PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` — walker == engine, 38/38
 corpus cases).
 
 ---
@@ -484,7 +493,7 @@ re-scoped onto this phase's kernel. **All milestones have landed: P0 (plan),
 P1/P2 (kernel + side-by-side), P3 (renderer flip, clean break), P4a (Stage-C
 wrapper family), P4b (eager retirement, corpus collapse, `Spacer`
 unification), PB (`AnyView`) and PD (docs/rules).** Evidence of record:
-`TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
+`PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
 reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
 semantic probes byte-identical — the prediction this plan was built on). The
 spike suite was retired in P1 when its rules graduated into production
@@ -682,7 +691,7 @@ transparent to the engine: it forwards **all four** SPI methods.
 | P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
 | P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_measure(in:)`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
-| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
+| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; this log's status flip | review-ready — ✅ landed |
 
 Ordering: P1 → P2 → P3 were strictly sequential (P2's coexistence was
 transition-only; P3 deleted the old SPI — decision 5). **P4a → P4b**: the
@@ -730,7 +739,7 @@ entry points for a cold start.
   `frame()` sections now describe the post-P4b state.
 - AGENTS.md and CLAUDE.md pitfall #2 states the corpus/allocation contract in
   lockstep.
-- UPGRADE.md's phase-4 status is flipped to landed (this section).
+- This log's phase-4 status is flipped to landed (this section).
 
 **Final baseline:** `swift build --build-tests` builds the production targets with
 zero warnings and reports the known SpicesTests `viewAs` deprecations (13

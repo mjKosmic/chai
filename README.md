@@ -85,15 +85,17 @@ swift build && swift test
 
 ## Documentation
 
+- [`docs/README.md`](docs/README.md) — documentation index: design, history,
+  and where behavior specs vs. migration history live.
 - [`openspec/specs/`](openspec/specs/) — OpenSpec behavior specifications, the
   source of truth for current system behavior.
 - [`openspec/changes/`](openspec/changes/) — active change proposals; completed
   changes are archived under [`openspec/changes/archive/`](openspec/changes/archive/).
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design of record: the Elm loop,
   renderer, input pipeline, concurrency model, and the allocation layout engine.
-- [`UPGRADE.md`](UPGRADE.md) — migration history and phase plans (through the
+- [`docs/history/VIEW-LAYER-MIGRATION-LOG.md`](docs/history/VIEW-LAYER-MIGRATION-LOG.md) — migration history and phase plans (through the
   phase-5 hard-box contract and the SPI rename).
-- [`TOP-DOWN-SPIKE.md`](TOP-DOWN-SPIKE.md) — historical phase-4 spike report.
+- [`docs/history/PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md`](docs/history/PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md) — historical phase-4 spike report.
   The phase-4 kickoff handoff is preserved in the archived change at
   [`openspec/changes/archive/2026-10-27-phase-4-top-down-allocation/design.md`](openspec/changes/archive/2026-10-27-phase-4-top-down-allocation/design.md).
 - [`AGENTS.md`](AGENTS.md) — contribution guide for AI agents (build rules,
@@ -128,4 +130,4 @@ The example app lives in
 ## Status
 
 Pre-alpha. The API is still allowed to change; breaking changes are documented
-in `UPGRADE.md`.
+in `docs/history/VIEW-LAYER-MIGRATION-LOG.md`.

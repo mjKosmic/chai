@@ -84,7 +84,7 @@ struct StacksEngineMeasurementTests {
         // its ideal-width rect — so a wrapping `Text` child is inert inside an
         // HStack; over-wide content overflows and is truncated at the buffer.
         // Pinned as the current contract; "allocate remaining width to HStack
-        // children" is a Stage C candidate (UPGRADE.md).
+        // children" is a Stage C candidate (docs/history/VIEW-LAYER-MIGRATION-LOG.md).
         let stack = HStack {
             Text("abcdefghij")
         }

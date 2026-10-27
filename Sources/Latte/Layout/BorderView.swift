@@ -2,7 +2,7 @@ import Chai
 
 // MARK: - BorderView (Stage C wrapper)
 //
-// Phase 4 P4a (UPGRADE.md, "Stage C on the new kernel"): the border is a rect
+// Phase 4 P4a (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Stage C on the new kernel"): the border is a rect
 // inset in the view tree. The wrapper reserves one cell on every side, reports
 // the child's size plus the frame, draws the box at its allocated origin, and
 // embeds the child inside. Like padding it shrink-wraps to its content; the

@@ -4,9 +4,9 @@ import Latte
 
 // MARK: - Phase-4 allocation rules (containers)
 //
-// The per-conformer allocation rules of P1 (UPGRADE.md, "Phase 4 —
+// The per-conformer allocation rules of P1 (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Phase 4 —
 // Architecture"): stacks, frames and clips decide; children report. These are
-// the spike's five probes turned into assertions (`TOP-DOWN-SPIKE.md` §3) plus
+// the spike's five probes turned into assertions (`docs/history/PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` §3) plus
 // the rules that the corpus cannot express.
 //
 // `visibleRows` (from `LayoutParity/ParityHarness.swift`) is the parity
@@ -140,7 +140,7 @@ struct AllocationRulesTests {
         }
         // `Fill` claims columns 0–6; "x" moves to col 7. This is the occupied-
         // width delta pinned by the corpus (`PHASE-4 DELTA` case) and by
-        // UPGRADE.md ("Phase 4 — allocation deltas").
+        // docs/history/VIEW-LAYER-MIGRATION-LOG.md ("Phase 4 — allocation deltas").
         #expect(
             tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
@@ -155,7 +155,7 @@ struct AllocationRulesTests {
         #expect(embed(tree, width: 8, height: 1) == ["x"])
         // ...but the trailing `Fill` still grows the stack's OCCUPIED width
         // (1 → 8), which is visible to parent alignment math. Documented in
-        // UPGRADE.md ("Phase 4 — allocation deltas") and pinned by the corpus
+        // docs/history/VIEW-LAYER-MIGRATION-LOG.md ("Phase 4 — allocation deltas") and pinned by the corpus
         // case "PHASE-4 DELTA: trailing Fill grows the stack's occupied width".
         #expect(
             tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)

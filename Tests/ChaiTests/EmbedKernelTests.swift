@@ -3,7 +3,7 @@ import Chai
 
 // MARK: - Phase-4 allocation kernel (Chai leaves)
 //
-// P1 of the phase-4 plan (UPGRADE.md): the `_embed(into:at:)` allocation
+// P1 of the phase-4 plan (docs/history/VIEW-LAYER-MIGRATION-LOG.md): the `_embed(into:at:)` allocation
 // entrance, the `ViewRect` assignment value, and the leaf rules.
 //
 // Pinned decisions exercised here:
