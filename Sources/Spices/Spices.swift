@@ -2,8 +2,9 @@
 ///
 /// Spices provides a collection of reusable, composable terminal UI
 /// components that follow the ELM architecture. Each component is a
-/// value-type struct with `initialize()`, `update(_:)`, and `view()`
-/// methods that mirror the ``Chai/Model`` protocol.
+/// value-type struct exposing `initialize()`, `update(_:)`, and a `body`
+/// property (a ``Chai/Model``), or is a reusable ``Chai/View`` designed to be
+/// embedded in a parent model.
 ///
 /// ## Components
 ///
@@ -70,7 +71,7 @@
 /// ## Usage
 ///
 /// Embed Spices components as properties of your ``Chai/Model`` struct
-/// and delegate `update` / `view` calls:
+/// and delegate `update` / `body` calls:
 ///
 /// ```swift
 /// import Chai

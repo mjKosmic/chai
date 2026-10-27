@@ -13,11 +13,12 @@ assertions in `AllocationRulesTests`.
 have since been renamed: `ProposedSize` → `AvailableSize`, `_sizeThatFits` →
 `_measure(in:)`, `.unspecified` → `.unconstrained`.
 
-**Companion:** the spike suite is `TopDownSpikeComparisonTests` in
-`Tests/ChaiTests/Spike/TopDownSpike.swift` (all diagnostic: the corpus table
-is data, not a gate). With the scratch present the tree builds and tests green
-at 1245 tests / 106 suites (baseline 1239/105 + 6 spike tests). Production
-code untouched.
+**Companion (historical):** the spike suite was
+`TopDownSpikeComparisonTests` in `Tests/ChaiTests/Spike/TopDownSpike.swift` (all
+diagnostic: the corpus table was data, not a gate). That directory was deleted
+in P1, so it is no longer in the tree. When the scratch was present it built
+and tested green at 1245 tests / 106 suites (baseline 1239/105 + 6 spike
+tests), with production code untouched.
 
 ---
 

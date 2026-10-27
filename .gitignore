@@ -6,4 +6,8 @@ DerivedData/
 Package.resolved
 
 # opencode session artifacts
-.opencode/
+.opencode/sessions/
+
+# local Claude Code state
+.claude/settings.local.json
+.claude/worktrees/

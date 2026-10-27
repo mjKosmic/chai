@@ -54,7 +54,7 @@ var body: some View {
 
 | Concern      | Old location            | New location                          |
 |--------------|-------------------------|---------------------------------------|
-| Alt screen   | `ViewOutput.altScreen`  | `ProgramOption.withAltScreen`         |
+| Alt screen   | `ViewOutput.altScreen`  | `Program.Option.withAltScreen`         |
 | Window title | `ViewOutput.windowTitle`| `Command.setWindowTitle(_:)`           |
 | Cursor       | `ViewOutput.cursor`     | `Model.cursor` (default `nil`)        |
 | Content      | `ViewOutput.content`    | `ViewOutput.content` (unchanged)      |
@@ -79,18 +79,22 @@ renderer-agnostic abstraction for alternative renderers.
   on the `View` protocol lets `TupleView`/`ForEachView` expose one view per
   child, so a `for` loop inside an `HStack` lays out horizontally.
 - Primitives: `Text`, `Spacer`, `Empty`.
-- `Renderer.write(_:)` accepts any `View` and resolves it.
+- `Renderer.write(_:)` accepts any `View`. (At phase-1 close it resolved the
+  tree eagerly; since phase 4 it lays the tree out through the allocation
+  engine.)
 
-Rendering currently resolves the tree eagerly via
-`View._resolveToViewOutput()` (recursive `body` calls to a `ViewOutput`
-leaf). This bridge is the seam for the layout engine below.
+**Historical phase-1 state:** at this point rendering resolved the tree eagerly
+via `View._resolveToViewOutput()` (recursive `body` calls to a `ViewOutput`
+leaf). That bridge was the seam for the layout engine below and was deleted in
+phase-4 P4b.
 
-### Not yet done — modifiers
+### Phase-1 status — modifiers (superseded)
 
-`.bordered()`, `.padded()`, `.beside()`, `.above()` etc.
-(`Latte/Extensions/ViewOutput+Layout.swift`) still return `ViewOutput` and
-resolve eagerly. They work, but they collapse the tree instead of wrapping it.
-A `.frame()` modifier does not exist yet.
+At phase-1 close, `.bordered()`, `.padded()`, `.beside()`, `.above()` etc.
+(`Latte/Extensions/ViewOutput+Layout.swift`) still returned `ViewOutput` and
+resolved eagerly, and no `.frame()` modifier existed. All of that is now
+historical: the tree-based wrappers (`View.padded`, `View.margined`,
+`View.bordered`, `View.frame`, `.beside`/`.above`) landed in phase 4 (P4a/P4b).
 
 ---
 
@@ -728,12 +732,14 @@ entry points for a cold start.
   lockstep.
 - UPGRADE.md's phase-4 status is flipped to landed (this section).
 
-**Final baseline:** `swift build --build-tests` zero warnings (known
-SpicesTests `viewAs` deprecations only); `swift test` **1277 tests / 109
-suites**. Gates: zero warnings includes test targets; the corpus is the single
-engine spec (`expectedRows`) and no case is skipped. (The count drops from
-P4a's 1305/110 because the eager-parity suites and eager-modifier tests
-retired with the eager path; no engine coverage was removed.)
+**Final baseline:** `swift build --build-tests` builds the production targets with
+zero warnings and reports the known SpicesTests `viewAs` deprecations (13
+`#DeprecatedDeclaration` warnings in the test target only); `swift test`
+**1277 tests / 109 suites**. Gates: zero warnings includes test targets; the
+corpus is the single engine spec (`expectedRows`) and no case is skipped. (The
+count drops from P4a's 1305/110 because the eager-parity suites and
+eager-modifier tests retired with the eager path; no engine coverage was
+removed.)
 
 ### Allocation deltas (P1 findings, on record)
 
@@ -856,8 +862,9 @@ painter order. The hard-box contract replaces that with one invariant:
   candidate stays deferred), but its **paint** is contained: a wide column is
   clamped to the remaining allocation and wraps there.
 
-**Baseline at phase 5 close:** `swift build --build-tests` zero warnings;
-`swift test` **1266 tests / 109 suites**.
+**Baseline at phase 5 close:** `swift build --build-tests` builds the production
+targets warning-free (the pre-existing SpicesTests `viewAs` deprecations
+remained in the test target); `swift test` **1266 tests / 109 suites**.
 
 ---
 
@@ -883,8 +890,10 @@ Historical sections above (phases 2–3) keep the old names: they describe the
 API as it was. No typealiases or deprecated shims were left behind (pre-alpha
 clean-break policy).
 
-**Baseline:** `swift build --build-tests` zero warnings; `swift test`
-**1278 tests / 110 suites** (renames only; no expectation changed).
+**Baseline:** `swift build --build-tests` builds the production targets with
+zero warnings and reports the 13 known SpicesTests `viewAs` deprecations in the
+test target; `swift test` **1278 tests / 110 suites** (renames only; no
+expectation changed).
 
 ---
 
@@ -898,7 +907,7 @@ clean-break policy).
   explicitly.
 - `ViewOutput` no longer carries `altScreen` / `windowTitle` / `cursor` — its
   initializer lost those parameters. Set them via
-  `ProgramOption.withAltScreen`, `Command.setWindowTitle(_:)`, and
+  `Program.Option.withAltScreen`, `Command.setWindowTitle(_:)`, and
   `Model.cursor`.
 - String literals and interpolations work as `@ViewBuilder` expressions
   (`buildExpression(_:)` accepts `ViewOutput`, which is

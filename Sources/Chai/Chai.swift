@@ -7,8 +7,8 @@
 ///   handles incoming ``Message`` values and optionally returns a ``Command``
 ///   to trigger async work.
 /// - **View** — a `var body` property that renders the current state as a
-///   view tree, composed declaratively with `@ViewBuilder` and resolved to
-///   styled text.
+///   view tree, composed declaratively with `@ViewBuilder` and laid out by
+///   the layout engine.
 ///
 /// ## Quick Start
 ///

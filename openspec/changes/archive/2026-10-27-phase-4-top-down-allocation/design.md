@@ -1,4 +1,15 @@
-# Handoff — Phase 4: Top-Down Allocation Engine (pending kickoff)
+# Design
+
+> **Archived design record.** This document was the phase-4 kickoff handoff.
+> It was moved here on 2026-10-27, after the phase landed, to preserve the design
+> evidence of record. Phase 5 later strengthened the allocated rect into a hard
+> painting box; the current behavior contract lives in
+> `openspec/specs/layout-engine/spec.md` and the design of record remains
+> `ARCHITECTURE.md`.
+
+---
+
+# Handoff — Phase 4: Top-Down Allocation Engine (historical kickoff)
 
 > **Status (later): this is the phase-4 *kickoff* handoff and is historical.**
 > P0–P3 have since landed on `fixing` (PR #22). The plan of record, current
