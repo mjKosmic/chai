@@ -24,6 +24,10 @@ context: |
     not escape that rect (phase-5 hard-box contract).
   - ARCHITECTURE.md is the design of record; docs/history/VIEW-LAYER-MIGRATION-LOG.md is the migration log.
     OpenSpec specs are the behavior contract and take precedence for current behavior.
+  - Code comments describe current behavior and its local rationale only. Do not
+    reference phase names, milestone labels, PR numbers, or migration history in
+    source or test comments; put that evolution in the OpenSpec change archive or
+    the migration log instead.
 
 # Per-artifact rules (optional)
 rules:

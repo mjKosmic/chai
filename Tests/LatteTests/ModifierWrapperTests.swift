@@ -2,19 +2,18 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - Stage C modifier wrappers (phase 4, P4a)
+// MARK: - Modifier wrappers
 //
-// The eager modifier family (`.padded()`, `.bordered()`, `.beside()`,
-// `.above()`) is rebuilt as view-tree wrappers on the phase-4 allocation
-// kernel. These tests pin the wrapper contract:
+// Modifiers stay in the view tree as wrappers rather than resolving to a
+// raster. These tests pin the wrapper contract:
 //
-// - report = child report + insets (shrink-wrap, decision 1),
+// - report = child report + insets (shrink-wrap),
 // - the assignment bounds the child query (padding/border compose with
 //   wrapping), while the child's report decides the painted extent,
 // - flexibility is forwarded (a flexible child inside a wrapper still
-//   absorbs a stack's leftover — the PR #21 silent-failure pattern).
+//   absorbs a stack's leftover).
 
-@Suite("Stage C modifier wrappers")
+@Suite("Modifier wrappers")
 struct ModifierWrapperTests {
 
     // MARK: Padding
@@ -73,7 +72,7 @@ struct ModifierWrapperTests {
 
     @Test func paddingDoesNotStretchToTheRootRect() {
         // The root assignment is the terminal width; the wrapper still reports
-        // and paints its content-sized box (shrink-wrap, decision 1).
+        // and paints its content-sized box (shrink-wrap).
         let view = Text("x").padded(1)
         let measured = view._measure(in: AvailableSize(width: 40, height: nil))
         #expect(measured == ViewSize(width: 3, height: 3))

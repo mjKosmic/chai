@@ -2,9 +2,9 @@ import Testing
 @testable import Chai
 
 /// Tests that structural view trees render correctly through
-/// `Renderer.write(_:)` — the generic `View` overload added by the
-/// declarative migration. The event loop feeds `model.body` here, so
-/// these tests cover the seam a `var body: some View` model uses.
+/// `Renderer.write(_:)` — the generic `View` overload. The event loop feeds
+/// `model.body` here, so these tests cover the seam a `var body: some View`
+/// model uses.
 @Suite("Renderer Structural Views")
 struct RendererStructuralTests {
 

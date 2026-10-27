@@ -2,8 +2,8 @@ import Chai
 
 // MARK: - Engine rendering helpers (test-local)
 //
-// Phase 4 P4b retired `View._resolveToViewOutput()`, so structural/engine
-// tests render through the allocation walk and inspect the resulting cells.
+// Structural/engine tests render through the allocation walk and inspect the
+// resulting cells.
 
 /// Render `view` through the allocation engine at `width` and extract its
 /// visible rows, using the parity convention: zero-width cells (wide-character

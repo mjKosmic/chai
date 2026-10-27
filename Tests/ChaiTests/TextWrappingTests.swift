@@ -2,15 +2,13 @@ import Testing
 @testable import Chai
 import Latte
 
-// MARK: - A1: word-aware wrapping `Text`
+// MARK: - Word-aware wrapping `Text`
 //
-// Milestone A1 of the phase-3 Stage A SPI break: `Text` becomes the first
-// production query consumer. A non-`nil`, positive width query wraps
-// the content to that width (both measurement and rendering use the SAME
-// `StyledText.wrappedToWidth(_:)` function, so the two passes agree by
-// construction — the A0 fit/render value-equality contract).
+// `Text` is the production query consumer. A non-`nil`, positive width query
+// wraps the content to that width (both measurement and rendering use the SAME
+// `StyledText.wrappedToWidth(_:)` function, so the two agree by construction).
 //
-// This suite pins the wrapping rules from docs/history/VIEW-LAYER-MIGRATION-LOG.md ("Phase 3 — Stage A"):
+// This suite pins the wrapping rules:
 //
 // 1. Whitespace (space/tab) is a break opportunity; the whitespace at a break
 //    is consumed; interior runs are preserved when no break happens there.
@@ -25,15 +23,15 @@ import Latte
 // 6. Styles are preserved exactly via segment splitting; no invented/merged
 //    styles.
 // 7. The shared function's own guard: `width ≤ 0` returns the content
-//    unchanged. `Text` no longer routes a non-positive width query here —
-//    since A3 it clamps to the minimum producible width (`AvailableSize.zero`
-//    semantics, see `MinimumSizeTests`) — but the primitive's guard
-//    remains the contract callers rely on for degenerate widths.
+//    unchanged. `Text` does not route a non-positive width query here — it
+//    clamps to the minimum producible width (`AvailableSize.zero` semantics,
+//    see `MinimumSizeTests`) — but the primitive's guard remains the contract
+//    callers rely on for degenerate widths.
 //
 // The first block pins the shared wrapping function directly (exact, includes
 // embedded newlines); the second block pins the `Text` wiring (measure +
 // render) against the same function. Every expectation below was derived by
-// running the code, never hand-computed (see the A1 report).
+// running the code, never hand-computed.
 
 // MARK: - The pinned wrapping table
 
@@ -189,10 +187,9 @@ struct TextWrappingTableTests {
 
     @Test func primitiveWidthZeroReturnsContentUnchanged() {
         // The shared wrapping function's contract: `width <= 0` is unusable,
-        // so it returns the content unchanged. (Since A3 `Text` never passes a
-        // non-positive width — it computes the minimum producible width first,
-        // see `MinimumSizeTests`. This pins the primitive's guard, which
-        // other callers still rely on.)
+        // so it returns the content unchanged. `Text` computes the minimum
+        // producible width first (see `MinimumSizeTests`); this pins the
+        // primitive's guard, which other callers still rely on.
         #expect(StyledText("hello world").wrappedToWidth(0).plainText == "hello world")
     }
 
@@ -219,13 +216,13 @@ struct TextWrappingTableTests {
         #expect(StyledText("").wrappedToWidth(5).lineCount() == 0)
     }
 
-    // MARK: Leading / trailing whitespace fits within the width (PR #21 review)
+    // MARK: Leading / trailing whitespace fits within the width
 
     @Test func leadingWhitespaceThatCannotFitWithTheNextCharacterIsDropped() {
         // Indentation that cannot fit together with the following character
-        // is dropped rather than pushing the line past `width` (review
-        // finding: a line must never exceed the requested width merely to
-        // carry whitespace, and no visible character may be pushed out).
+        // is dropped rather than pushing the line past `width` (a line must
+        // never exceed the requested width merely to carry whitespace, and no
+        // visible character may be pushed out).
         #expect(StyledText("  ab").wrappedToWidth(1).plainText == "a\nb")
         #expect(StyledText("  ab").wrappedToWidth(2).plainText == "ab")
         #expect(StyledText("    code").wrappedToWidth(3).plainText == "cod\ne")
@@ -250,9 +247,7 @@ struct TextWrappingTableTests {
 
     @Test func newlineOnlyContentWrapsToEmpty() {
         // Deliberate: content with no visible character (whitespace- or
-        // newline-only) wraps to empty and measures 0x0. Pinned as allowed
-        // divergence #10 (the eager path measures ViewOutput("\n") as two
-        // blank rows).
+        // newline-only) wraps to empty and measures 0x0.
         #expect(StyledText("\n").wrappedToWidth(5).lineCount() == 0)
         #expect(StyledText("\n\n").wrappedToWidth(5).lineCount() == 0)
     }
@@ -309,10 +304,9 @@ struct TextWrappingIntegrationTests {
     }
 
     @Test func nonPositiveWidthQueryMeasuresTheMinimum() {
-        // A3 spec delta: a zero (or negative) width query is the minimum
-        // query, not "unwrapped". "The quick brown fox" compresses to width 1
-        // (the widest single character); the three word-break spaces are
-        // consumed → 16 rows.
+        // A zero (or negative) width query is the minimum query, not
+        // "unwrapped". "The quick brown fox" compresses to width 1 (the widest
+        // single character); the three word-break spaces are consumed → 16 rows.
         #expect(
             Text("The quick brown fox")._measure(in: AvailableSize(width: 0, height: nil))
                 == ViewSize(width: 1, height: 16)
@@ -335,7 +329,7 @@ struct TextWrappingIntegrationTests {
     }
 
     @Test func blankHardLinesMeasureAsLines() {
-        // A1 does not change blank-line semantics: `Text("a\n\nb")` keeps its
+        // `Text` preserves blank-line semantics: `Text("a\n\nb")` keeps its
         // three lines under a width query (a hard `\n` is always honored).
         #expect(
             Text("a\n\nb")._measure(in: AvailableSize(width: 5, height: nil))
@@ -344,17 +338,15 @@ struct TextWrappingIntegrationTests {
     }
 
     @Test func minimumHoldsForWhitespacePrefixedContent() {
-        // PR #21 review: leading whitespace used to defeat the minimum
-        // contract (`Text("  ab")._measure(in: .zero)` returned width 3).
-        // The leading run is now dropped when it cannot fit with the next
-        // character, so the minimum is the widest character (1).
+        // Leading whitespace must not defeat the minimum contract. The leading
+        // run is dropped when it cannot fit with the next character, so the
+        // minimum is the widest character (1).
         #expect(Text("  ab")._measure(in: .zero) == ViewSize(width: 1, height: 2))
     }
 
     @Test func newlineOnlyTextMeasuresZero() {
-        // Allowed divergence #10: content with no visible character
-        // (newline-only included) wraps to empty and measures 0x0, where the
-        // eager path measures ViewOutput("\n") as two blank rows.
+        // Content with no visible character (newline-only included) wraps to
+        // empty and measures 0x0.
         #expect(Text("\n")._measure(in: AvailableSize(width: 5, height: nil)) == .zero)
     }
 
@@ -366,8 +358,8 @@ struct TextWrappingIntegrationTests {
     }
 
     @Test func renderAtZeroWidthWritesTheMinimumForm() {
-        // A3 spec delta: a zero-width allocation renders the SAME minimum form
-        // the query measured — one 1-column row per character, at col 0.
+        // A zero-width allocation renders the SAME minimum form the query
+        // measured — one 1-column row per character, at col 0.
         let available = AvailableSize(width: 0, height: nil)
         let size = Text("abcdefgh")._measure(in: available)
         #expect(size == ViewSize(width: 1, height: 8))
@@ -377,10 +369,10 @@ struct TextWrappingIntegrationTests {
     }
 
     @Test func narrowWidthRenderKeepsEveryVisibleCharacter() {
-        // PR #21 review: `Text("    code")` at width 3 used to wrap to
-        // "    c"/"ode" — the first row exceeded the width, the truncating
-        // buffer rendered "   ", and the "c" was lost. The indentation is
-        // dropped instead, so every visible character survives.
+        // `Text("    code")` at width 3 must not wrap to "    c"/"ode": the
+        // first row would exceed the width, the truncating buffer would render
+        // "   ", and the "c" would be lost. The indentation is dropped instead,
+        // so every visible character survives.
         let available = AvailableSize(width: 3, height: nil)
         #expect(engineRows(Text("    code"), available: available) == ["cod", "e"])
     }

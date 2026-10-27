@@ -5,11 +5,11 @@ import Chai
 /// A test-local allocation consumer: reports `min(available.width ?? 12, 12)`
 /// wide (height 1) and paints `W:<rect.width>` at its allocated rect's origin.
 ///
-/// This is the phase-4 replacement for the A0 `ProposalEchoView`: the render
-/// pass no longer receives a remembered query value, so what a child can observe
-/// is the **rect it was allocated**. Tests use it to pin that containers hand
-/// children their allocated rects (frames: the fixed/passed width; stacks: the
-/// child's own report), not the container's rect.
+/// A test-local consumer that observes its allocated rect: the render pass
+/// receives no remembered query value, so what a child can observe is the
+/// **rect it was allocated**. Tests use it to pin that containers hand children
+/// their allocated rects (frames: the fixed/passed width; stacks: the child's
+/// own report), not the container's rect.
 /// (Duplicated in the ChaiTests target, which cannot see this file.)
 struct RectEchoView: View {
     var body: ViewOutput { ViewOutput("") }

@@ -2,14 +2,12 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - Simple-path contract (phase 4, P1; rebuilt on the wrappers in P4b)
+// MARK: - Simple-path contract
 //
-// The tested guarantee behind the phase-4 positioning decision (docs/history/VIEW-LAYER-MIGRATION-LOG.md,
-// "Phase 4 — positioning"): a complete app can be built **without engine
+// The tested guarantee that a complete app can be built **without engine
 // concepts** — no `_measure`, no `_embed`, no custom `View` conformer.
 //
-// P4b retired the eager `ViewOutput` modifier family, so the contract now has
-// two equally supported shapes, both pinned here:
+// The contract has two equally supported shapes, both pinned here:
 //
 // 1. **Tree path** — `body: some View` composed from `ViewOutput` leaves and
 //    Latte's tree modifiers (`.padded`, `.bordered`, `.frame`, ...).
@@ -17,7 +15,7 @@ import Latte
 //    String helpers (`String.padded`, `String.bordered`, ...), which are
 //    raster helpers and never touch the layout engine.
 //
-// This suite is a phase gate: nothing may regress either simple path.
+// This suite is a standing contract: nothing may regress either simple path.
 
 @Suite("Simple-path contract")
 struct SimplePathContractTests {

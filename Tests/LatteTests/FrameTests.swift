@@ -2,16 +2,15 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - M4 frame() tests
+// MARK: - frame() tests
 //
-// Milestone M4 of the phase-2 layout engine: `FrameView` + the
+// `FrameView` + the
 // `View.frame(width:height:horizontalAlignment:verticalAlignment:)` modifier.
 // The frame is an allocator: fixed dimensions are assigned to the
 // child and owned verbatim; flexible dimensions pass the parent's
 // assignment through, falling back to the child's report when there is none.
 //
-// Expectations were derived by running the code (see the M4 report);
-// alignment offsets pin the exact fraction math —
+// Alignment offsets pin the exact fraction math —
 // `Int(Double(shortage) * fraction)` — including `Int()` truncation on odd
 // shortages, mirroring the stacks' formula.
 //
@@ -196,11 +195,11 @@ struct FramePlacementTests {
 struct FrameOverflowTests {
 
     /// A non-wrapping raster leaf: its `body` is a `ViewOutput`, so its
-    /// measured and rendered size ignores the frame's width query — exactly
-    /// the pre-A1 `Text` behavior. Used to pin the frame's clipping semantics
-    /// independently of A1's query-consuming `Text`, which wraps its
-    /// content to the frame's fixed width and therefore no longer overflows
-    /// horizontally (see `textWrapsAtFrameWidthAndClipsHeight` below).
+    /// measured and rendered size ignores the frame's width query. Used to pin
+    /// the frame's clipping semantics independently of a query-consuming
+    /// `Text`, which wraps its content to the frame's fixed width and therefore
+    /// does not overflow horizontally (see
+    /// `textWrapsAtFrameWidthAndClipsHeight` below).
     private struct Raster: View {
         let content: String
         init(_ content: String) { self.content = content }
@@ -332,7 +331,7 @@ struct FrameDegenerateTests {
     }
 }
 
-// MARK: - Allocation assignment (phase 4)
+// MARK: - Allocation assignment
 
 @Suite("Frame Allocation Assignment")
 struct FrameAllocationAssignmentTests {

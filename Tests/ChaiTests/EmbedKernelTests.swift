@@ -1,16 +1,16 @@
 import Testing
 import Chai
 
-// MARK: - Phase-4 allocation kernel (Chai leaves)
+// MARK: - Allocation kernel (Chai leaves)
 //
-// P1 of the phase-4 plan (docs/history/VIEW-LAYER-MIGRATION-LOG.md): the `_embed(into:at:)` allocation
-// entrance, the `ViewRect` assignment value, and the leaf rules.
+// The `_embed(into:at:)` allocation entrance, the `ViewRect` assignment value,
+// and the leaf rules.
 //
-// Pinned decisions exercised here:
+// Behaviors exercised here:
 // - The rect is an ASSIGNMENT: leaves render at intrinsic size,
-//   anchored top-left in their rect (decision 2 — no leaf stretching).
+//   anchored top-left in their rect (no leaf stretching).
 // - `Text` wraps at the width it was ALLOCATED and applies the compression
-//   floor (decision 4): a wide/CJK character is never squeezed into a narrower
+//   floor: a wide/CJK character is never squeezed into a narrower
 //   rect; the glyph is written whole and the kernel clips it when it does not
 //   fit.
 // - The default `_embed` resolves through `body`, so `body: ViewOutput` models
@@ -96,7 +96,7 @@ struct LeafAllocationTests {
 
     @Test func viewOutputIsNotStretchedToItsRect() {
         // A larger rect neither reflows nor pads: the raster renders at the
-        // origin and the rest of the rect stays blank (decision 2).
+        // origin and the rest of the rect stays blank.
         var buffer = CellBuffer(width: 8, height: 4)
         ViewOutput("ab")._embed(
             into: &buffer,
@@ -136,7 +136,7 @@ struct LeafAllocationTests {
         #expect(embedRows(buffer) == ["a", "", ""])
     }
 
-    // MARK: Compression floor (decision 4)
+    // MARK: Compression floor
 
     @Test func textCompressionFloorKeepsAWideCharacterIntact() {
         // Allocated 1 column, but the narrowest producible form of "你" is 2
@@ -155,7 +155,7 @@ struct LeafAllocationTests {
     }
 
     @Test func textZeroWidthAllocationUsesTheMinimumForm() {
-        // A degenerate (zero-width) assignment is the A3 minimum rule applied
+        // A degenerate (zero-width) assignment applies the same minimum rule
         // to allocation: wrap at the narrowest producible width.
         var buffer = CellBuffer(width: 4, height: 2)
         Text("你好")._embed(
@@ -175,12 +175,12 @@ struct LeafAllocationTests {
     }
 
     @Test func textQueryAndAllocationAgreeOnNarrowMixedContent() {
-        // Regression (PR #22 review): a positive width below the minimum
-        // producible width used to resolve differently in the query (wrap at
-        // the query width) and the allocation (wrap at the floor), so the report's
-        // line count disagreed with the painted rows. One resolution rule now
-        // serves both: "ab你" needs width 2, so at a query/rect of 1 it
-        // reports AND paints the 2-column form.
+        // Regression: a positive width below the minimum producible width must
+        // not resolve differently in the query (wrap at the query width) and
+        // the allocation (wrap at the floor), or the report's line count
+        // disagrees with the painted rows. One resolution rule serves both:
+        // "ab你" needs width 2, so at a query/rect of 1 it reports AND paints
+        // the 2-column form.
         let text = Text("ab你")
         #expect(
             text._measure(in: AvailableSize(width: 1, height: nil)) == ViewSize(width: 2, height: 2)

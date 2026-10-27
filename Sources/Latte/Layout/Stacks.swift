@@ -1,19 +1,16 @@
 import Chai
 
-// MARK: - Flexible leftover distribution (A2, re-roled in phase 4)
+// MARK: - Flexible leftover distribution
 //
-// Phase-3 A2 (docs/history/VIEW-LAYER-MIGRATION-LOG.md): a stack whose main axis has at least one
-// positively-flexible child FILLS a non-`nil` main-axis assignment and splits
-// the leftover between the flexible children proportionally. When no child is
-// flexible this helper returns `nil` and the caller keeps its pre-A2 code path
-// byte-for-byte.
+// A stack whose main axis has at least one positively-flexible child fills a
+// non-`nil` main-axis assignment and splits the leftover between the flexible
+// children proportionally. When no child is flexible this helper returns `nil`
+// and the caller uses its rigid path.
 //
-// Phase 4 (top-down allocation) keeps this math but changes its role: the
-// "assignment" is the stack's assigned rect dimension when allocating
-// (`_embed`) and the query context when reporting (`_measure(in:)`). The
-// shares are container-internal decisions, not a leftover smuggled through
-// negotiation. The formula is byte-equal to A2's: normalized shares, `Int()`
-// truncation, remainder left unallocated at the trailing end.
+// The same math serves measurement (query context) and allocation (assigned
+// rect dimension); the shares are container-internal decisions. The formula
+// uses normalized shares with `Int()` truncation and leaves the remainder
+// unallocated at the trailing end.
 
 /// The stack's main-axis size and its children's final main-axis sizes, after
 /// distributing leftover space to flexible children.
@@ -63,11 +60,11 @@ private func distributedMainAxis(
 
 // MARK: - Shared allocation shape
 //
-// Phase 4 (top-down allocation): a stack computes ONE shape — the occupied
-// size plus every child's allocated size — and both the query kernel
-// (`_measure`, used for reservation and buffer sizing) and the allocation
-// walk (`_embed`) resolve through it. The two can never disagree about sizes;
-// only placement differs (cursor advancement + alignment anchoring).
+// A stack computes ONE shape — the occupied size plus every child's allocated
+// size — and both the query kernel (`_measure`, used for reservation and buffer
+// sizing) and the allocation walk (`_embed`) resolve through it. The two can
+// never disagree about sizes; only placement differs (cursor advancement +
+// alignment anchoring).
 
 /// A stack's occupied size and its children's allocated sizes.
 private struct StackAllocation {
@@ -144,9 +141,9 @@ public struct HStack<Content: View>: View {
 
 // MARK: - VStack engine implementation
 //
-// Phase 4: the stack computes one shape (query + allocation), allocates each
-// child a rect, and embeds it. `_measure` is the pure query kernel
-// (report only — used for buffer sizing and clip reservation). The corpus in
+// The stack computes one shape (query + allocation), allocates each child a
+// rect, and embeds it. `_measure` is the pure query kernel (report only — used
+// for buffer sizing and clip reservation). The corpus in
 // Tests/LatteTests/LayoutParity is the mechanical spec.
 
 extension VStack {
@@ -155,8 +152,8 @@ extension VStack {
     /// Cross axis (width): every child is *queried* at the assigned width
     /// (`(width, nil)`) — a query, never an offer. The reported width becomes
     /// the child's rect width; the occupied width is the maximum report
-    /// (shrink-wrap — phase-4 decision 1), so a `Fill` child naturally claims
-    /// the assigned width via its own report.
+    /// (shrink-wrap), so a `Fill` child naturally claims the assigned width
+    /// via its own report.
     ///
     /// Main axis (height): each report is an allocated row height. A row never
     /// exceeds the stack's remaining allocation — the hard-box contract
@@ -189,7 +186,7 @@ extension VStack {
         allocation(assignedWidth: available.width, assignedHeight: available.height).occupied
     }
 
-    /// Allocate each child a row rect and embed it (phase 4).
+    /// Allocate each child a row rect and embed it.
     ///
     /// Rows advance by ALLOCATED heights; each child is anchored at the
     /// alignment fraction of the horizontal shortage — the same
@@ -236,14 +233,12 @@ extension VStack {
 extension HStack {
     /// The stack's allocation shape under an assigned width/height context.
     ///
-    /// Main axis (width): columns are measured at **ideal** width — the
-    /// allocator rule that replaces the phase-3 "HStack never proposes width"
-    /// artifact (so a wrapping `Text` is inert inside an HStack). Width-flex
-    /// children then absorb the assigned leftover per ``View/_flexibility()``;
-    /// `Fill`-by-type columns absorb whatever remains after the flexible
-    /// shares (phase-4 decision 2: `Fill` claims its allocated rect, and this
-    /// is the container rule that makes a `Fill` under an `HStack`
-    /// expressible, which the phase-3 engine could not measure).
+    /// Main axis (width): columns are measured at **ideal** width, so a
+    /// wrapping `Text` is inert inside an HStack. Width-flex children then
+    /// absorb the assigned leftover per ``View/_flexibility()``; `Fill`-by-type
+    /// columns absorb whatever remains after the flexible shares (`Fill`
+    /// claims its allocated rect, and this container rule makes a `Fill` under
+    /// an `HStack` expressible).
     ///
     /// Cross axis (height): each column reports its own height at the height
     /// context; the occupied height is the maximum report. Columns are
@@ -262,8 +257,7 @@ extension HStack {
         // `Fill` columns claim the remaining assigned width, split evenly.
         // This is a container decision (allocation authority), not a child
         // answer: at an ideal-width query `Fill` reports 0, so without this
-        // rule it could never fill an HStack. The pins it changes are
-        // documented in docs/history/VIEW-LAYER-MIGRATION-LOG.md ("Phase 4 — allocation deltas").
+        // rule it could never fill an HStack.
         if let assignedWidth, children.contains(where: { $0 is Fill }) {
             let unassigned = max(0, assignedWidth - widths.reduce(0, +))
             let fills = children.filter { $0 is Fill }.count
@@ -289,12 +283,12 @@ extension HStack {
         allocation(assignedWidth: available.width, assignedHeight: available.height).occupied
     }
 
-    /// Allocate each child a column rect and embed it (phase 4).
+    /// Allocate each child a column rect and embed it.
     ///
     /// Columns advance by ALLOCATED widths; each child is anchored at the
     /// alignment fraction of the vertical shortage against the occupied
     /// height. An unallocated trailing remainder (proportional-share
-    /// truncation) stays blank, exactly as pinned by the A2 tests.
+    /// truncation) stays blank, as pinned by the tests.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         let shape = allocation(assignedWidth: rect.size.width, assignedHeight: rect.size.height)
         let children = content._childViews()

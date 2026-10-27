@@ -2,11 +2,9 @@ import Chai
 
 // MARK: - ViewOutput raster helpers
 //
-// Phase 4 P4b retired the eager modifier family: `.padded/.margined/.bordered/
-// .beside/.above/.width/.height/.size/.frame` no longer exist on `ViewOutput`.
-// Modifiers stay in the view tree (`View.padded`, `View.bordered`, `View.frame`,
-// ...) and the simple path uses the String/StyledText helpers plus
-// `ViewOutput(...)`.
+// The modifier family lives on `View` (`.padded`, `.bordered`, `.frame`,
+// `.beside`, `.above`, ...), so modifiers stay in the view tree and the simple
+// path uses the String/StyledText helpers plus `ViewOutput(...)`.
 //
 // The two clamping helpers below are deliberately kept: they are *raster*
 // operations on a fully-formed `ViewOutput`, not modifiers. They have no

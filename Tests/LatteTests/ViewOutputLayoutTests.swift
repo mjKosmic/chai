@@ -2,13 +2,12 @@ import Testing
 import Chai
 import Latte
 
-// Phase 4 P4b retired the eager `ViewOutput` modifier family. What remains on
-// `ViewOutput` are the two *raster* clamping helpers — operations on a
-// fully-formed output, with no tree-based equivalent. Layout modifiers now
-// live on `View` and are pinned by `ModifierWrapperTests` (padding/border),
-// `FrameTests` (frame), and `HardBoxTests`/`CellBufferClipTests` (the hard-box
-// kernel); the String-level helpers are pinned by `StringExtensionTests` and
-// `PaddingTests`.
+// What remains on `ViewOutput` are the two *raster* clamping helpers —
+// operations on a fully-formed output, with no tree-based equivalent. Layout
+// modifiers live on `View` and are pinned by `ModifierWrapperTests`
+// (padding/border), `FrameTests` (frame), and
+// `HardBoxTests`/`CellBufferClipTests` (the hard-box kernel); the String-level
+// helpers are pinned by `StringExtensionTests` and `PaddingTests`.
 
 @Suite("ViewOutput raster helpers")
 struct ViewOutputRasterHelperTests {

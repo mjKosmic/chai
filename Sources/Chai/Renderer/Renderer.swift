@@ -33,11 +33,11 @@ actor Renderer {
 
     /// The view tree queued for the next flush.
     ///
-    /// Stored as an existential rather than resolved eagerly: ``flush()``
-    /// lays the tree out through the phase-4 allocation engine
-    /// (``View/_measure(in:)`` as the pure query + ``View/_embed(into:at:)``
-    /// as the single allocation walk) into a ``CellBuffer``. `nil` (nothing
-    /// written yet) renders as an empty view.
+    /// Stored as an existential rather than a resolved raster: ``flush()`` lays
+    /// the tree out through the allocation engine (``View/_measure(in:)`` as
+    /// the pure query + ``View/_embed(into:at:)`` as the single allocation
+    /// walk) into a ``CellBuffer``. `nil` (nothing written yet) renders as an
+    /// empty view.
     private var pendingView: (any View)? = nil
 
     /// The cursor queued for the next flush (set separately from content).
@@ -163,7 +163,7 @@ actor Renderer {
     /// written. Finally the cursor is positioned.
     func flush() {
         // nil pendingView means nothing was written yet — render as an empty
-        // view, matching the pre-M3 `ViewOutput("")` default.
+        // view.
         let view = pendingView ?? ViewOutput("")
         let cursor = pendingCursor
 
@@ -184,7 +184,7 @@ actor Renderer {
 
         // ── Build cell buffer through the allocation engine ────────────────
         //
-        // Phase 4: the query pass below is read-only (buffer height, and the
+        // The query pass below is read-only (buffer height, and the
         // `nil`-vs-terminal height context), then ONE allocation walk renders
         // the tree from the root rect. There is no query value to carry into the
         // render pass: the root's assignment is the rect.
@@ -203,7 +203,7 @@ actor Renderer {
         if measured.height == 0 {
             // Empty content: use a single-row buffer to maintain cursor
             // position tracking. The unrendered 1-row buffer is cell-identical
-            // to the pre-M3 `" "` write because `Cell.empty` is a space cell,
+            // to writing a single space because `Cell.empty` is a space cell,
             // so it won't produce visible output.
             bufferHeight = 1
         } else if altScreenActive {
@@ -222,13 +222,13 @@ actor Renderer {
         var newBuffer = CellBuffer(width: w, height: bufferHeight, wrapping: altScreenActive)
 
         // Inline suffix clamp: when the measured height exceeds the terminal
-        // height, today's `content.suffix(lines: termHeight)` is reproduced by
-        // rendering the tree at a negative row origin — `bufferHeight -
-        // measured.height` — with the full measured size. Early rows fall
-        // above the buffer and are skipped by `CellBuffer.set(col:row:_:)`'s
-        // bounds guards; the bottom `bufferHeight` rows land at buffer rows
-        // 0…, byte-identical to the eager suffix. Alt screen renders from the
-        // top (rows beyond the fixed height are dropped by the same guards).
+        // height, the buffer keeps the content suffix by rendering the tree at
+        // a negative row origin — `bufferHeight - measured.height` — with the
+        // full measured size. Early rows fall above the buffer and are skipped
+        // by `CellBuffer.set(col:row:_:)`'s bounds guards; the bottom
+        // `bufferHeight` rows land at buffer rows 0…. Alt screen renders from
+        // the top (rows beyond the fixed height are dropped by the same
+        // guards).
         let origin: ViewOrigin
         if !altScreenActive && termHeight > 0 && measured.height > bufferHeight {
             origin = ViewOrigin(col: 0, row: bufferHeight - measured.height)

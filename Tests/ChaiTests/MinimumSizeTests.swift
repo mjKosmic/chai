@@ -2,13 +2,12 @@ import Testing
 @testable import Chai
 import Latte
 
-// MARK: - Phase-3 A3: `AvailableSize.zero` and minimum semantics
+// MARK: - `AvailableSize.zero` and minimum semantics
 //
 // SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal),
-// `zero` (minimum), and `infinity` (maximum). A3 adds the second — Chai spells
-// them `.unconstrained` (ideal) and `.zero` (minimum) — and records
-// why the third is deliberately absent (ARCHITECTURE.md, "Why there is no
-// `.infinity`").
+// `zero` (minimum), and `infinity` (maximum). Chai spells them
+// `.unconstrained` (ideal) and `.zero` (minimum) and deliberately omits the
+// third (ARCHITECTURE.md, "Why there is no `.infinity`").
 //
 // `.zero` is a query, not a bound (like every query context): a view reports its
 // minimum and the answer is never clamped. Most views answer their minimum
@@ -25,9 +24,8 @@ import Latte
 // zero, one rule) width query it reports/paints its narrowest producible
 // form, wrapping at the widest single character in the content (1 for
 // ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty
-// content). This replaced A1's "non-positive → unwrapped" behavior — a
-// deliberate spec delta (see the re-pinned tests in `TextWrappingTests` and
-// `LayoutEngineTests`).
+// content). This is the minimum form for every non-positive width query (see
+// the re-pinned tests in `TextWrappingTests` and `LayoutEngineTests`).
 //
 // Every expectation below was derived by running the code — never
 // hand-computed.
@@ -160,8 +158,8 @@ struct TextMinimumSemanticsTests {
     }
 
     @Test func renderWritesTheMinimumForm() {
-        // The render pass writes the SAME minimum form the fit pass measured
-        // (the A0 value-equality contract): four 1-column rows.
+        // The render pass writes the SAME minimum form the fit pass measured:
+        // four 1-column rows.
         #expect(
             zeroEngineRows(Text("abcd"), available: .zero, width: 1, height: 4)
                 == ["a", "b", "c", "d"]

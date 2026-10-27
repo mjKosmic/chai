@@ -1,14 +1,13 @@
 import Testing
 @testable import Chai
 
-// MARK: - Phase-3 A2: flexibility SPI + Spacer / Fill primitives
+// MARK: - Flexibility SPI + Spacer / Fill primitives
 //
-// Milestone A2 of the phase-3 Stage A plan (docs/history/VIEW-LAYER-MIGRATION-LOG.md): the `_flexibility()`
-// SPI plus two minimal new primitives. Leftover *distribution* is a stack
-// behavior and lives in `LatteTests/SpacerAndFillTests.swift`; this suite
-// pins the value type, the default rigidity, and the primitives' rigid
-// measurement/render in isolation. (Stage C unified `FlexibleSpacer` into
-// `Spacer`: `Spacer()` / `Spacer(fraction:)` are the flexible forms.)
+// The `_flexibility()` SPI plus two minimal primitives. Leftover *distribution*
+// is a stack behavior and lives in `LatteTests/SpacerAndFillTests.swift`; this
+// suite pins the value type, the default rigidity, and the primitives' rigid
+// measurement/render in isolation. `Spacer()` / `Spacer(fraction:)` are the
+// flexible forms.
 //
 // Expectations were derived by running the code — never hand-computed.
 
@@ -58,8 +57,7 @@ struct ViewFlexibilityDefaultTests {
     }
 
     @Test func zeroArgSpacerIsFlexible() {
-        // SwiftUI-style unification (docs/history/VIEW-LAYER-MIGRATION-LOG.md, Stage C): `Spacer()` is the
-        // flexible spacer, not a one-line fixed spacer.
+        // `Spacer()` is the flexible spacer, not a one-line fixed spacer.
         #expect(Spacer()._flexibility() == LayoutFlexibility(width: 1, height: 1))
     }
 }

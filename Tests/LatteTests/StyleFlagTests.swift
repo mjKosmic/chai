@@ -188,7 +188,7 @@ struct StyleFlagTests {
         #expect(s.isEmpty)
     }
 
-    // MARK: isEmpty with underline (fixes pre-existing bug)
+    // MARK: isEmpty with underline
 
     @Test func underlineStyleCurlyIsNotEmpty() {
         #expect(!Style().underlineStyle(.curly).isEmpty)

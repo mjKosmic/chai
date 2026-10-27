@@ -75,6 +75,7 @@ the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
 - **No force-unwraps, no `try!`, no `fatalError` in library code.**
 - **Value semantics for state.** Application models are `struct`s. Do not introduce classes into the public API without a strong reason.
 - **Internal types stay internal.** Do not make implementation details `public` unless they are genuinely part of the user-facing API.
+- **Comments describe current behavior.** Do not put phase names, milestone labels, PR numbers, or migration history in source or test comments; keep that evolution in the OpenSpec archive or `docs/history/`.
 - **Tests are required.** Every new feature or bug fix must include tests. Use Swift Testing (`@Test`, `#expect`). All existing tests must continue to pass.
 
 ---
