@@ -35,8 +35,8 @@ public protocol View: Sendable {
     /// ``_measure(in:)`` and ``_embed(into:at:)``, whose defaults resolve
     /// through `body` for ordinary composites. Views that implement the
     /// engine SPI directly (containers, leaves) may omit `body`; it then
-    /// defaults to ``Empty`` (phase 4 removed the eager
-    /// `_resolveToViewOutput()` bridge, so `body` is no longer a render path).
+    /// defaults to ``Empty``, because `body` is not a render path for
+    /// engine-implemented views.
     var body: Body { get }
 
     /// Measure this view's size for the given query context.
@@ -45,11 +45,10 @@ public protocol View: Sendable {
     /// ``ViewOutput`` leaf (or another view with its own engine overrides)
     /// measures correctly without any extra code.
     ///
-    /// **Phase-4 role: a pure query.** The answer is a *report* with no
-    /// authority — containers use it for allocation decisions (and buffer
-    /// sizing / clip reservation) but may overrule it. Allocation happens in
-    /// ``_embed(into:at:)``; the query never binds. See `UPGRADE.md`, "Phase 4
-    /// — Top-down allocation engine".
+    /// **A control query.** The answer is a *report* with no authority —
+    /// containers use it for allocation decisions (and buffer sizing / clip
+    /// reservation) but may overrule it. Allocation happens in
+    /// ``_embed(into:at:)``; the query never binds.
     ///
     /// - Parameter available: The query context a parent is asking about; see
     ///   ``AvailableSize`` for the meaning of `nil` dimensions.
@@ -63,8 +62,7 @@ public protocol View: Sendable {
     /// the painting bound: the kernel clips every write in this subtree to it.
     /// The default resolves through ``body``; leaf views rasterize at the
     /// rect's origin, and containers override this with their allocation
-    /// rules (children report, parents decide — see `UPGRADE.md`, "Phase 4 —
-    /// Top-down allocation engine").
+    /// rules (children report, parents decide).
     ///
     /// - Parameters:
     ///   - buffer: The buffer to draw into.
@@ -116,9 +114,9 @@ extension ViewOutput: View {
     /// Rasterize the content at the assigned rect's origin.
     ///
     /// A `ViewOutput` is a fully-formed raster: it renders at its intrinsic
-    /// size anchored top-left in the rect (leaves do not stretch — the phase-4
-    /// decision). The hard-box contract clips the write to the rect, so the
-    /// raster can never paint outside its allocation.
+    /// size anchored top-left in the rect (leaves do not stretch). The hard-box
+    /// contract clips the write to the rect, so the raster can never paint
+    /// outside its allocation.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         buffer.write(content, at: rect.origin.col, row: rect.origin.row)
     }
@@ -140,7 +138,7 @@ extension View {
     ///
     /// A view whose `body` is a ``ViewOutput`` therefore embeds correctly with
     /// no engine code — the simple path (`body: ViewOutput` + strings) stays
-    /// complete and supported (see UPGRADE.md, "Simple-path contract").
+    /// complete and supported.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
         body._embed(into: &buffer, at: rect)
     }
@@ -189,12 +187,11 @@ extension Text {
     /// The content to measure or paint at a given width context.
     ///
     /// `nil` is ideal (unwrapped). A positive width wraps at
-    /// `max(width, minimumWrapWidth())` — the **compression floor** (phase-4
-    /// decision 4): the query and the allocation use this SAME rule, so a
-    /// report's line count always matches what ``_embed(into:at:)`` paints.
-    /// A zero or negative width is the A3 minimum context: the content wraps
-    /// to its narrowest producible width (``minimumWrapWidth()``). Empty
-    /// content stays empty in every case.
+    /// `max(width, minimumWrapWidth())` — the **compression floor**: the query
+    /// and the allocation use this SAME rule, so a report's line count always
+    /// matches what ``_embed(into:at:)`` paints. A zero or negative width is
+    /// the minimum context: the content wraps to its narrowest producible width
+    /// (``minimumWrapWidth()``). Empty content stays empty in every case.
     private func resolvedContent(width: Int?) -> StyledText {
         guard let width else { return content }
         let minimumWidth = minimumWrapWidth()
@@ -238,8 +235,8 @@ extension Text {
         return ViewSize(width: resolved.maxLineWidth, height: resolved.lineCount())
     }
 
-    /// Render at the allocated width (phase 4): the content wraps at the
-    /// width the container decided, with the compression floor applied (see
+    /// Render at the allocated width: the content wraps at the width the
+    /// container decided, with the compression floor applied (see
     /// ``resolvedContent(width:)``). Content taller than the rect is clipped
     /// to the rect (hard-box contract); the buffer is the final backstop.
     public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {

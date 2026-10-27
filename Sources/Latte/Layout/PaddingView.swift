@@ -1,14 +1,13 @@
 import Chai
 
-// MARK: - PaddingView (Stage C wrapper)
+// MARK: - PaddingView
 //
-// Phase 4 P4a (UPGRADE.md, "Stage C on the new kernel"): modifier wrappers
-// stay in the tree. A padding wrapper is a CONTAINER, not a raster transform:
-// it reports the child's size plus its insets, and its allocation entrance
-// gives the child an inset rect. The assignment bounds the child's query (so
-// wrapping composes with padding), and the child's report — not the assigned
-// rect — decides the painted extent (shrink-wrap; phase-4 decision 1). The
-// root renderer's rect is the terminal width, so a root padding wrapper still
+// Modifier wrappers stay in the tree. A padding wrapper is a CONTAINER, not a
+// raster transform: it reports the child's size plus its insets, and its
+// allocation entrance gives the child an inset rect. The assignment bounds the
+// child's query (so wrapping composes with padding), and the child's report —
+// not the assigned rect — decides the painted extent (shrink-wrap). The root
+// renderer's rect is the terminal width, so a root padding wrapper still
 // shrink-wraps to its content instead of stretching it; `frame()` is the
 // opt-in for filling.
 
@@ -16,9 +15,8 @@ import Chai
 ///
 /// ``View/padded(top:right:bottom:left:)`` places padding *inside* the view's
 /// own bounds: the wrapper occupies the child's size plus the insets, and the
-/// child is embedded at the inset origin. Unlike the retired eager
-/// `ViewOutput` padding transform, the wrapper stays in the view tree, so it
-/// composes with the layout engine:
+/// child is embedded at the inset origin. The wrapper stays in the view tree,
+/// so it composes with the layout engine:
 ///
 /// ```swift
 /// HStack {
@@ -37,8 +35,7 @@ import Chai
 ///   assigned space stays blank to the right and below.
 /// - **Flexibility:** forwarded from the child, so a flexible child inside
 ///   padding still absorbs a stack's leftover space. Dropping this forwarding
-///   would silently make the wrapper rigid — the PR #21 review's
-///   silent-failure pattern.
+///   would silently make the wrapper rigid.
 public struct PaddingView<Content: View>: View {
     /// Lines of padding above the content.
     let top: Int

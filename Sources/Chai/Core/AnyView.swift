@@ -25,9 +25,8 @@
 ///   `AnyView(TupleView(...))` inside an `HStack` still exposes its individual
 ///   children, so they lay out as columns rather than one opaque block.
 /// - ``View/_flexibility()`` — an erased flexible ``Spacer()`` still absorbs a
-///   stack's leftover space. Dropping this forwarding is the silent-failure
-///   case flagged in the PR #21 review: the wrapper would be rigid, the stack
-///   would not fill, and nothing would crash.
+///   stack's leftover space. Dropping this forwarding would silently make the
+///   wrapper rigid, so the stack would not fill and nothing would crash.
 public struct AnyView: View {
     private let base: any View
 

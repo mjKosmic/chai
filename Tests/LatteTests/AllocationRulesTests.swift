@@ -2,12 +2,10 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - Phase-4 allocation rules (containers)
+// MARK: - Allocation rules (containers)
 //
-// The per-conformer allocation rules of P1 (UPGRADE.md, "Phase 4 —
-// Architecture"): stacks, frames and clips decide; children report. These are
-// the spike's five probes turned into assertions (`TOP-DOWN-SPIKE.md` §3) plus
-// the rules that the corpus cannot express.
+// Containers decide; children report. These assertions cover the stack, frame,
+// and clip allocation rules plus the cases the corpus cannot express.
 //
 // `visibleRows` (from `LayoutParity/ParityHarness.swift`) is the parity
 // convention: zero-width cells skipped, wide cells counted once, trailing
@@ -31,7 +29,7 @@ private struct WidthProbe: View {
     }
 }
 
-@Suite("Phase-4 allocation rules")
+@Suite("Allocation rules")
 struct AllocationRulesTests {
 
     private func embed(_ view: some View, width: Int, height: Int) -> [String] {
@@ -43,7 +41,7 @@ struct AllocationRulesTests {
         return visibleRows(buffer)
     }
 
-    // MARK: Stack occupancy (decision 1: shrink-wrap)
+    // MARK: Stack occupancy (shrink-wrap)
 
     @Test func vstackOccupiesMaxChildWidthNotTheAssignedWidth() {
         let tree = VStack(alignment: .right) {
@@ -131,16 +129,15 @@ struct AllocationRulesTests {
         #expect(embed(tree, width: 3, height: 1) == ["W:3"])
     }
 
-    // MARK: Fill (decision 2: a consumer that claims its allocated rect)
+    // MARK: Fill (a consumer that claims its allocated rect)
 
     @Test func leadingFillClaimsTheRemainder() {
         let tree = HStack {
             Fill()
             Text("x")
         }
-        // `Fill` claims columns 0–6; "x" moves to col 7. This is the occupied-
-        // width delta pinned by the corpus (`PHASE-4 DELTA` case) and by
-        // UPGRADE.md ("Phase 4 — allocation deltas").
+        // `Fill` claims columns 0–6; "x" moves to col 7. This is the
+        // occupied-width rule pinned by the corpus.
         #expect(
             tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
@@ -154,9 +151,8 @@ struct AllocationRulesTests {
         }
         #expect(embed(tree, width: 8, height: 1) == ["x"])
         // ...but the trailing `Fill` still grows the stack's OCCUPIED width
-        // (1 → 8), which is visible to parent alignment math. Documented in
-        // UPGRADE.md ("Phase 4 — allocation deltas") and pinned by the corpus
-        // case "PHASE-4 DELTA: trailing Fill grows the stack's occupied width".
+        // (1 → 8), which is visible to parent alignment math. Pinned by the
+        // corpus and the measured-width assertion below.
         #expect(
             tree._measure(in: AvailableSize(width: 8, height: nil)) == ViewSize(width: 8, height: 1)
         )
@@ -202,7 +198,7 @@ struct AllocationRulesTests {
         #expect(embed(tree, width: 10, height: 1) == ["A        B"])
     }
 
-    // MARK: Flex shares (A2 math, container-internal)
+    // MARK: Flex shares (container-internal)
 
     @Test func flexibleSpacersShareTheAssignedLeftover() {
         let tree = HStack {

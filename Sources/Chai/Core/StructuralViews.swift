@@ -2,13 +2,12 @@
 
 /// Embed `children` top-to-bottom into `rect`.
 ///
-/// This is the allocation analogue of the old eager vertical join for
-/// structural views that are rendered directly (as a root view or under a
-/// wrapper) rather than flattened by a container. Each child is queried at
-/// the rect's width and the row advances by its reported height, so empty
-/// children advance nothing (the phase-1 skip-empty semantics). Structural
-/// views inside a container are flattened by ``View/_childViews()`` and never
-/// reach this function.
+/// This is the allocation analogue of the vertical join for structural views
+/// that are rendered directly (as a root view or under a wrapper) rather than
+/// flattened by a container. Each child is queried at the rect's width and the
+/// row advances by its reported height, so empty children advance nothing.
+/// Structural views inside a container are flattened by ``View/_childViews()``
+/// and never reach this function.
 func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffer, at rect: ViewRect) {
     var row = rect.origin.row
     let bottom = rect.origin.row + rect.size.height
@@ -35,8 +34,8 @@ func embedStackedVertically(_ children: [any View], into buffer: inout CellBuffe
 /// them: each child is queried at the available width (height is ideal), the
 /// occupied width is the widest report, and the height is the sum of reports.
 ///
-/// Structural views used the eager `body` join for measurement before P4b;
-/// with the eager path retired, this is their query kernel.
+/// Structural views use this as their query kernel when they are measured
+/// directly rather than flattened by a container.
 func measureStackedVertically(_ children: [any View], available: AvailableSize) -> ViewSize {
     var width = 0
     var height = 0

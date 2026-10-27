@@ -1,4 +1,9 @@
-# TOP-DOWN SPIKE — phase-4 investigation report
+# Phase 4 — Top-Down Allocation Spike
+
+> **Location:** this historical document lives in `docs/history/`. Repository
+> paths mentioned below (`Sources/…`, `Tests/…`) are relative to the repository
+> root; references to `VIEW-LAYER-MIGRATION-LOG.md` are to the sibling file in
+> this directory.
 
 **Status: retired (documented history).** The report below is the design
 evidence of record for phase 4. Its walker and corpus copy
@@ -13,11 +18,12 @@ assertions in `AllocationRulesTests`.
 have since been renamed: `ProposedSize` → `AvailableSize`, `_sizeThatFits` →
 `_measure(in:)`, `.unspecified` → `.unconstrained`.
 
-**Companion:** the spike suite is `TopDownSpikeComparisonTests` in
-`Tests/ChaiTests/Spike/TopDownSpike.swift` (all diagnostic: the corpus table
-is data, not a gate). With the scratch present the tree builds and tests green
-at 1245 tests / 106 suites (baseline 1239/105 + 6 spike tests). Production
-code untouched.
+**Companion (historical):** the spike suite was
+`TopDownSpikeComparisonTests` in `Tests/ChaiTests/Spike/TopDownSpike.swift` (all
+diagnostic: the corpus table was data, not a gate). That directory was deleted
+in P1, so it is no longer in the tree. When the scratch was present it built
+and tested green at 1245 tests / 106 suites (baseline 1239/105 + 6 spike
+tests), with production code untouched.
 
 ---
 
@@ -359,7 +365,7 @@ PR-sized slice at a time.**
   `_render`–to-`_embed` rename touches each wrapper.
 - **4.4 — Docs & deletion.** ARCHITECTURE.md "The Layout Engine" rewrite
   (rect-first), Remove `ViewOutput.frame` ambiguity (already a Stage-C
-  target), and rewrite UPGRADE.md's phase-2 Architectural "fit/render
+  target), and rewrite VIEW-LAYER-MIGRATION-LOG.md's phase-2 Architectural "fit/render
   value-equality" + "proposal semantics" sections to the query/rect story.
 
 Total: roughly 5–6 PR-sized slices, smaller than phase 2 (no builders/tree

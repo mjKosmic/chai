@@ -254,8 +254,7 @@ struct CompositorTests {
     // SGR span persistence — all characters in a styled span must be styled
 
     // A styled span produced by Style.render("Hello") looks like ESC[1mHello ESC[0m.
-    // Previously only 'H' received the SGR prefix because pendingANSI was cleared
-    // after the first character.  All five characters must now carry the bold prefix.
+    // Every character in the span must carry the bold prefix, not just the first.
     @Test func sgrSpanStylesAllCharactersInTheSpan() {
         var comp = Compositor(width: 5, height: 1)
         let boldHello = "\u{1B}[1mHello\u{1B}[0m"

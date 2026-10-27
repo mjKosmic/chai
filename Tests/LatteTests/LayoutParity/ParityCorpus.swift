@@ -4,11 +4,9 @@ import Latte
 // MARK: - Parity corpus
 //
 // A named corpus of view trees, each pinned with the visible rows produced by
-// the phase-4 allocation engine (`embedBuffer` + `visibleRows` in
-// `ParityHarness.swift`). This is the engine spec: after P4b retired the eager
-// `_resolveToViewOutput()` path, there is no second renderer to compare
-// against, and the historical eager-vs-engine divergence list (#1–#10 in
-// UPGRADE.md) is closed. `expectedRows` is the single source of truth.
+// the allocation engine (`embedBuffer` + `visibleRows` in
+// `ParityHarness.swift`). This is the engine spec: there is no second renderer
+// to compare against, and `expectedRows` is the single source of truth.
 //
 // Expected rows were derived by actually running the code — never hand-computed
 // (CJK widths and alignment padding are pinned from observed output).
@@ -299,7 +297,7 @@ extension ParityCase {
             expectedRows: ["a", "b", "", ""]
         ),
 
-        // ── Text wrapping (A1) ──────────────────────────────────────────────
+        // ── Text wrapping ──────────────────────────────────────────────────
 
         ParityCase(
             name: "vstack wide Text line wraps instead of truncating",
@@ -324,8 +322,7 @@ extension ParityCase {
             },
             width: 8,
             // The engine measures the spacer's requested count directly —
-            // exactly 2 blank rows (the retired eager join double-counted the
-            // spacer's newlines; that bug is not preserved).
+            // exactly 2 blank rows; no separator newlines are double-counted.
             expectedRows: ["a", "", "", "b"]
         ),
 
@@ -521,11 +518,11 @@ extension ParityCase {
             view: Text("\n"),
             width: 8,
             // Content with no visible character wraps to empty and measures
-            // 0×0 (A1 blank-line rule).
+            // 0×0 (blank-line rule).
             expectedRows: []
         ),
 
-        // ── HStack Fill rule (phase-4 allocation) ──────────────────────────
+        // ── HStack Fill rule ────────────────────────────────────────────────
 
         ParityCase(
             name: "hstack trailing Fill claims the remaining width",
@@ -567,7 +564,7 @@ extension ParityCase {
             expectedRows: ["x", "       y"]
         ),
 
-        // ── Stage-C wrappers (P4a) ─────────────────────────────────────────
+        // ── View-tree wrappers ──────────────────────────────────────────────
 
         ParityCase(
             name: "padded text shrink-wraps its content",

@@ -1,0 +1,62 @@
+schema: spec-driven
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+context: |
+  Chai is a Swift-native TUI framework (Elm Architecture) in a monorepo with
+  three products: Chai (runtime, renderer, input, layout types/SPI), Latte
+  (layout/styling and the declarative View containers), and Spices (reusable
+  components). The example app is Examples/GroceryList.
+
+  Constraints that apply to every change:
+  - Swift 6.1+ (swift-tools-version 6.1), macOS 14+, no runtime dependencies.
+  - StrictConcurrency is enabled; types crossing concurrency boundaries are Sendable.
+  - Prefer value semantics (structs) for state and internal types for implementation details.
+  - Every behavior change needs tests (Swift Testing: @Test, #expect).
+  - Tests must keep `swift test` green (currently 1278 tests / 110 suites).
+  - Production targets must build warning-free. The only allowed warnings are the
+    13 known SpicesTests Progress.viewAs(_:) deprecations, pending migration to
+    viewAsStyledText(_:). Do not introduce new warnings.
+  - The layout engine contract is "children report; parents decide": measurement is a
+    pure report, the allocated ViewRect is the layout and painting box, and paint may
+    not escape that rect (phase-5 hard-box contract).
+  - ARCHITECTURE.md is the design of record; docs/history/VIEW-LAYER-MIGRATION-LOG.md is the migration log.
+    OpenSpec specs are the behavior contract and take precedence for current behavior.
+  - Code comments describe current behavior and its local rationale only. Do not
+    reference phase names, milestone labels, PR numbers, or migration history in
+    source or test comments; put that evolution in the OpenSpec change archive or
+    the migration log instead.
+
+# Per-artifact rules (optional)
+rules:
+  proposal:
+    - State explicit non-goals and affected products/modules (Chai, Latte, Spices, examples, docs).
+    - Mark any source-breaking change with **BREAKING** and note the pre-alpha policy.
+    - Keep the proposal focused on why and what; leave implementation mechanics to design.md.
+  specs:
+    - Describe observable behavior, not internal type or function names.
+    - Use RFC 2119 keywords (SHALL/MUST/SHOULD/MAY) and give every requirement at least one testable scenario.
+    - "Cover terminal edge cases where relevant: CJK/wide characters, ANSI styling, narrow or degenerate rects, inline vs alt-screen."
+    - Prefer durable capability names; do not create a new capability for a single implementation task.
+  design:
+    - Reference ARCHITECTURE.md and docs/history/VIEW-LAYER-MIGRATION-LOG.md instead of restating them.
+    - Record layout decisions in terms of measure/embed allocation semantics and the hard-box invariant.
+    - Call out concurrency, Sendable boundaries, and any public API impact.
+  tasks:
+    - Give every task a verification step (a specific test suite, `swift test`, or an observable result).
+    - Land tests and documentation with the work they belong to, not in a final catch-up group.
+    - Include DocC/ARCHITECTURE/UPGRADE updates whenever public behavior or design changes.
+
+# Per-operation guidance (optional)
+operations:
+  apply:
+    guidance:
+      - Run `swift build && swift test` before marking implementation tasks complete.
+      - Keep the working tree free of new warnings; do not add deprecation warnings.
+      - Update the relevant OpenSpec change artifacts if implementation reveals a spec or design change.
+  archive:
+    guidance:
+      - Confirm the delta specs merged into openspec/specs and no active change is left behind.
+      - Update ARCHITECTURE.md and docs/history/VIEW-LAYER-MIGRATION-LOG.md when the archived behavior or design record changed.

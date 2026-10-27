@@ -185,9 +185,7 @@ public struct CellBuffer: Sendable, Equatable {
                 if char == "\n" {
                     // Reset to the column this write began at, so multi-line
                     // content rendered at a column offset keeps every line
-                    // aligned. (Previously reset to 0, which silently
-                    // misaligned lines after the first for any non-zero
-                    // `startCol` caller.)
+                    // aligned.
                     col = startCol
                     row += 1
                     if row >= height { return }

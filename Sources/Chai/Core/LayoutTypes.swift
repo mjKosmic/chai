@@ -139,11 +139,11 @@ public struct LayoutFlexibility: Sendable, Equatable {
 
 /// A rect within a ``CellBuffer``: an origin plus a size.
 ///
-/// This is the phase-4 **assignment** — the value a container hands a child
-/// in ``View/_embed(into:at:)``. Under the hard-box contract it is both the
+/// This is the **assignment** — the value a container hands a child in
+/// ``View/_embed(into:at:)``. Under the hard-box contract it is both the
 /// layout box and the painting bound: the kernel clips every write in the
 /// child's subtree to it, and containers clamp child rects to their own
-/// allocation. See `UPGRADE.md`, "Phase 5 — Hard-box containment".
+/// allocation.
 public struct ViewRect: Sendable, Equatable {
 
     /// The top-left corner of the rect.

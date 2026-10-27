@@ -5,11 +5,10 @@ import Chai
 /// A view that assigns a fixed (or flexible) frame size to its content and
 /// aligns the content within that rect.
 ///
-/// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` is the
-/// phase-2 acceptance feature, re-expressed in phase 4 as an **allocator**
-/// (UPGRADE.md, "Phase 4"): a fixed dimension is an allocation decision the
-/// frame owns and hands down; a flexible dimension passes the parent's
-/// assignment through.
+/// ``frame(width:height:horizontalAlignment:verticalAlignment:)`` is an
+/// **allocator**: a fixed dimension is an allocation decision the frame owns
+/// and hands down; a flexible dimension passes the parent's assignment
+/// through.
 ///
 /// ## Frame is an allocator
 ///
@@ -78,11 +77,11 @@ public struct FrameView<Content: View>: View {
 
 // MARK: - FrameView engine implementation
 //
-// Phase 4: fixed dimensions are ALLOCATION data — the frame owns them and
-// allocates the child box verbatim; flexible dimensions pass the assigned rect
-// through. `_measure` remains the pure query (fixed dims verbatim;
-// flexible axes fill a non-`nil` assignment, else the child's ideal). Placement is
-// the alignment fraction of the shortage on each axis
+// Fixed dimensions are ALLOCATION data — the frame owns them and allocates the
+// child box verbatim; flexible dimensions pass the assigned rect through.
+// `_measure` remains the pure query (fixed dims verbatim; flexible axes fill a
+// non-`nil` assignment, else the child's ideal). Placement is the alignment
+// fraction of the shortage on each axis
 // (`Int(Double(shortage) * fraction)`). Hard-box contract: the box is clamped
 // to the allocation and the child is clipped to the box.
 
@@ -102,9 +101,8 @@ extension FrameView {
     /// Allocate the content inside the frame's rect.
     ///
     /// Fixed dimensions are **allocation data**: the frame owns them verbatim
-    /// and allocates the child the same fixed box, so the phase-3
-    /// `width ?? proposal` reconstruction is gone.
-    /// Flexible dimensions pass the parent's assignment through.
+    /// and allocates the child the same fixed box. Flexible dimensions pass the
+    /// parent's assignment through.
     ///
     /// The child is measured with the frame's visible box as its query
     /// context — a fixed height reaches a height-flexible child — then

@@ -1,12 +1,12 @@
 import Chai
 
-// MARK: - BorderView (Stage C wrapper)
+// MARK: - BorderView
 //
-// Phase 4 P4a (UPGRADE.md, "Stage C on the new kernel"): the border is a rect
-// inset in the view tree. The wrapper reserves one cell on every side, reports
-// the child's size plus the frame, draws the box at its allocated origin, and
-// embeds the child inside. Like padding it shrink-wraps to its content; the
-// assignment bounds the child's query so wrapping composes.
+// The border is a rect inset in the view tree. The wrapper reserves one cell
+// on every side, reports the child's size plus the frame, draws the box at its
+// allocated origin, and embeds the child inside. Like padding it shrink-wraps
+// to its content; the assignment bounds the child's query so wrapping
+// composes.
 
 /// A view that draws a border around its content.
 ///

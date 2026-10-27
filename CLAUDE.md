@@ -18,8 +18,26 @@ swift test
 swift build && swift test
 ```
 
-The only Swift toolchain requirement is **Swift 5.9+** (macOS 14+).
-There are no external dependencies — do not add any.
+The package uses `swift-tools-version: 6.1`, so the minimum toolchain is **Swift 6.1+** (macOS 14+).
+There are no runtime dependencies — do not add any. (`swift-docc-plugin` is declared for build-time DocC generation only.)
+
+---
+
+## Spec-Driven Development (OpenSpec)
+
+This repository uses [OpenSpec](https://openspec.dev). Behavior specs live in
+`openspec/specs/<capability>/spec.md` and are the source of truth for current
+behavior. Proposed work lives in `openspec/changes/<change>/` (proposal, delta
+specs, design, tasks); `openspec/changes/archive/` preserves completed changes.
+
+- Before implementing a feature or behavior change, use the OpenSpec workflow
+  (`/opsx-propose` in OpenCode, `/opsx:propose` in Claude Code) or create a
+  change with `openspec new change <name>`.
+- Implement from `tasks.md` and check tasks off as they land.
+- Archive completed changes so their delta specs merge into `openspec/specs/`.
+- `ARCHITECTURE.md` remains the design of record and `docs/history/VIEW-LAYER-MIGRATION-LOG.md` the migration
+  log. Keep implementation detail out of specs; specs describe behavior.
+- Validate with `npx -y @fission-ai/openspec@latest validate --all --strict`.
 
 ---
 
@@ -27,18 +45,20 @@ There are no external dependencies — do not add any.
 
 ```
 Sources/Chai/
-  Core/        Model.swift  Message.swift  Command.swift  Program.swift
+  Core/        Model.swift  Message.swift  Command.swift  Program.swift  Program+Options.swift
                View.swift  AnyView.swift  ViewBuilder.swift  StructuralViews.swift  ViewOutput.swift
-               LayoutTypes.swift  Cursor.swift  Logger.swift
+               LayoutTypes.swift  Cursor.swift  Logger.swift  MessageChannel.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
-  Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift
-Sources/Latte/    Layout, styling, borders, composition
+  Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift  Wrapping.swift
+Sources/Latte/    Layout, styling (Style/), borders, composition, static renderers, extensions
                   (Layout/Stacks.swift  Layout/Frame.swift  Layout/Alignment.swift
                    Extensions/ViewOutput+Layout.swift  ...)
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
 Tests/ChaiTests/  LatteTests/  SpicesTests/
   LatteTests/LayoutParity/   corpus + engine spec suites (the parity discipline)
-Examples/GroceryList/Sources/main.swift   the phase-2 acceptance example (centers via .frame(...))
+Examples/GroceryList/Sources/main.swift   the acceptance example (centers via .frame(...))
+openspec/specs/    behavior specs (source of truth, by capability)
+openspec/changes/ active proposals + archive/ for completed changes
 ```
 
 The layout engine lives across the seam: value types and the `View` SPI
@@ -51,10 +71,11 @@ the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
 ## Coding Rules
 
 - **Zero external dependencies.** Only Swift stdlib, Foundation, and POSIX APIs.
-- **`StrictConcurrency` is enabled.** Every type that crosses a concurrency boundary must be `Sendable`. The build must produce zero warnings.
+- **`StrictConcurrency` is enabled.** Every type that crosses a concurrency boundary must be `Sendable`. Production targets must build with zero warnings; the only allowed test-target exception is the known `Progress.viewAs(_:)` deprecation in `SpicesTests` (13 warnings, pending migration to `viewAsStyledText(_:)`).
 - **No force-unwraps, no `try!`, no `fatalError` in library code.**
 - **Value semantics for state.** Application models are `struct`s. Do not introduce classes into the public API without a strong reason.
 - **Internal types stay internal.** Do not make implementation details `public` unless they are genuinely part of the user-facing API.
+- **Comments describe current behavior.** Do not put phase names, milestone labels, PR numbers, or migration history in source or test comments; keep that evolution in the OpenSpec archive or `docs/history/`.
 - **Tests are required.** Every new feature or bug fix must include tests. Use Swift Testing (`@Test`, `#expect`). All existing tests must continue to pass.
 
 ---
@@ -65,7 +86,7 @@ the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
 2. **New command** — add a case to the `Command` enum in `Command.swift` and handle it in `ProgramRunner.execute(_:)` in `Program.swift`.
 3. **New ANSI sequence** — add a constant or factory function to the `ANSI` enum in `ANSICodes.swift`.
 4. **New key** — add a case to `KeyType` in `Message.swift`, then add the escape sequence mapping to `InputParser.csiTable` or `InputParser.ss3Table`.
-5. **New `ProgramOption`** — add a case to `ProgramOption` in `Program.swift` and handle it in `ProgramRunner.run()`.
+5. **New `Program.Option`** — add a case to the `Option` enum in `Program+Options.swift`, then handle it in `ProgramRunner.run()` (startup behaviour) or `ProgramRunner.init` (construction-time configuration such as FPS/logging).
 
 ---
 
@@ -91,7 +112,7 @@ Do not attempt direct tuple indexing — it does not compile.
 `Renderer` serialises its state through Swift's actor model. Calling renderer methods from `ProgramRunner` (which is not actor-isolated) requires `await`. Do not add locks or `nonisolated` workarounds.
 
 ### `TerminalOutput` is the testability seam
-`Renderer` depends on the `TerminalOutput` protocol, not `Terminal` directly. Tests inject a `MockTerminalOutput` that captures output. When writing renderer tests, use this mock — never instantiate a real `Terminal`.
+`Renderer` depends on the `TerminalOutput` protocol, not `Terminal` directly. Tests inject the test-local `MockTerminal` that captures output. When writing renderer tests, use this mock — never instantiate a real `Terminal`.
 
 ### `canHaveMoreData` controls incomplete-sequence handling
 `InputParser.parse(buffer:canHaveMoreData:)` takes a flag that is `true` when the read filled the entire buffer (more bytes may be waiting). When `true`, the parser holds back incomplete escape sequences rather than emitting `.unknown`. Always pass this flag correctly; getting it wrong causes spurious `.unknown` keys or dropped sequences.
@@ -110,4 +131,4 @@ Do not attempt direct tuple indexing — it does not compile.
 1. **Layout operates on child *views*, never on resolved outputs.** Containers must enumerate children via `_childViews()` and call `_measure(in:)` (query) / `_embed` (allocation) on the *views*. The first engine attempt resolved children to `ViewOutput` before measurement — that flattens the tree, bypasses every child's layout overrides, and makes assignment meaningless; it was reverted. Do not reintroduce output-based layout.
 2. **Allocation is the contract — and the box (phase 5).** The rect passed to a child's `_embed(into:at:)` **is** the parent's decision and its painting bound. Consequences: (a) `_measure(in:)` is a **pure report** — never treat an answer as binding; a container may overrule it (Fill-by-type, the Text floor); (b) containers must allocate child rects from their own rules and query context, clamped to their own rect, never by re-measuring with a remembered query value (there is none); (c) containers must embed children via `buffer.embed(child, at: rect)`, never `child._embed(into:&buffer,...)` directly — the helper installs the kernel clip that guarantees no paint escapes the rect; (d) `_embed` must not depend on `body` for containers. The test-local `RectEchoView` pins that children observe their *allocated* rect; `HardBoxTests` pins containment. Do not reintroduce query bookkeeping or unclipped child embeds.
 3. **The corpus is the engine spec; allocation is the contract.** The eager `_resolveToViewOutput()` path was deleted in P4b, so there is no second renderer: `ParityCorpus` pins one `expectedRows` per case, and every engine change must keep the corpus green — no case is ever skipped. The rect handed to `_embed(into:at:)` is the parent's decision; `_measure(in:)` is a pure report, never binding.
-4. **Test-target warnings count against the zero-warning rule.** `swift build` alone does not compile tests. The gate is `swift test` (or `swift build --build-tests`) and zero warnings includes test targets.
+4. **Test-target warnings count against the zero-warning rule.** `swift build` alone does not compile tests. The gate is `swift test` (or `swift build --build-tests`) and zero warnings includes test targets. The current allowed exception is the 13 known `Progress.viewAs(_:)` deprecations in `SpicesTests`; do not add new ones.

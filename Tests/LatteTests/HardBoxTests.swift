@@ -6,8 +6,7 @@ import Latte
 //
 // A view's allocated rect is its painting bound: containers clamp child rects
 // to their own allocation, and the kernel clips every `_embed` to its rect.
-// Unlike the phase-4 "overflow is visual" model, nothing a child paints can
-// land outside the space its parent gave it.
+// Nothing a child paints can land outside the space its parent gave it.
 
 @Suite("Hard-box containment")
 struct HardBoxTests {

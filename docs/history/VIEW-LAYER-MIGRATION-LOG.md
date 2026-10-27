@@ -1,4 +1,13 @@
-# Upgrade Plan: Declarative View Builders
+# View Layer Migration Log
+
+**Scope:** the declarative view tree (phase 1) and the layout engine (phases
+2–5), plus the SPI rename and the breaking changes those phases introduced.
+
+> **Location:** this historical document lives in `docs/history/`. Repository
+> paths mentioned below (`ARCHITECTURE.md`, `Sources/…`, `Tests/…`) are
+> relative to the repository root; references to
+> `PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` are to the sibling file in this
+> directory.
 
 This document tracks the migration from imperative view composition
 (`view() -> ViewOutput` with fluent chaining) to a SwiftUI-inspired
@@ -14,7 +23,7 @@ renderer flip/clean break), P4a (Stage-C wrapper family), P4b (eager
 retirement, corpus collapse, `Spacer` unification), PB (`AnyView`) and PD
 (docs/rules). **Phase 5 (hard-box containment) has landed**: the allocated
 rect is now the painting bound, and `.clipped()` is gone. A design spike
-validated the phase-4 direction (`TOP-DOWN-SPIKE.md` — walker == engine, 38/38
+validated the phase-4 direction (`PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` — walker == engine, 38/38
 corpus cases).
 
 ---
@@ -54,7 +63,7 @@ var body: some View {
 
 | Concern      | Old location            | New location                          |
 |--------------|-------------------------|---------------------------------------|
-| Alt screen   | `ViewOutput.altScreen`  | `ProgramOption.withAltScreen`         |
+| Alt screen   | `ViewOutput.altScreen`  | `Program.Option.withAltScreen`         |
 | Window title | `ViewOutput.windowTitle`| `Command.setWindowTitle(_:)`           |
 | Cursor       | `ViewOutput.cursor`     | `Model.cursor` (default `nil`)        |
 | Content      | `ViewOutput.content`    | `ViewOutput.content` (unchanged)      |
@@ -79,18 +88,22 @@ renderer-agnostic abstraction for alternative renderers.
   on the `View` protocol lets `TupleView`/`ForEachView` expose one view per
   child, so a `for` loop inside an `HStack` lays out horizontally.
 - Primitives: `Text`, `Spacer`, `Empty`.
-- `Renderer.write(_:)` accepts any `View` and resolves it.
+- `Renderer.write(_:)` accepts any `View`. (At phase-1 close it resolved the
+  tree eagerly; since phase 4 it lays the tree out through the allocation
+  engine.)
 
-Rendering currently resolves the tree eagerly via
-`View._resolveToViewOutput()` (recursive `body` calls to a `ViewOutput`
-leaf). This bridge is the seam for the layout engine below.
+**Historical phase-1 state:** at this point rendering resolved the tree eagerly
+via `View._resolveToViewOutput()` (recursive `body` calls to a `ViewOutput`
+leaf). That bridge was the seam for the layout engine below and was deleted in
+phase-4 P4b.
 
-### Not yet done — modifiers
+### Phase-1 status — modifiers (superseded)
 
-`.bordered()`, `.padded()`, `.beside()`, `.above()` etc.
-(`Latte/Extensions/ViewOutput+Layout.swift`) still return `ViewOutput` and
-resolve eagerly. They work, but they collapse the tree instead of wrapping it.
-A `.frame()` modifier does not exist yet.
+At phase-1 close, `.bordered()`, `.padded()`, `.beside()`, `.above()` etc.
+(`Latte/Extensions/ViewOutput+Layout.swift`) still returned `ViewOutput` and
+resolved eagerly, and no `.frame()` modifier existed. All of that is now
+historical: the tree-based wrappers (`View.padded`, `View.margined`,
+`View.bordered`, `View.frame`, `.beside`/`.above`) landed in phase 4 (P4a/P4b).
 
 ---
 
@@ -480,7 +493,7 @@ re-scoped onto this phase's kernel. **All milestones have landed: P0 (plan),
 P1/P2 (kernel + side-by-side), P3 (renderer flip, clean break), P4a (Stage-C
 wrapper family), P4b (eager retirement, corpus collapse, `Spacer`
 unification), PB (`AnyView`) and PD (docs/rules).** Evidence of record:
-`TOP-DOWN-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
+`PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` (a top-down allocation walker over the phase-3 SPI
 reproduced the live engine **bug-for-bug, 38/38 corpus cases**, all five
 semantic probes byte-identical — the prediction this plan was built on). The
 spike suite was retired in P1 when its rules graduated into production
@@ -678,7 +691,7 @@ transparent to the engine: it forwards **all four** SPI methods.
 | P4a | **Stage-C wrapper family** — `PaddingView` (`.padded`/`.margined`), `BorderView` (`.bordered`), `.beside`/`.above` as stack sugar; flexibility forwarding; wrapper tests | wrapper contract pinned; no output/corpus change (additive) — ✅ landed |
 | P4b | **Eager retirement on the wrappers** — delete the eager path (`_resolveToViewOutput`, the `ViewOutput` eager modifiers, eager string wrapper, legacy container `body`s, `ViewOutput.frame`); rebuild the simple path on the P4a wrappers; divergence collapse #4–#10; `Spacer` naming unification | closes the eager-vs-engine comparison; single engine corpus spec; `Spacer` semantics preserved — ✅ landed |
 | PB | **Stage B (`AnyView`) on the new kernel** — forwards all four SPI methods (`_measure(in:)`, `_embed`, `_childViews`, `_flexibility`); heterogeneous `buildExpression`/`buildArray` | forwarding tests including `_flexibility` (the PR #21 silent-failure flag) — ✅ landed |
-| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; UPGRADE.md status flip | review-ready — ✅ landed |
+| PD | **Docs & rules** — ARCHITECTURE.md rect-first ("The Layout Engine"; the three proposal-semantics sections → allocation semantics; record the phase-4 no-clip semantics, superseded by phase 5's hard box); AGENTS.md pitfall #2 → the allocation contract; this log's status flip | review-ready — ✅ landed |
 
 Ordering: P1 → P2 → P3 were strictly sequential (P2's coexistence was
 transition-only; P3 deleted the old SPI — decision 5). **P4a → P4b**: the
@@ -726,14 +739,16 @@ entry points for a cold start.
   `frame()` sections now describe the post-P4b state.
 - AGENTS.md and CLAUDE.md pitfall #2 states the corpus/allocation contract in
   lockstep.
-- UPGRADE.md's phase-4 status is flipped to landed (this section).
+- This log's phase-4 status is flipped to landed (this section).
 
-**Final baseline:** `swift build --build-tests` zero warnings (known
-SpicesTests `viewAs` deprecations only); `swift test` **1277 tests / 109
-suites**. Gates: zero warnings includes test targets; the corpus is the single
-engine spec (`expectedRows`) and no case is skipped. (The count drops from
-P4a's 1305/110 because the eager-parity suites and eager-modifier tests
-retired with the eager path; no engine coverage was removed.)
+**Final baseline:** `swift build --build-tests` builds the production targets with
+zero warnings and reports the known SpicesTests `viewAs` deprecations (13
+`#DeprecatedDeclaration` warnings in the test target only); `swift test`
+**1277 tests / 109 suites**. Gates: zero warnings includes test targets; the
+corpus is the single engine spec (`expectedRows`) and no case is skipped. (The
+count drops from P4a's 1305/110 because the eager-parity suites and
+eager-modifier tests retired with the eager path; no engine coverage was
+removed.)
 
 ### Allocation deltas (P1 findings, on record)
 
@@ -856,8 +871,9 @@ painter order. The hard-box contract replaces that with one invariant:
   candidate stays deferred), but its **paint** is contained: a wide column is
   clamped to the remaining allocation and wraps there.
 
-**Baseline at phase 5 close:** `swift build --build-tests` zero warnings;
-`swift test` **1266 tests / 109 suites**.
+**Baseline at phase 5 close:** `swift build --build-tests` builds the production
+targets warning-free (the pre-existing SpicesTests `viewAs` deprecations
+remained in the test target); `swift test` **1266 tests / 109 suites**.
 
 ---
 
@@ -883,8 +899,10 @@ Historical sections above (phases 2–3) keep the old names: they describe the
 API as it was. No typealiases or deprecated shims were left behind (pre-alpha
 clean-break policy).
 
-**Baseline:** `swift build --build-tests` zero warnings; `swift test`
-**1278 tests / 110 suites** (renames only; no expectation changed).
+**Baseline:** `swift build --build-tests` builds the production targets with
+zero warnings and reports the 13 known SpicesTests `viewAs` deprecations in the
+test target; `swift test` **1278 tests / 110 suites** (renames only; no
+expectation changed).
 
 ---
 
@@ -898,7 +916,7 @@ clean-break policy).
   explicitly.
 - `ViewOutput` no longer carries `altScreen` / `windowTitle` / `cursor` — its
   initializer lost those parameters. Set them via
-  `ProgramOption.withAltScreen`, `Command.setWindowTitle(_:)`, and
+  `Program.Option.withAltScreen`, `Command.setWindowTitle(_:)`, and
   `Model.cursor`.
 - String literals and interpolations work as `@ViewBuilder` expressions
   (`buildExpression(_:)` accepts `ViewOutput`, which is

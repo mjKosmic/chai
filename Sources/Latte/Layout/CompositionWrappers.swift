@@ -1,12 +1,10 @@
 import Chai
 
-// MARK: - View.beside / View.above (Stage C composition)
+// MARK: - View.beside / View.above (composition sugar)
 //
-// Phase 4 P4a (UPGRADE.md, "Stage C on the new kernel"): the eager
-// `ViewOutput.beside(_:align:)` / `.above(_:align:)` transforms become
-// container sugar. Composition is a container rule — `beside` is an
-// `HStack`, `above` is a `VStack` — so the two views stay in the tree and
-// the stack allocates their rects.
+// Composition is a container rule: `beside` is an `HStack`, `above` is a
+// `VStack`. The two views stay in the tree and the stack allocates their
+// rects.
 
 extension View {
     /// Place another view to the right of this one.

@@ -2,12 +2,12 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - Phase 4, PB: AnyView on the allocation kernel
+// MARK: - AnyView on the allocation kernel
 //
 // `AnyView` is a transparent eraser: it forwards all four engine SPI methods.
 // The two subtle forwardings are `_childViews()` (structural transparency) and
 // `_flexibility()` (leftover distribution) — losing either produces silently
-// wrong layout with no crash (the PR #21 review's flag).
+// wrong layout with no crash.
 
 @Suite("AnyView")
 struct AnyViewTests {

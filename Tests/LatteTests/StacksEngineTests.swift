@@ -2,12 +2,10 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - M2 container engine tests
+// MARK: - Container engine tests
 //
-// Milestone M2 of the phase-2 layout engine, re-roled in phase 4: `VStack`/
-// `HStack` `_measure` (pure query) and `_embed` (allocation walk).
-// Expectations were derived by running the code (see the M2 report); alignment
-// offsets pin the exact fraction
+// `VStack`/`HStack` `_measure` (pure query) and `_embed` (allocation walk).
+// Alignment offsets pin the exact fraction
 // math — `Int(Double(shortage) * fraction)` — including `Int()` truncation on
 // odd shortages, mirroring `aligned(toWidth:_:)` and `extendLines`.
 //
@@ -78,13 +76,11 @@ struct StacksEngineMeasurementTests {
     }
 
     @Test func hstackColumnsMeasureAtIdealWidthSoTextCannotWrapInsideIt() {
-        // Documented HStack column model (PR #21 review finding, now an
-        // allocator rule): HStack measures columns at IDEAL width — its query
-        // context is `(nil, height)`, and the allocation walk gives each column
-        // its ideal-width rect — so a wrapping `Text` child is inert inside an
-        // HStack; over-wide content overflows and is truncated at the buffer.
-        // Pinned as the current contract; "allocate remaining width to HStack
-        // children" is a Stage C candidate (UPGRADE.md).
+        // Documented HStack column model: HStack measures columns at IDEAL
+        // width — its query context is `(nil, height)`, and the allocation walk
+        // gives each column its ideal-width rect — so a wrapping `Text` child
+        // is inert inside an HStack; over-wide content overflows and is
+        // truncated at the buffer.
         let stack = HStack {
             Text("abcdefghij")
         }
@@ -200,8 +196,8 @@ struct StacksEngineAlignmentTests {
     }
 
     @Test func vstackRightPlacesChildAtShortageOffset() {
-        // Shortage 1, fraction 1.0 → offset 1. Single-line children so the
-        // block alignment matches the eager per-line alignment here.
+        // Shortage 1, fraction 1.0 → offset 1. Single-line children keep the
+        // block alignment unambiguous here.
         var buffer = CellBuffer(width: 3, height: 2)
         let stack = VStack(alignment: .right) {
             Text("ab")
@@ -457,7 +453,7 @@ struct StacksEngineRenderTests {
     }
 }
 
-// MARK: - Allocation assignment (phase 4)
+// MARK: - Allocation assignment
 
 @Suite("Stacks Engine Allocation Assignment")
 struct StacksEngineAllocationAssignmentTests {

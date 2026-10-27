@@ -1,9 +1,20 @@
-# Handoff — Phase 4: Top-Down Allocation Engine (pending kickoff)
+# Design
+
+> **Archived design record.** This document was the phase-4 kickoff handoff.
+> It was moved here on 2026-10-27, after the phase landed, to preserve the design
+> evidence of record. Phase 5 later strengthened the allocated rect into a hard
+> painting box; the current behavior contract lives in
+> `openspec/specs/layout-engine/spec.md` and the design of record remains
+> `ARCHITECTURE.md`.
+
+---
+
+# Handoff — Phase 4: Top-Down Allocation Engine (historical kickoff)
 
 > **Status (later): this is the phase-4 *kickoff* handoff and is historical.**
 > P0–P3 have since landed on `fixing` (PR #22). The plan of record, current
 > status, allocation deltas, and the remaining milestones (P4/PB/PD) are in
-> `UPGRADE.md` → "Phase 4 — Top-down allocation engine"; the pickup notes for
+> `docs/history/VIEW-LAYER-MIGRATION-LOG.md` → "Phase 4 — Top-down allocation engine"; the pickup notes for
 > those milestones are in its "Pickup notes for the remaining milestones"
 > subsection. The five owner decisions below were settled at P0.
 >
@@ -13,7 +24,7 @@
 
 **Date:** Oct 2026 · **State at kickoff:** phase 3 Stage A merged (PR #21, `f8a15a7`); a design
 spike validated the direction; the five owner decisions were pending. They were
-settled at P0 (see `UPGRADE.md`), and P1–P3 are now landed.
+settled at P0 (see `docs/history/VIEW-LAYER-MIGRATION-LOG.md`), and P1–P3 are now landed.
 
 ---
 
@@ -62,7 +73,7 @@ decisions.
 
 ## The spike (evidence of record)
 
-Artifacts (committed alongside this doc): `TOP-DOWN-SPIKE.md` (full report)
+Artifacts (committed alongside this doc): `docs/history/PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md` (full report)
 and `Tests/ChaiTests/Spike/` (a ~700-line top-down allocation walker built
 entirely over the **current public SPI** — `_childViews()` enumeration,
 `_sizeThatFits` used only as an intrinsic query, `_render` as rasterizer,
@@ -134,7 +145,7 @@ the parity discipline as the oracle, exactly what the corpus was built for.
 
 1. **P0 — plan milestone**: settle the five decisions above (plus the
    positioning guardrails: simple-path contract, feature freeze), write the
-   phase-4 section into `UPGRADE.md`, commit. Same rigor as `29b6383` (the
+   phase-4 section into `docs/history/VIEW-LAYER-MIGRATION-LOG.md`, commit. Same rigor as `29b6383` (the
    phase-3 plan commit).
 2. **P1 — SPI break**: the allocation kernel (`_embed` + dispatch hook +
    intrinsic-query `_sizeThatFits`), walker graduating out of
@@ -146,7 +157,7 @@ the parity discipline as the oracle, exactly what the corpus was built for.
    allocation walk, `flush()` unchanged below the buffer.
 5. **P4 — Stage C on the new kernel**: modifier wrappers, eager-path
    retirement, `Spacer` naming unification, the HStack-remaining-width
-   candidate (all seeds already in UPGRADE.md "Deferred to phase 3 /
+   candidate (all seeds already in docs/history/VIEW-LAYER-MIGRATION-LOG.md "Deferred to phase 3 /
    Stage C"). **Do not build Stage C on the old SPI** — that was the trap
    this spike was started in time to avoid.
 6. **Stage B (`AnyView`) re-scopes** on the new kernel: it must forward all
@@ -161,7 +172,7 @@ Estimated smaller than phase 2: the corpus evidence predicts pins hold.
 ## Standing rules (unchanged, enforced by tests)
 
 - **Parity discipline**: corpus + `visibleRows` + the closed 10-entry
-  divergence list; new divergences must be added to UPGRADE.md with
+  divergence list; new divergences must be added to docs/history/VIEW-LAYER-MIGRATION-LOG.md with
   `isKnownDivergent` + `expectedRows` + `expectedEngineRows`; no corpus case
   is skipped.
 - **Zero-warning gate includes test targets** — `swift build` alone does not
@@ -170,7 +181,7 @@ Estimated smaller than phase 2: the corpus evidence predicts pins hold.
 - **AGENTS.md engine pitfalls** are live rules — pitfall #2 (the value-equality
   contract) **dissolves with phase 4** and must be rewritten for the
   allocation contract.
-- ARCHITECTURE.md is the design of record; UPGRADE.md is the migration log and
+- ARCHITECTURE.md is the design of record; docs/history/VIEW-LAYER-MIGRATION-LOG.md is the migration log and
   plan; the three proposal-semantics sections ("An offer, not a box" etc.)
   will need rewriting for allocation semantics — schedule in the phase-4
   docs slice, and preserve the parts that stay true (the buffer is still the

@@ -2,6 +2,8 @@
 
 Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](https://github.com/charmbracelet/bubbletea). It implements the **Elm Architecture** (Model-Update-View) using modern Swift concurrency — `async`/`await`, actors, `AsyncStream`, and structured `Task`s — with zero runtime dependencies outside the Swift standard library.
 
+The **behavior contract** for the framework lives in [`openspec/specs/`](openspec/specs/) (OpenSpec). This document explains the design and implementation behind that behavior; `docs/history/VIEW-LAYER-MIGRATION-LOG.md` is the chronological migration log. When the two disagree, the OpenSpec spec describes required behavior and this document should be brought into line.
+
 The repository is a monorepo containing three libraries:
 
 | Library | Purpose | Dependencies |
@@ -194,7 +196,7 @@ public struct KeyMsg: Message {
 }
 ```
 
-`KeyType` covers: printable runes, named keys (enter, tab, backspace, escape, space, arrows, home/end, page up/down, insert, delete), modifier combinations (Shift+arrow, Ctrl+arrow, Ctrl+Shift+arrow), Ctrl+letter, function keys F1–F20, and `.unknown`.
+`KeyType` covers: printable runes, named keys (enter, tab, shift+tab/back-tab, backspace, escape, space, arrows, home/end, page up/down, insert, delete), modifier combinations (Shift+arrow, Ctrl+arrow, Ctrl+Shift+arrow), Ctrl+letter, function keys F1–F20, and `.unknown`.
 
 ---
 
@@ -211,6 +213,8 @@ public enum Command: Sendable {
     case sequence([Command])
     case quit
     case setWindowTitle(String)
+    case clearScreen
+    case requestWindowSize
 }
 ```
 
@@ -221,6 +225,8 @@ public enum Command: Sendable {
 | `.sequence(cmds)` | Executes commands one at a time. Each command's message is delivered before the next command starts. |
 | `.quit` | Sends a `QuitMsg` into the event loop, breaking the `eventLoop` label. |
 | `.setWindowTitle(title)` | Calls `renderer.setWindowTitle` on the next iteration. |
+| `.clearScreen` | Clears the terminal and resets the renderer's line cache, forcing a full repaint. |
+| `.requestWindowSize` | Queries `terminal.size()` and sends a `WindowSizeMsg` to the model. |
 
 **Convenience factories** (static methods that return `.perform`):
 
@@ -232,20 +238,26 @@ public enum Command: Sendable {
 
 ### Program / ProgramRunner
 
-**File:** `Sources/Chai/Core/Program.swift`
+**File:** `Sources/Chai/Core/Program.swift`, `Sources/Chai/Core/Program+Options.swift`
 
 `Program<M>` is the public entry point — a thin, `Sendable` struct that holds the initial model and options, then delegates to `ProgramRunner`:
 
 ```swift
 public struct Program<M: Model>: Sendable {
-    public init(_ model: M, options: ProgramOption...)
+    public init(_ model: M, options: Option...)
+    public init(
+        _ model: M,
+        options: [Option] = [],
+        filter: @Sendable @escaping (M, any Message) -> (any Message)?
+    )
+    public func send(_ msg: any Message)
     public func run() async throws -> M
 }
 ```
 
-`ProgramRunner` is a `private final class` that owns all mutable runtime state. It is marked `@unchecked Sendable` because its mutable properties (`model`, `renderer`, etc.) are only ever accessed from the `async` event loop or from actor-isolated contexts.
+`ProgramRunner` is a `private final class`. It is a checked `Sendable`: every stored property is an immutable `let` of a `Sendable` type (`Terminal` is `@unchecked Sendable`, `Renderer` is an actor), and the authoritative model copy is a local `var` inside `run()` that is only mutated on the event loop.
 
-**`ProgramOption`** values:
+**`Program.Option`** values:
 
 | Option | Effect |
 |--------|--------|
@@ -255,22 +267,31 @@ public struct Program<M: Model>: Sendable {
 | `.withoutSignalHandler` | Disables the built-in SIGINT/SIGTERM/SIGWINCH handler. |
 | `.withLogger(logger)` | Attaches a ``ChaiLogger`` for internal diagnostics (e.g. ``FileLogger``; stdout is owned by the terminal). |
 
+**External messages and filtering.** `send(_:)` injects a message into the event loop from any context; messages sent before `run()` starts are buffered, and messages sent after it exits are dropped. The `filter` initializer applies a closure to every non-internal message before `update`: return the message (possibly transformed) to deliver it, or `nil` to suppress it.
+
 **Event loop (simplified):**
 
 ```swift
-eventLoop: for await msg in messageStream {
-    await handleRendererMessage(msg)   // resize, repaint, println
-    let cmd = model.update(msg)        // update model
-    await renderer.write(model.body)   // queue view tree
+eventLoop: for await msg in channel.stream {
+    await handleRendererMessage(msg)       // resize, repaint, println
+    if msg is InternalMessage { continue } // never reaches the model
+    var delivered = msg
+    if let filter {
+        guard let transformed = filter(model, msg) else { continue }
+        delivered = transformed
+    }
+    let cmd = model.update(delivered)      // update model
+    await renderer.write(model.body)       // queue view tree
+    await renderer.setCursor(model.cursor)
     if let cmd {
         if case .quit = cmd { break eventLoop }
         execute(cmd)
     }
-    if msg is QuitMsg { break eventLoop }
+    if delivered is QuitMsg { break eventLoop }
 }
 ```
 
-The loop iterates over a single `AsyncStream<any Message>`. All event sources (keyboard, signals, command results) funnel into this one stream via `messageContinuation.yield(_:)`.
+The loop iterates over a single `AsyncStream<any Message>` owned by ``MessageChannel``. All event sources (keyboard, signals, command results, external `send` calls) funnel into this one stream via its continuation.
 
 ---
 
@@ -282,7 +303,7 @@ The loop iterates over a single `AsyncStream<any Message>`. All event sources (k
 
 **Responsibilities:**
 
-1. **Raw mode** — `enableRawMode()` saves the current `termios`, then disables canonical mode (`ICANON`), echo (`ECHO`), signal generation (`ISIG`), extended input (`IEXTEN`), software flow control (`IXON`/`IXOFF`), and CR/NL translation (`ICRNL`/`INLCR`). Sets `VMIN=1`, `VTIME=0` so `read(2)` blocks until at least one byte is available. `disableRawMode()` restores the saved `termios`.
+1. **Raw mode** — `enableRawMode()` saves the current `termios`, then disables canonical mode (`ICANON`), echo (`ECHO`), signal generation (`ISIG`), extended input (`IEXTEN`), software flow control (`IXON`/`IXOFF`), CR/NL translation (`ICRNL`/`INLCR`), and output processing (`OPOST`). Sets `VMIN=1`, `VTIME=0` so `read(2)` blocks until at least one byte is available. `disableRawMode()` restores the saved `termios`.
 
 2. **Terminal size** — `size()` calls `ioctl(TIOCGWINSZ)` and returns `(width, height)` in columns and rows. Falls back to `(80, 24)` if the query fails.
 
@@ -296,7 +317,7 @@ protocol TerminalOutput: AnyObject, Sendable {
 }
 ```
 
-`Renderer` depends on `TerminalOutput`, not `Terminal` directly. Tests inject a `MockTerminalOutput` that captures written strings, making the renderer fully testable without a real TTY.
+`Renderer` depends on `TerminalOutput`, not `Terminal` directly. Tests inject the test-local `MockTerminal` that captures written strings, making the renderer fully testable without a real TTY.
 
 **`c_cc` access:** Swift does not expose `termios.c_cc` as an indexable array. The `VMIN`/`VTIME` slots are set via `withUnsafeMutableBytes(of: &t.c_cc)` using the integer constants `VMIN` and `VTIME` as byte offsets.
 
@@ -348,18 +369,18 @@ select(stdin, cancelPipe)
 
 **Parse priority (highest to lowest):**
 
-1. **CSI sequences** — `ESC [` followed by parameter bytes and a final byte. Looked up in `csiTable`.
+1. **CSI sequences** — `ESC [` followed by parameter bytes and a final byte. Looked up in `csiTable` (or `csiAltTable` for xterm Alt-modifier encodings).
 2. **SS3 sequences** — `ESC O` followed by one byte. Looked up in `ss3Table`.
 3. **Lone ESC / Alt modifier** — bare `ESC` is either `.escape` or the Alt prefix for the next key.
 4. **NUL byte** — `0x00` → `ctrl("@")`.
-5. **Named control characters** — `0x08` (BS), `0x09` (HT/Tab), `0x0D` (CR/Enter), `0x1C`–`0x1F`. **Must be matched before the generic Ctrl range** to avoid `tab` being reported as `ctrl("i")` and `enter` as `ctrl("m")`.
+5. **Named control characters** — `0x08` (BS), `0x09` (HT/Tab), `0x0D` (CR/Enter), `0x1C`–`0x1F`, and `0x7F` (DEL/Backspace). **Must be matched before the generic Ctrl range** to avoid `tab` being reported as `ctrl("i")` and `enter` as `ctrl("m")`.
 6. **Generic Ctrl characters** — `0x01`–`0x1A` (excluding those above) → `ctrl("a")`–`ctrl("z")`.
 7. **Space** — `0x20` → `.space`.
 8. **Printable UTF-8** — one or more consecutive printable bytes decoded as UTF-8 runes, batched into a single `KeyMsg(type: .runes, runes: [...])`.
 
 **Lookup tables:**
 
-`csiTable` and `ss3Table` are `[String: KeyType]` dictionaries keyed on the raw ISO-Latin-1 string of the escape sequence. They cover:
+`csiTable`, `csiAltTable`, and `ss3Table` are `[String: KeyType]` dictionaries keyed on the raw ISO-Latin-1 string of the escape sequence. They cover:
 
 - Arrow keys (plain, Shift, Alt, Ctrl, Ctrl+Shift)
 - Home / End (multiple encodings for xterm, urxvt, Linux console)
@@ -474,7 +495,7 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 | **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
 | **Static** | `ListRenderer.swift`, `TreeRenderer.swift` | Static list and tree renderers for non-interactive output. |
 | **Utilities** | `TabExpansion.swift`, `StringLines.swift` | Tab-to-spaces expansion with configurable tab width, line splitting utilities. |
-| **Extensions** | `String+Layout.swift`, `StyledText+Layout.swift`, `ViewOutput+Layout.swift` | Chainable extensions: `String` (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.placed()`, `.clamped()`, `.enforced()`, `.truncated()`, `.inlined()`, `.tabsExpanded()`), `StyledText` layout, and the ``ViewOutput`` raster helpers (`.clampedWidth()`, `.clampedHeight()`). |
+| **Extensions** | `String+Layout.swift`, `StyledText+Layout.swift`, `ViewOutput+Layout.swift` | Chainable extensions: `String` (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.clamped()`, `.enforced()`, `.truncated(toVisibleWidth:)`, `.inlined()`, `.tabsExpanded()`), `StyledText` layout, and the ``ViewOutput`` raster helpers (`.clampedWidth()`, `.clampedHeight()`). |
 
 ### Design Notes
 
@@ -490,7 +511,9 @@ Latte provides layout primitives, ANSI text styling, and (since phase 1) the dec
 
 **Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Latte/Layout/Stacks.swift`, `Sources/Latte/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
 
-The layout engine is the phase-4 **allocation** path (UPGRADE.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_measure(in:)` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. What survives from the proposal model is only the **query language** (`AvailableSize`), not render-pass bookkeeping.
+The behavior contract for this engine is [`openspec/specs/layout-engine/spec.md`](openspec/specs/layout-engine/spec.md); this section explains the design behind it.
+
+The layout engine is the phase-4 **allocation** path (docs/history/VIEW-LAYER-MIGRATION-LOG.md, "Phase 4"), now under the phase-5 **hard-box** contract. Phase 1 introduced the declarative view tree — ``View`` with `associatedtype Body`, `Model` inheriting ``View``, ``@ViewBuilder`` producing structural views — and rendered it by eagerly resolving the tree to a ``ViewOutput`` string. Phase 2 introduced a SwiftUI-style **proposal-driven** engine (measure, then place). Phase 4 replaced the negotiation with **top-down allocation** — *children report; parents decide*: `_measure(in:)` is a pure query (used for buffer sizing and child allocation, never binding), and one allocation walk (`_embed(into:at:)`) hands every view an explicit rect. What survives from the proposal model is only the **query language** (`AvailableSize`), not render-pass bookkeeping.
 
 ### The measure/render flow
 
@@ -609,7 +632,7 @@ SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `ze
 
 Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero context), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the queried rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width context it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
 
-Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in UPGRADE.md). `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
+Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in docs/history/VIEW-LAYER-MIGRATION-LOG.md). `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
 
 ### Why there is no `.infinity`
 
@@ -713,16 +736,21 @@ InputParser.parse(buffer:canHaveMoreData:)
 AsyncStream<any Message>.Continuation.yield
     │
     ▼
-ProgramRunner.messageStream (AsyncStream)
+MessageChannel.stream (AsyncStream<any Message>)
     │
     ├─► handleRendererMessage(msg)   [resize, repaint, println]
     │       │
     │       └─► Renderer (actor)
     │               └─► Terminal.write(ansiString)
     │
+    ├─► internal message? → skip model.update
+    │
+    ├─► filter?(model, msg) → transformed / suppressed
+    │
     ├─► model.update(msg) → Command?
     │
     ├─► renderer.write(model.body)   [view tree → layout engine]
+    │   renderer.setCursor(model.cursor)
     │
     └─► execute(cmd)
             │
@@ -730,7 +758,9 @@ ProgramRunner.messageStream (AsyncStream)
             ├─ .batch    → execute each concurrently
             ├─ .sequence → execute each, await message, then next
             ├─ .quit     → send(QuitMsg())
-            └─ .setWindowTitle → renderer.setWindowTitle(title)
+            ├─ .setWindowTitle → renderer.setWindowTitle(title)
+            ├─ .clearScreen → renderer.clearScreen()
+            └─ .requestWindowSize → send(WindowSizeMsg(w, h))
 ```
 
 ---
@@ -753,13 +783,12 @@ Swift's cooperative thread pool has a fixed number of threads (typically equal t
 
 All event sources write to a single `AsyncStream<any Message>` via its `Continuation`. The event loop iterates this stream with `for await`. This gives a single, ordered, backpressure-aware queue with no explicit locking.
 
-**`@unchecked Sendable` on `ProgramRunner`:**
-
-`ProgramRunner` holds mutable state (`model`, `renderer`, etc.) but is marked `@unchecked Sendable`. This is safe because:
-- `model` is only mutated inside the `async` event loop (single-task access).
-- `renderer` is an actor (self-serialising).
-- `terminal` is `@unchecked Sendable` (its `write` method is thread-safe via `write(2)`).
-- `messageContinuation` is safe to call from any thread (documented by `AsyncStream`).
+**`Sendable` conformance on `ProgramRunner`:**
+`ProgramRunner` is a checked `Sendable`: all stored properties are immutable `let`s of `Sendable` types. This is safe because:
+- the authoritative model is a local `var` inside `run()`, mutated only in the `async` event loop (single-task access);
+- `renderer` is an actor (self-serialising);
+- `terminal` is `@unchecked Sendable` (its `write` method is thread-safe via `write(2)`);
+- `channel` is a `Sendable` wrapper around `AsyncStream` and its continuation (safe to call from any thread, as documented by `AsyncStream`).
 
 ---
 
@@ -880,19 +909,28 @@ Each command in the batch is executed independently. Messages arrive in unspecif
 **`.sequence`** — ordered execution:
 ```swift
 case .sequence(let cmds):
-    Task {
+    Task { [weak self] in
         for cmd in cmds {
-            await withCheckedContinuation { cont in
-                // execute cmd, resume cont when its message is sent
+            guard let self else { return }
+            switch cmd {
+            case .perform(let work):
+                let msg = await work()
+                self.send(msg)
+            default:
+                self.execute(cmd)
             }
         }
     }
 ```
-A single `Task` iterates the commands. For `.perform` commands, it waits for the async work to complete and the message to be sent before moving to the next command. Non-`.perform` commands (e.g. `.quit`, `.setWindowTitle`) are executed synchronously and the continuation resumes immediately.
+A single `Task` iterates the commands. For `.perform` commands, it awaits the work and sends the message before moving to the next command; non-`.perform` commands are executed synchronously.
 
 **`.quit`** — sends `QuitMsg()` into the stream, which breaks the event loop.
 
 **`.setWindowTitle`** — calls `renderer.setWindowTitle` from a new `Task` (actor call must be `await`ed).
+
+**`.clearScreen`** — resets the renderer's line cache (forcing a full repaint) from a new `Task`.
+
+**`.requestWindowSize`** — queries `terminal.size()` and sends a `WindowSizeMsg`.
 
 ---
 
@@ -931,10 +969,10 @@ Program.run()
     ├─ signalHandler.start()
     ├─ inputReader.start()
     ├─ model.initialize() → execute(cmd)
-    ├─ renderer.write(model.body) + renderer.flush()
+    ├─ renderer.write(model.body) + renderer.setCursor(model.cursor) + renderer.flush()
     │
     ├─ [event loop] ──────────────────────────────────────────┐
-    │       for await msg in messageStream                     │
+    │       for await msg in channel.stream                     │
     │           handleRendererMessage(msg)                     │
     │           model.update(msg) → cmd                        │
     │           renderer.write(model.body)  → view tree        │
@@ -944,9 +982,10 @@ Program.run()
     ├─ inputTask.cancel()
     ├─ inputReader.stop()
     ├─ signalHandler.stop()
+    ├─ channel.finish()
     ├─ renderer.stop()               (final flush + erase last line)
     ├─ renderer.exitAltScreen()      (if altScreenActive)
-    ├─ terminal.write(showCursor)
+    ├─ terminal.write(showCursor + resetCursorShape)
     └─ terminal.disableRawMode()     (via defer)
 ```
 
@@ -963,21 +1002,24 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1278 t
 | Test file | Coverage |
 |-----------|----------|
 | `InputParserTests.swift` | All named keys, arrows (plain/Shift/Ctrl/Ctrl+Shift), F1–F20, SS3, Ctrl+letter (incl. named-before-generic ordering), Alt, printable UTF-8, rune batching, incomplete sequences (`canHaveMoreData`), unknown sequences |
-| `RendererTests.swift` | Renderer via `MockTerminalOutput` (a `TerminalOutput` conformance that captures written strings): initial render, cell-diff skipping, alt screen enter/exit, cursor hide/show, window title, `println`, `repaint`, terminal size clamping, synchronized output markers, ANSI-aware width truncation, cursor shape |
+| `RendererTests.swift` | Renderer via `MockTerminal` (a `TerminalOutput` conformance that captures written strings): initial render, cell-diff skipping, alt screen enter/exit, cursor hide/show, window title, `println`, `repaint`, terminal size clamping, synchronized output markers, ANSI-aware width truncation, cursor shape |
 | `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
 | `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_measure(in:)`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
 | `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the unified `Spacer`/`Fill` primitives (flexible 0×0 measurement with a fraction, fixed cell counts, no-op render) |
 | `AnyViewTests.swift` | PB: `AnyView` forwards all four SPI methods — measurement, allocation, `_childViews` structural transparency, and `_flexibility` leftover distribution — plus heterogeneous `for` loops and `buildArray` |
-| `CellBufferTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, diff, `Cell` values |
+| `CellBufferTests.swift` / `CellBufferClipTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, hard-box clip containment, diff, `Cell` values |
+| `EmbedKernelTests.swift` | Allocation types and the leaf/allocation kernel (`Text` query/allocation agreement, `Spacer`/`Fill`/`Empty`) |
+| `MinimumSizeTests.swift` | `AvailableSize.zero` minimum semantics for `Text`, non-compressible leaves, containers, and frames |
+| `TextWrappingTests.swift` | The phase-3 A1 wrapping rules and `Text` integration |
 | `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
 | `StructuralViewTests.swift` | `TupleView`/`ForEachView`/`ConditionalContent`/`OptionalView` flattening and `_childViews()` transparency |
-| `CommandTests.swift` | `.perform`, `.batch`, `.sequence`, `.quit`, `.tick`, `.every`, `.println`, `.setWindowTitle`, integration |
+| `CommandTests.swift` | `.perform`, `.batch`, `.sequence`, `.quit`, `.clearScreen`, `.requestWindowSize`, `.tick`, `.every`, `.println`, `.setWindowTitle`, integration |
 | `ANSIHyperlinkTests.swift`, `KeyTypeTests.swift`, `MessageFilterTests.swift`, `EventFilterTests.swift`, `LoggingTests.swift`, `ProgramTests.swift` | OSC 8 hyperlinks, key type equatable, internal message/event filtering, logging, program lifecycle |
 
 ### LatteTests (Tests/LatteTests/)
 
-Covers the string-level layout/styling modules plus the phase-2 engine:
+Covers the string-level layout/styling modules plus the allocation engine:
 
 | Test file | Coverage |
 |-----------|----------|
@@ -996,6 +1038,8 @@ Covers the string-level layout/styling modules plus the phase-2 engine:
 | `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, hard-box clipping, degenerate sizes |
 | `HardBoxTests.swift` | Phase-5 containment: frame clips a wrapped status line, custom views cannot paint outside their rect, child rects are clamped to the parent, wide-char clip boundaries, clip restoration, nested boxes |
 | `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis assignment, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil assignment content-sized) and `Fill` in stacks/frames |
+| `AllocationRulesTests.swift` | Phase-4 allocation rules: the `Fill`-under-`HStack` remainder, leading/trailing `Fill`, flexible-share precedence, and the narrow mixed-content `Text` floor |
+| `SimplePathContractTests.swift` | The simple-path contract: `body: ViewOutput` + String-level Latte helpers and `body: some View` with tree wrappers |
 | `LayoutParity/` | The corpus-based discipline: `ParityHarness.swift` (`embedBuffer` + `visibleRows`), `ParityCorpus.swift` (the single-spec engine corpus), `ParityEngineTests` (every case against `expectedRows`), `ParityHarnessTests` (comparison semantics) |
 | `ModifierWrapperTests.swift` | P4a tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
 | `ViewOutputLayoutTests.swift` | The `ViewOutput` raster helpers (`.clampedWidth()`, `.clampedHeight()`), including wide characters and multi-line content |
@@ -1007,7 +1051,7 @@ Covers the string-level layout/styling modules plus the phase-2 engine:
 |-----------|----------|
 | `SpicesTests.swift` | Component initialization, state management, view rendering (via `body`), key binding matching, style rendering |
 
-> **Note:** `SpicesTests.swift` currently emits deprecation warnings for `Progress.viewAs(_:)` in its progress-bar cases — pre-existing, out of phase-2 scope; the suites still pass. Migrating them to `viewAsStyledText(_:)` is tracked separately.
+> **Known warnings:** `SpicesTests.swift` still calls the deprecated `Progress.viewAs(_:)` in 13 places, so a clean `swift build --build-tests` reports 13 `#DeprecatedDeclaration` warnings (the suites pass). Migrating those call sites to `viewAsStyledText(_:)` is tracked separately; the production targets build warning-free.
 
 ---
 
@@ -1047,6 +1091,7 @@ chai/
 │   │       ├── Cell.swift               # Cell value (character, style, wide-width invariants)
 │   │       ├── CellBuffer.swift         # 2D cell grid + write policy + diff
 │   │       ├── StyledText.swift         # Structured styled text (maxLineWidth, lineCount)
+│   │       ├── Wrapping.swift           # StyledText word-wrapping (A1 rules) for Text
 │   │       └── DisplayWidth.swift       # Unicode-aware visible width (Chai copy)
 │   │
 │   ├── Latte/                           # Layout, styling, and the declarative containers
@@ -1069,6 +1114,12 @@ chai/
 │   │   ├── Composition/
 │   │   │   ├── Join.swift               # Horizontal/vertical block joining
 │   │   │   └── Compositor.swift         # Z-ordered Layer canvas placement
+│   │   ├── Style/
+│   │   │   ├── Style.swift              # ANSI text styling
+│   │   │   ├── Color.swift              # Color definitions (hex, 256, true color)
+│   │   │   ├── ColorProfile.swift       # Terminal capability detection + downsampling
+│   │   │   ├── ColorPalette.swift       # ANSI palettes
+│   │   │   └── ColorUtilities.swift     # Darken/lighten/blend/gradient helpers
 │   │   ├── Measurement/
 │   │   │   └── DisplayWidth.swift       # Unicode-aware visible width (Latte copy)
 │   │   ├── Static/
@@ -1102,23 +1153,23 @@ chai/
 │       ├── Help/Help.swift              # Keyboard shortcut help
 │       ├── KeyBinding/KeyBinding.swift  # Declarative key binding matching
 │       ├── Cursor/Cursor.swift          # Cursor management
-│       ├── Style/
-│       │   ├── Style.swift              # ANSI text styling
-│       │   └── Color.swift              # Color definitions (hex, 256, true color)
 │       └── Internal/
 │           ├── IDGenerator.swift        # Unique ID generation
 │           └── StyleBridge.swift        # Style.styledText(_:) for safe ViewOutput content
 │
 ├── Tests/
 │   ├── ChaiTests/                       # InputParser, Renderer (+engine path, structural),
-│   │   │                                # LayoutEngine, CellBuffer/Cell, StyledText,
-│   │   │                                # StructuralView, Command, ANSIHyperlink, KeyType,
-│   │   │                                # MessageFilter, EventFilter, Logging, Program
+│   │   │                                # LayoutEngine, EmbedKernel, MinimumSize, TextWrapping,
+│   │   │                                # CellBuffer/Cell, StyledText, StructuralView, Command,
+│   │   │                                # ANSIHyperlink, KeyType, MessageFilter, EventFilter,
+│   │   │                                # Logging, Program
 │   │   └── ...
 │   ├── LatteTests/                      # all string layout modules + StackTests,
-│   │   │                                # StacksEngineTests, FrameTests,
-│   │   │                                # LayoutParity/ (harness + corpus + spec + engine),
-│   │   │                                # ViewOutputLayoutTests, style/color/static suites
+│   │   │                                # StacksEngineTests, FrameTests, HardBoxTests,
+│   │   │                                # AllocationRulesTests, SpacerAndFillTests,
+│   │   │                                # LayoutParity/ (harness + corpus + engine),
+│   │   │                                # ModifierWrapperTests, ViewOutputLayoutTests,
+│   │   │                                # style/color/static suites
 │   │   └── ...
 │   └── SpicesTests/
 │       └── SpicesTests.swift            # Component tests
@@ -1139,7 +1190,7 @@ chai/
 | `ChaiTests` | test | Chai, Latte | Core framework + engine tests (exercise Latte containers) |
 | `LatteTests` | test | Latte | Layout, styling, measurement, engine, and parity tests |
 | `SpicesTests` | test | Spices | Component tests |
-| `GroceryList` | executable | Chai, Latte, Spices | Example app (phase-2 acceptance feature) |
+| `GroceryList` | executable | Chai, Latte, Spices | Example app (acceptance example; centers via `.frame(...)`) |
 
 ---
 
@@ -1183,7 +1234,7 @@ Each `write(2)` syscall has overhead. Assembling the frame into a single string 
 
 ### Why `DispatchSource` for signal handling, not `sigaction`?
 
-`DispatchSource.makeSignalSource` integrates cleanly with Swift's concurrency model and GCD. It delivers signal events on a dispatch queue, where they can safely call `messageContinuation.yield`. Using `sigaction` with a raw C signal handler would require async-signal-safe code, which is extremely restrictive and incompatible with Swift's runtime.
+`DispatchSource.makeSignalSource` integrates cleanly with Swift's concurrency model and GCD. It delivers signal events on a dispatch queue, where they can safely call `channel.yield`. Using `sigaction` with a raw C signal handler would require async-signal-safe code, which is extremely restrictive and incompatible with Swift's runtime.
 
 ### Why a sentinel message for `SIGWINCH`?
 

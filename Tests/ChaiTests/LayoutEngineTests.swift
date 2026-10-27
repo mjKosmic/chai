@@ -2,12 +2,11 @@ import Testing
 @testable import Chai
 import Latte
 
-// MARK: - M1 layout engine tests
+// MARK: - Layout engine tests
 //
-// Milestone M1 of the phase-2 layout engine: the measurement-driven engine SPI
-// (`_measure` / `_embed(into:at:)` / `_childViews()`) with body-resolving
-// defaults, leaf implementations (`ViewOutput`, `Spacer`), and the
-// `maxLineWidth` move into Chai's `StyledText`.
+// The measurement-driven engine SPI (`_measure` / `_embed(into:at:)` /
+// `_childViews()`) with body-resolving defaults, leaf implementations
+// (`ViewOutput`, `Spacer`), and `maxLineWidth` in Chai's `StyledText`.
 //
 // Expectations were derived by running the code — CJK widths, offset writes,
 // and truncated rows are pinned from observed output, never hand-computed.
@@ -134,17 +133,17 @@ struct EngineMeasurementTests {
 
     // MARK: Non-wrapping leaves ignore the query context
     //
-    // `ViewOutput` and `Spacer` are not query consumers. `Text` IS
-    // (A1) — see `TextWrappingTests`; the probe below documents its minimum
-    // semantics at a non-positive width (A3): it compresses to the narrowest
-    // producible width (see `MinimumSizeTests`).
+    // `ViewOutput` and `Spacer` are not query consumers. `Text` IS — see
+    // `TextWrappingTests`; the probe below documents its minimum semantics at
+    // a non-positive width: it compresses to the narrowest producible width
+    // (see `MinimumSizeTests`).
 
     @Test func leavesIgnoreTheQuery() {
         // A `ViewOutput` is a fully-formed raster: the query does not change
         // the ideal measurement.
         #expect(ViewOutput("abc")._measure(in: AvailableSize(width: 1, height: 1)) == ViewSize(width: 3, height: 1))
         #expect(ViewOutput("abcd")._measure(in: AvailableSize(width: 2, height: nil)) == ViewSize(width: 4, height: 1))
-        // A non-positive width query is the minimum context for `Text` (A3):
+        // A non-positive width query is the minimum context for `Text`:
         // "hi" compresses to width 1, one row per character.
         #expect(Text("hi")._measure(in: AvailableSize(width: 0, height: 0)) == ViewSize(width: 1, height: 2))
         #expect(Spacer(columns: 5)._measure(in: AvailableSize(width: 1, height: 1)) == ViewSize(width: 5, height: 1))

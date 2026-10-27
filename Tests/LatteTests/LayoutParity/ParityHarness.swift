@@ -3,8 +3,7 @@ import Latte
 
 // MARK: - Parity harness utilities
 //
-// After phase-4 P4b retired the eager `_resolveToViewOutput()` path, the
-// harness has one renderer: the allocation walk. These helpers define the
+// The harness has one renderer: the allocation walk. These helpers define the
 // comparison convention used by the corpus and the engine suites.
 //
 // Comparison semantics:
@@ -18,16 +17,15 @@ import Latte
 // - Trailing spaces are right-stripped from every row, and all-space rows
 //   normalize to `""`.
 
-/// Rasterize a view through the allocation engine (phase 4: one allocation
-/// walk).
+/// Rasterize a view through the allocation engine (one allocation walk).
 ///
 /// The root rect is `width` wide with the tree's reported height (`nil`
 /// height = inline mode's content-sized buffer, matching the renderer's query
 /// `(width, nil)`). The buffer height is `height ?? measured height`; an
 /// explicit height only pads/limits the buffer, it does not change the root
-/// assignment. Leaves anchor at their rect origin (no stretching — phase-4
-/// decision 2), containers clamp child rects to their own allocation, and the
-/// kernel clips every `_embed` to its rect (hard-box contract).
+/// assignment. Leaves anchor at their rect origin (no stretching), containers
+/// clamp child rects to their own allocation, and the kernel clips every
+/// `_embed` to its rect (hard-box contract).
 ///
 /// The buffer's width is only a truncation bound — each view's **allocated**
 /// rect drives placement (leaf writes use `wrapping: false` and clip at the

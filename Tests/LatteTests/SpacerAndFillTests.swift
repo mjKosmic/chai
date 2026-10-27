@@ -2,12 +2,12 @@ import Testing
 import Chai
 import Latte
 
-// MARK: - Phase-3 A2: Spacer in stacks + Fill in the engine
+// MARK: - Spacer in stacks + Fill in the engine
 //
-// Milestone A2 of the phase-3 Stage A plan (UPGRADE.md): a stack whose main
-// axis has at least one positively-flexible child fills a non-`nil` main-axis
-// assignment and splits the leftover between the flexible children. The pinned
-// formula (the query and allocation share one `StackAllocation` shape):
+// A stack whose main axis has at least one positively-flexible child fills a
+// non-`nil` main-axis assignment and splits the leftover between the flexible
+// children. The formula (the query and allocation share one `StackAllocation`
+// shape):
 //
 //     stackSize = assignment ?? rigidTotal
 //     leftover  = max(0, stackSize - rigidTotal)
@@ -15,8 +15,8 @@ import Latte
 //     child[i]  = rigid[i] + Int(Double(leftover) * (fraction[i] / totalFlex))
 //
 // `Int()` truncates, so the division remainder is left unallocated at the
-// trailing end of the stack. With no flexible child the code path is
-// unchanged (rigid stacks do not fill — pinned below and by the corpus).
+// trailing end of the stack. With no flexible child the stack stays rigid
+// (rigid stacks do not fill — pinned below and by the corpus).
 //
 // Expectations were derived by running the code — never hand-computed.
 // `visibleRows` (from `LayoutParity/ParityHarness.swift`) is the parity
@@ -123,9 +123,9 @@ struct SpacerHStackTests {
     }
 
     @Test func flexStackNeverReportsBelowItsRigidContent() {
-        // PR #21 review: a 0-wide spacer must not hide overflow from the
-        // parent (a query, not a bound) — a flexing stack floors its answer
-        // at the rigid total even when the assignment is smaller.
+        // A 0-wide spacer must not hide overflow from the parent (a query,
+        // not a bound) — a flexing stack floors its answer at the rigid total
+        // even when the assignment is smaller.
         let stack = HStack {
             Text("aaaa")
             Spacer()
@@ -137,8 +137,8 @@ struct SpacerHStackTests {
     }
 
     @Test func negativeMainAxisAssignmentFloorsAtRigidTotal() {
-        // PR #21 review: a negative query used to produce a negative ViewSize
-        // (no other view does that — Text clamps negatives to the minimum).
+        // A negative query must not produce a negative ViewSize (no other view
+        // does that — Text clamps negatives to the minimum).
         let stack = HStack {
             Text("aaaa")
             Spacer()
@@ -150,8 +150,8 @@ struct SpacerHStackTests {
     }
 
     @Test func rigidStackDoesNotFillAWideAssignment() {
-        // The pre-A2 path, unchanged: without a flexible child the stack is
-        // content-sized no matter how wide the assignment is.
+        // Without a flexible child the stack is content-sized no matter how
+        // wide the assignment is.
         let stack = HStack {
             Text("a")
             Spacer(columns: 3)
@@ -337,10 +337,8 @@ struct FillInStacksTests {
     @Test func fillDisplacesSiblingsInABottomAlignedFrame() {
         // The frame assigns `(4, 3)`; `Fill` makes the HStack fill the assigned
         // width, so the bottom-aligned frame has no vertical shortage and "x"
-        // lands on row 0. Phase-4 allocation delta (UPGRADE.md, "Phase 4 —
-        // allocation deltas"): the leading `Fill` also claims the horizontal
-        // remainder (columns 0–2), so "x" shifts to col 3. The phase-3 engine
-        // (which never offered width to HStack children) placed it at col 0.
+        // lands on row 0. The leading `Fill` also claims the horizontal
+        // remainder (columns 0–2), so "x" shifts to col 3.
         let withFill = HStack {
             Fill()
             Text("x")
