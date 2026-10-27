@@ -23,21 +23,41 @@ There are no runtime dependencies — do not add any. (`swift-docc-plugin` is de
 
 ---
 
-## Spec-Driven Development (OpenSpec)
+## Spec-Driven Development (OpenSpec) — Mandatory
 
-This repository uses [OpenSpec](https://openspec.dev). Behavior specs live in
-`openspec/specs/<capability>/spec.md` and are the source of truth for current
-behavior. Proposed work lives in `openspec/changes/<change>/` (proposal, delta
-specs, design, tasks); `openspec/changes/archive/` preserves completed changes.
+**Every change to this repository MUST go through OpenSpec** — features, bug
+fixes, refactors, tests, documentation, CI, and release/tooling work. There are
+no direct-to-`main` edits. The lifecycle is **propose → review → apply →
+archive**:
 
-- Before implementing a feature or behavior change, use the OpenSpec workflow
-  (`/opsx-propose` in OpenCode, `/opsx:propose` in Claude Code) or create a
-  change with `openspec new change <name>`.
+- Start with `openspec new change <name>` (or `/opsx-propose` in OpenCode,
+  `/opsx:propose` in Claude Code).
+- Any observable behavior change MUST include a delta spec in the change.
+  Specs live in `openspec/specs/<capability>/spec.md` and are the source of
+  truth for current behavior.
+- A pure refactor, tooling, or documentation change with no observable
+  behavior delta MUST set `skip_specs: true` in `.openspec.yaml`; do not invent
+  a requirement just to satisfy validation.
 - Implement from `tasks.md` and check tasks off as they land.
-- Archive completed changes so their delta specs merge into `openspec/specs/`.
-- `ARCHITECTURE.md` remains the design of record and `docs/history/VIEW-LAYER-MIGRATION-LOG.md` the migration
-  log. Keep implementation detail out of specs; specs describe behavior.
-- Validate with `npx -y @fission-ai/openspec@latest validate --all --strict`.
+- Archive the change **inside the same pull request**: run `/opsx-archive` on
+  the branch after tasks and validation pass, then merge the PR with the
+  implementation, spec merge, and archive move together. Never push directly
+  to `main`.
+- Validate with `npx -y @fission-ai/openspec@1.15.0 validate --all --strict`.
+
+The canonical artifact layout, capability map, and enforcement rules are in
+[`openspec/README.md`](openspec/README.md). `ARCHITECTURE.md` remains the design
+of record and `docs/history/VIEW-LAYER-MIGRATION-LOG.md` the migration log.
+Keep implementation detail out of specs; specs describe behavior.
+
+### Required CI checks
+
+Once the Phase 0 workflow lands (`.github/workflows/ci.yml`, delivered by
+`phase-0-release-hygiene`), `main` requires the `macos`, `linux`, and
+`openspec` checks and requires every change to land through a pull request;
+direct pushes to `main` are not allowed. The `openspec` job runs
+`npx -y @fission-ai/openspec@1.15.0 validate --all --strict`. Reviewers must
+reject changes without an OpenSpec change.
 
 ---
 

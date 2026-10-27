@@ -25,19 +25,15 @@ There are no runtime dependencies — do not add any. (`swift-docc-plugin` is de
 
 ## Spec-Driven Development (OpenSpec)
 
-This repository uses [OpenSpec](https://openspec.dev). Behavior specs live in
-`openspec/specs/<capability>/spec.md` and are the source of truth for current
-behavior. Proposed work lives in `openspec/changes/<change>/` (proposal, delta
-specs, design, tasks); `openspec/changes/archive/` preserves completed changes.
+**Every change requires an OpenSpec change.** `AGENTS.md` is the canonical
+contributor policy; read its "Spec-Driven Development (OpenSpec) — Mandatory"
+section and [`openspec/README.md`](openspec/README.md) before editing.
 
-- Before implementing a feature or behavior change, use the OpenSpec workflow
-  (`/opsx-propose` in OpenCode, `/opsx:propose` in Claude Code) or create a
-  change with `openspec new change <name>`.
-- Implement from `tasks.md` and check tasks off as they land.
-- Archive completed changes so their delta specs merge into `openspec/specs/`.
-- `ARCHITECTURE.md` remains the design of record and `docs/history/VIEW-LAYER-MIGRATION-LOG.md` the migration
-  log. Keep implementation detail out of specs; specs describe behavior.
-- Validate with `npx -y @fission-ai/openspec@latest validate --all --strict`.
+In short: start with `openspec new change <name>` (or `/opsx:propose` in Claude
+Code), add a delta spec for any observable behavior change, set
+`skip_specs: true` only for pure refactor/tooling/docs work, work through
+`tasks.md`, archive inside the same pull request before merge, and never push
+directly to `main`.
 
 ---
 

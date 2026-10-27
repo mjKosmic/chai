@@ -93,6 +93,8 @@ swift build && swift test
   changes are archived under [`openspec/changes/archive/`](openspec/changes/archive/).
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design of record: the Elm loop,
   renderer, input pipeline, concurrency model, and the allocation layout engine.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — prioritized, sequenced plan for
+  high-impact improvements.
 - [`docs/history/VIEW-LAYER-MIGRATION-LOG.md`](docs/history/VIEW-LAYER-MIGRATION-LOG.md) — migration history and phase plans (through the
   phase-5 hard-box contract and the SPI rename).
 - [`docs/history/PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md`](docs/history/PHASE-4-TOP-DOWN-ALLOCATION-SPIKE.md) — historical phase-4 spike report.
@@ -103,11 +105,16 @@ swift build && swift test
 
 ## Spec-driven development
 
-This repository uses [OpenSpec](https://openspec.dev). Behavior specs live in
-`openspec/specs/<capability>/spec.md`; proposed work lives in
+**All changes require an OpenSpec change** — features, fixes, refactors, tests,
+docs, CI, and release chores. There are no direct-to-`main` edits. Behavior
+specs live in `openspec/specs/<capability>/spec.md`; proposed work lives in
 `openspec/changes/<change>/` with a proposal, delta specs, design, and tasks.
-Archiving a change merges its deltas into the main specs and preserves the
-change under `openspec/changes/archive/`.
+A pure refactor, tooling, or docs change with no observable behavior delta sets
+`skip_specs: true`. The canonical policy is [`AGENTS.md`](AGENTS.md) and the
+artifact/enforcement guide is [`openspec/README.md`](openspec/README.md).
+Archive the change inside the same pull request before merge; never push
+directly to `main`. Archiving a change merges its deltas into the main specs
+and preserves the change under `openspec/changes/archive/`.
 
 The workflow is available as OpenSpec skills and commands in `.opencode/` and
 `.claude/`. In OpenCode, use `/opsx-propose`, `/opsx-apply`, and
