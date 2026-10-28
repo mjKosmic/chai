@@ -11,14 +11,14 @@
 - [x] 2.1 Replace every `Progress.viewAs(_:)` call in `Tests/SpicesTests/SpicesTests.swift` with `viewAsStyledText(_:)`, preserving assertions. Verify the actual call-site count (currently 12; the docs say 13), `grep -c "viewAs("` is 0, and `grep -c "viewAsStyledText("` matches the replaced count.
 - [x] 2.2 Correct the stale warning count in `AGENTS.md`, `openspec/config.yaml`, and `docs/ROADMAP.md`; state that the test target is warning-free after this change. Verify no remaining "13" deprecation claims contradict the actual count.
 - [x] 2.3 Run `swift package clean && swift build --build-tests 2>&1 | tee /tmp/chai-build.log` and verify `grep -c "warning:" /tmp/chai-build.log` is 0. Run `swift test` and verify all tests pass with the same count as before (1,278 tests / 110 suites).
-- [ ] 2.4 Fix the Linux-only unused-result warning in `Sources/Chai/Core/Logger.swift` by explicitly discarding `createFile`'s result, and verify the Linux CI job is warning-free. This warning was surfaced by the first CI run; it is a warning-only change with no behavior delta.
+- [x] 2.4 Fix the Linux-only unused-result warning in `Sources/Chai/Core/Logger.swift` by explicitly discarding `createFile`'s result, and verify the Linux CI job is warning-free. This warning was surfaced by the first CI run; it is a warning-only change with no behavior delta.
 
 ## 3. CI workflow
 
 - [x] 3.1 Add `.github/workflows/ci.yml` with a `macos` job on `macos-14` and a `linux` job using Swift 6.1, both running `swift build --build-tests` and `swift test`. Verify the YAML parses (for example with `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ci.yml")'`).
 - [x] 3.2 Add the zero-warning step: capture the build log and fail if it contains `warning:`, printing the offending lines first. Verify the step fails when a warning is injected into a scratch copy and passes on the clean tree.
 - [x] 3.3 Add an `openspec` job pinned to `npx -y @fission-ai/openspec@1.15.0 validate --all --strict`. Verify the command passes locally from the repository root.
-- [ ] 3.4 Add triggers (`push` to `main`, `pull_request`, `workflow_dispatch`), concurrency cancellation, and SwiftPM caching. Verify by reading the workflow and, after pushing, with `gh workflow view`.
+- [x] 3.4 Add triggers (`push` to `main`, `pull_request`, `workflow_dispatch`), concurrency cancellation, and SwiftPM caching. Verify by reading the workflow and, after pushing, with `gh workflow view`.
 - [x] 3.5 Document the required CI checks and branch-protection step in `AGENTS.md` and `openspec/README.md`. Verify the documented job names match `macos`, `linux`, and `openspec` in `ci.yml`.
 
 ## 4. Release preparation
