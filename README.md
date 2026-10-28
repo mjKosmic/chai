@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" width="128" alt="Chai: a chai cup with a shell prompt rising as steam">
+</p>
+
 # Chai
 
 A Swift-native terminal UI (TUI) framework built on the **Elm Architecture**
