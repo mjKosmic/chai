@@ -54,12 +54,11 @@ direct-to-`main` edits.
 
 ## Enforcement
 
-Every change is reviewed for an OpenSpec change. Once the Phase 0 workflow
-lands, `.github/workflows/ci.yml` runs
-`npx -y @fission-ai/openspec@1.15.0 validate --all --strict` in the `openspec`
-job, and branch protection on `main` requires a pull request (no direct pushes)
-plus the `macos`, `linux`, and `openspec` checks. Archive inside the PR before
-merge. Reviewers must reject changes without an OpenSpec change.
+Every change is reviewed for an OpenSpec change. `.github/workflows/ci.yml`
+runs `npx -y @fission-ai/openspec@1.15.0 validate --all --strict` in the
+`openspec` job, and branch protection on `main` requires a pull request (no
+direct pushes) plus the `macos`, `linux`, and `openspec` checks. Archive inside
+the PR before merge. Reviewers must reject changes without an OpenSpec change.
 
 Skills and commands are generated in `.opencode/` and `.claude/` by
 `openspec init` / `openspec update`. Regenerate them after upgrading the CLI:

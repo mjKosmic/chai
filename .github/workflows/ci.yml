@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SWIFT_VERSION: "6.1"
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2
+        with:
+          swift-version: ${{ env.SWIFT_VERSION }}
+      - name: Cache SwiftPM
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .build
+            .swiftpm
+          key: ${{ runner.os }}-swift-${{ env.SWIFT_VERSION }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-${{ env.SWIFT_VERSION }}-
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          swift build --build-tests 2>&1 | tee build.log
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee test.log
+      - name: Fail on warnings
+        shell: bash
+        run: |
+          if grep -n "warning:" build.log test.log; then
+            echo "::error::Swift build or test emitted warnings"
+            exit 1
+          fi
+
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Cache SwiftPM
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .build
+            .swiftpm
+          key: ${{ runner.os }}-swift-${{ env.SWIFT_VERSION }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-${{ env.SWIFT_VERSION }}-
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          swift build --build-tests 2>&1 | tee build.log
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee test.log
+      - name: Fail on warnings
+        shell: bash
+        run: |
+          if grep -n "warning:" build.log test.log; then
+            echo "::error::Swift build or test emitted warnings"
+            exit 1
+          fi
+
+  openspec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate OpenSpec
+        run: npx -y @fission-ai/openspec@1.15.0 validate --all --strict

@@ -96,30 +96,31 @@ production targets warning-free.
 
 ## Phase 0 — Make it adoptable (Now)
 
+**Tracked as [`openspec/changes/phase-0-release-hygiene`](../openspec/changes/phase-0-release-hygiene/).**
+The `0.1.0` tag is created only after that change merges and the macOS and
+Linux CI matrix is green; this roadmap does not claim the release is done.
+
 **Goal:** remove the non-architectural reasons not to use Chai.
 
 ### R1 — Add a license
 
 - Add `LICENSE` at the repository root and a license line to `README.md`.
-- **Decision required:** MIT (simple, ecosystem default) vs. Apache-2.0
-  (explicit patent grant). Recommended: MIT unless patent protection is a
-  requirement.
+- **Decision:** MIT (adoption-friendly, ecosystem default).
 
 ### R2 — CI on macOS and Linux
 
-- GitHub Actions workflow that runs:
+- GitHub Actions workflow with `macos`, `linux`, and `openspec` jobs:
   - `swift build --build-tests`
   - `swift test`
-  - `npx -y @fission-ai/openspec@latest validate --all --strict`
-- Fail on production-target warnings; keep the known `SpicesTests` exception
-  only until R4 lands.
+  - `npx -y @fission-ai/openspec@1.15.0 validate --all --strict`
+- Fail on any `warning:` in the build or test logs; there is no allowlist.
 - Cache SwiftPM dependencies/builds.
-- **Acceptance:** required checks on `main`; Linux job proves the
+- **Acceptance:** required checks on `main`; the Linux job proves the
   `Glibc` path actually compiles and passes.
 
 ### R3 — Release metadata and versioning
 
-- Tag `0.1.0` after Phase 0.
+- Tag `0.1.0` after this change merges and the CI matrix is green.
 - Add `CHANGELOG.md` with the pre-alpha history summarized.
 - Document the version policy: `0.x` until the R19 API audit, then SemVer.
 - **Acceptance:** `git tag` exists, README installation matches the tag, and
@@ -127,10 +128,10 @@ production targets warning-free.
 
 ### R4 — Clear the deprecation warnings
 
-- Migrate the 13 `Progress.viewAs(_:)` call sites in `SpicesTests` to
-  `viewAsStyledText(_:)`.
+- Migrate the existing `Progress.viewAs(_:)` call sites in `SpicesTests` to
+  `viewAsStyledText(_:)` and remove the warning exception.
 - **Acceptance:** `swift test` reports zero warnings on macOS and Linux; the
-  AGENTS.md exception can be removed.
+  AGENTS.md exception is removed.
 
 **Exit criteria for Phase 0:** a new user can legally depend on Chai, CI
 proves macOS and Linux, and the warning gate is honest.

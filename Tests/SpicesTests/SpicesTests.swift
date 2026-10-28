@@ -104,25 +104,25 @@ struct StopwatchTests {
 struct ProgressTests {
     @Test func viewAtZero() {
         let progress = Progress(width: 10, showPercentage: false)
-        let view = progress.viewAs(0.0)
+        let view = progress.viewAsStyledText(0.0).plainText
         #expect(view == String(repeating: "░", count: 10))
     }
 
     @Test func viewAtFull() {
         let progress = Progress(width: 10, showPercentage: false)
-        let view = progress.viewAs(1.0)
+        let view = progress.viewAsStyledText(1.0).plainText
         #expect(view == String(repeating: "█", count: 10))
     }
 
     @Test func viewAtHalf() {
         let progress = Progress(width: 10, showPercentage: false)
-        let view = progress.viewAs(0.5)
+        let view = progress.viewAsStyledText(0.5).plainText
         #expect(view == String(repeating: "█", count: 5) + String(repeating: "░", count: 5))
     }
 
     @Test func percentageDisplay() {
         let progress = Progress(width: 10)
-        let view = progress.viewAs(0.5)
+        let view = progress.viewAsStyledText(0.5).plainText
         #expect(view.contains("50%"))
     }
 }
@@ -785,7 +785,7 @@ struct ProgressGradientTests {
     @Test func fillGradientNilIsSolidFill() {
         var progress = Progress(width: 10, showPercentage: false)
         progress.fillGradient = nil
-        let view = progress.viewAs(1.0)
+        let view = progress.viewAsStyledText(1.0).plainText
         #expect(view == String(repeating: "█", count: 10))
     }
 
@@ -793,23 +793,26 @@ struct ProgressGradientTests {
     @Test func fillGradientSingleColorFallsBackToSolid() {
         var progress = Progress(width: 4, showPercentage: false)
         progress.fillGradient = [.ansi(.red)]
-        let view = progress.viewAs(1.0)
+        let view = progress.viewAsStyledText(1.0)
         // Must still produce 4 fill characters (color-coded, but structurally solid)
-        let fillCount = view.unicodeScalars.filter { $0 == "█" }.count
+        let fillCount = view.plainText.unicodeScalars.filter { $0 == "█" }.count
         #expect(fillCount == 4)
-        // Single ANSI color stop should still result in ANSI escape sequences
-        #expect(view.contains("\u{1B}["))
+        // The single color stop is carried as structured style metadata.
+        #expect(view.segments.contains { $0.style.foreground == .red })
     }
 
-    // 7.1 — Two-color gradient produces ANSI output with fill characters
-    @Test func fillGradientTwoColorProducesANSIOutput() {
+    // 7.1 — Two-color gradient produces styled output with fill characters
+    @Test func fillGradientTwoColorProducesStyledOutput() {
         var progress = Progress(width: 6, fullColor: nil, showPercentage: false)
         progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
-        let view = progress.viewAs(1.0)
-        // Must contain ANSI colour sequences
-        #expect(view.contains("\u{1B}["))
+        let view = progress.viewAsStyledText(1.0)
+        // Must carry truecolor style metadata.
+        #expect(view.segments.contains { segment in
+            if case .rgb = segment.style.foreground { return true }
+            return false
+        })
         // Must contain the fill character for every filled column
-        let fillCount = view.unicodeScalars.filter { $0 == "█" }.count
+        let fillCount = view.plainText.unicodeScalars.filter { $0 == "█" }.count
         #expect(fillCount == 6)
     }
 
@@ -817,8 +820,8 @@ struct ProgressGradientTests {
     @Test func fillGradientIsRecomputedPerPercent() {
         var progress = Progress(width: 10, showPercentage: false)
         progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
-        let viewHalf = progress.viewAs(0.5)
-        let viewFull = progress.viewAs(1.0)
+        let viewHalf = progress.viewAsStyledText(0.5).plainText
+        let viewFull = progress.viewAsStyledText(1.0).plainText
         // Full bar has twice as many filled chars — compare filled glyph counts, not raw length
         let fillCountHalf = viewHalf.unicodeScalars.filter { $0 == "█" }.count
         let fillCountFull = viewFull.unicodeScalars.filter { $0 == "█" }.count
@@ -830,11 +833,14 @@ struct ProgressGradientTests {
         var progress = Progress(width: 4, fullColor: .ansi(.green), showPercentage: false)
         progress.gradientFrom = .ansi(.yellow)
         progress.fillGradient = [.trueColor(r: 255, g: 0, b: 0), .trueColor(r: 0, g: 0, b: 255)]
-        let view = progress.viewAs(1.0)
+        let view = progress.viewAsStyledText(1.0)
         // Must still produce content — primarily verifying it does not crash and
         // fillGradient is used (the gradient contains custom trueColor values).
-        #expect(view.contains("█"))
-        #expect(view.contains("\u{1B}[38;2;"))   // trueColor SGR prefix
+        #expect(view.plainText.contains("█"))
+        #expect(view.segments.contains { segment in
+            if case .rgb = segment.style.foreground { return true }
+            return false
+        })
     }
 
     // C11 — Width-1 bar picks the LAST stop (t=1.0), matching renderGradient behavior
@@ -845,10 +851,10 @@ struct ProgressGradientTests {
             .trueColor(r: 255, g: 0, b: 0),    // red  (t = 0.0)
             .trueColor(r: 0,   g: 0, b: 255),  // blue (t = 1.0)
         ]
-        let view = progress.viewAs(1.0)
+        let view = progress.viewAsStyledText(1.0)
         // The single cell must be coloured with the last stop (blue: 0,0,255).
-        #expect(view.contains("\u{1B}[38;2;0;0;255m"))
-        #expect(!view.contains("\u{1B}[38;2;255;0;0m"))
+        #expect(view.segments.contains { $0.style.foreground == .rgb(0, 0, 255) })
+        #expect(!view.segments.contains { $0.style.foreground == .rgb(255, 0, 0) })
     }
 
     // 7.1 — Multi-stop (3-color) gradient produces output for every filled char
@@ -859,7 +865,7 @@ struct ProgressGradientTests {
             .trueColor(r: 0,   g: 255, b: 0),   // green
             .trueColor(r: 0,   g: 0,   b: 255), // blue
         ]
-        let view = progress.viewAs(1.0)
+        let view = progress.viewAsStyledText(1.0).plainText
         let fillCount = view.unicodeScalars.filter { $0 == "█" }.count
         #expect(fillCount == 9)
     }
