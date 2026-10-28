@@ -11,6 +11,7 @@
 - [x] 2.1 Replace every `Progress.viewAs(_:)` call in `Tests/SpicesTests/SpicesTests.swift` with `viewAsStyledText(_:)`, preserving assertions. Verify the actual call-site count (currently 12; the docs say 13), `grep -c "viewAs("` is 0, and `grep -c "viewAsStyledText("` matches the replaced count.
 - [x] 2.2 Correct the stale warning count in `AGENTS.md`, `openspec/config.yaml`, and `docs/ROADMAP.md`; state that the test target is warning-free after this change. Verify no remaining "13" deprecation claims contradict the actual count.
 - [x] 2.3 Run `swift package clean && swift build --build-tests 2>&1 | tee /tmp/chai-build.log` and verify `grep -c "warning:" /tmp/chai-build.log` is 0. Run `swift test` and verify all tests pass with the same count as before (1,278 tests / 110 suites).
+- [ ] 2.4 Fix the Linux-only unused-result warning in `Sources/Chai/Core/Logger.swift` by explicitly discarding `createFile`'s result, and verify the Linux CI job is warning-free. This warning was surfaced by the first CI run; it is a warning-only change with no behavior delta.
 
 ## 3. CI workflow
 
