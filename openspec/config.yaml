@@ -16,9 +16,9 @@ context: |
   - Prefer value semantics (structs) for state and internal types for implementation details.
   - Every behavior change needs tests (Swift Testing: @Test, #expect).
   - Tests must keep `swift test` green (currently 1278 tests / 110 suites).
-  - Production targets must build warning-free. The only allowed warnings are the
-    13 known SpicesTests Progress.viewAs(_:) deprecations, pending migration to
-    viewAsStyledText(_:). Do not introduce new warnings.
+  - Production and test targets must build warning-free. There is no warning
+    allowlist. `Progress.viewAs(_:)` is deprecated; use `viewAsStyledText(_:)`.
+    Do not introduce new warnings.
   - The layout engine contract is "children report; parents decide": measurement is a
     pure report, the allocated ViewRect is the layout and painting box, and paint may
     not escape that rect (phase-5 hard-box contract).

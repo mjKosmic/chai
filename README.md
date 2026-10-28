@@ -138,3 +138,8 @@ The example app lives in
 
 Pre-alpha. The API is still allowed to change; breaking changes are documented
 in `docs/history/VIEW-LAYER-MIGRATION-LOG.md`.
+
+## License
+
+Chai is released under the MIT License. See [`LICENSE`](LICENSE) for the full
+text.

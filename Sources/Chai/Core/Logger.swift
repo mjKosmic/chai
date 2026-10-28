@@ -78,7 +78,7 @@ public actor FileLogger: ChaiLogger {
     /// - Throws: ``ChaiLogError/cannotOpenFile(_:)`` if the file cannot be opened.
     public init(path: String, prefix: String = "chai") throws {
         if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil)
+            _ = FileManager.default.createFile(atPath: path, contents: nil)
         }
         guard let handle = FileHandle(forWritingAtPath: path) else {
             throw ChaiLogError.cannotOpenFile(path)
