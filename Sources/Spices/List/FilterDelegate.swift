@@ -50,7 +50,7 @@ public protocol ListItemDelegate: Sendable {
     ///   - width: The available width for rendering.
     /// - Returns: The rendered ``StyledText`` for this item.
     ///
-    /// - Important: Use ``Latte/Style/styledText(_:)`` (from `StyleBridge`) rather than
+    /// - Important: Use ``Latte/Style/styledText(_:)`` (from Latte) rather than
     ///   `Style.render(_:)` when building the return value. Raw ANSI escape sequences
     ///   embedded in a plain `String` that is then wrapped in ``StyledText`` will be
     ///   treated as literal characters by the cell-buffer renderer and will corrupt

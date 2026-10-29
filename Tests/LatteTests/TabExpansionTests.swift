@@ -1,4 +1,5 @@
 import Testing
+@testable import Chai
 @testable import Latte
 
 @Suite("Tab Expansion")
@@ -104,21 +105,13 @@ struct TabExpansionTests {
         #expect(visibleWidth(of: result) == 5) // "A   B" = 5 cols
     }
 
-    // MARK: - Composition with other Latte functions
+    // MARK: - String extension
 
-    @Test func expandTabsThenPad() {
-        // expandTabs produces clean spaces, then pad adds padding normally
-        let expanded = expandTabs("\tHello")
-        let result = pad(expanded, left: 2)
-        #expect(result == "      Hello") // 2 pad + 4 tab + "Hello"
+    @Test func tabsExpandedDefault() {
+        #expect("\tHello".tabsExpanded() == expandTabs("\tHello"))
     }
 
-    @Test func expandTabsThenBorder() {
-        let expanded = expandTabs("A\tB")
-        let result = border(expanded, .rounded)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines[0] == "╭─────╮")  // "A   B" = 5 cols → 5 dashes
-        #expect(lines[1] == "│A   B│")
-        #expect(lines[2] == "╰─────╯")
+    @Test func tabsExpandedCustomWidth() {
+        #expect("\tHello".tabsExpanded(tabWidth: 8) == expandTabs("\tHello", tabWidth: 8))
     }
 }

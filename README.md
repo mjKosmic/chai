@@ -45,7 +45,7 @@ struct Counter: Model {
 | Module | Purpose |
 |--------|---------|
 | **Chai** | Elm Architecture runtime, input handling, rendering, and the layout engine's value types/SPI |
-| **Latte** | Layout and styling: borders, padding, alignment, wrapping, `Style`/`Color`/`ColorProfile`, plus `HStack`/`VStack` and `frame()` |
+| **Latte** | Styling (`Style`/`Color`/`ColorProfile`) and the declarative containers/modifiers (`HStack`/`VStack`, `frame()`, padding, borders) |
 | **Spices** | Ready-made components: text input, list, menu, table, spinner, timer, file picker, and more |
 
 ## Requirements

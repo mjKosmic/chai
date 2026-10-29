@@ -1,13 +1,11 @@
 import Testing
 import Chai
-import Latte
 
 // What remains on `ViewOutput` are the two *raster* clamping helpers —
 // operations on a fully-formed output, with no tree-based equivalent. Layout
 // modifiers live on `View` and are pinned by `ModifierWrapperTests`
 // (padding/border), `FrameTests` (frame), and
-// `HardBoxTests`/`CellBufferClipTests` (the hard-box kernel); the String-level
-// helpers are pinned by `StringExtensionTests` and `PaddingTests`.
+// `HardBoxTests`/`CellBufferClipTests` (the hard-box kernel).
 
 @Suite("ViewOutput raster helpers")
 struct ViewOutputRasterHelperTests {

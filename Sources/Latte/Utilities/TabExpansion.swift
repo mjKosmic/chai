@@ -28,7 +28,7 @@
 /// - Returns: The string with all tabs replaced by the appropriate number of spaces.
 public func expandTabs(_ text: String, tabWidth: Int = 4) -> String {
     let effectiveTabWidth = max(1, tabWidth)
-    let lines = splitLines(text)
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     return lines.map { expandTabsInLine($0, tabWidth: effectiveTabWidth) }
         .joined(separator: "\n")
 }
@@ -127,4 +127,15 @@ private func consumeANSISequence(
     }
 
     return seq
+}
+
+// MARK: - String extension
+
+extension String {
+    /// Expands tab characters into spaces respecting column-aware tab stops.
+    ///
+    /// Wraps ``expandTabs(_:tabWidth:)``.
+    public func tabsExpanded(tabWidth: Int = 4) -> String {
+        expandTabs(self, tabWidth: tabWidth)
+    }
 }

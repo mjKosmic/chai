@@ -85,39 +85,3 @@ public struct VerticalAlignment: Sendable, Equatable, ExpressibleByFloatLiteral 
     /// Content ends at the bottom; top padded with blank lines.
     public static let bottom = VerticalAlignment(fraction: 1.0)
 }
-
-// MARK: - align
-
-/// Aligns each line of a multi-line string within a fixed column width.
-///
-/// Lines shorter than `width` are padded with spaces according to the chosen
-/// alignment. Lines already wider than `width` are returned unchanged — use
-/// ``truncateToVisibleWidth(_:maxWidth:)`` beforehand if truncation is needed.
-///
-/// ANSI escape sequences embedded in the text are preserved and do not count
-/// toward visible width.
-///
-/// ```swift
-/// align("Hello", width: 10, .center)
-/// // "  Hello   "
-///
-/// align("Hello\nWorld!", width: 10, .right)
-/// // "     Hello"
-/// // "    World!"
-///
-/// // Fractional: place content at the 25% mark
-/// align("Hi", width: 10, HorizontalAlignment(fraction: 0.25))
-/// // "  Hi      "
-/// ```
-///
-/// - Parameters:
-///   - text: The string to align. May contain `\n`-separated lines.
-///   - width: The target column width for each line.
-///   - alignment: The horizontal alignment to apply. Defaults to `.left`.
-/// - Returns: The aligned string, with lines joined by `\n`.
-public func align(_ text: String, width: Int, _ alignment: HorizontalAlignment = .left) -> String {
-    let lines = splitLines(text)
-    return lines
-        .map { alignLine($0, width: width, alignment) }
-        .joined(separator: "\n")
-}

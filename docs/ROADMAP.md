@@ -290,8 +290,8 @@ usable, and input parsing is provably robust.
 
 ### R15 — Overlay, ZStack, Toast/Modal
 
-- Promote the existing `Compositor` into a `ZStack`-style `View` container
-  that participates in the allocation engine.
+- Add a `ZStack`-style overlay container that participates in the allocation
+  engine.
 - Add Toast/Modal/StatusBar components in Spices, built on top of it.
 - **Acceptance:** overlays respect the hard box, receive focus predictably,
   and restore focus on dismissal.

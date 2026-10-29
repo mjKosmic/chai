@@ -590,6 +590,19 @@ struct DisplayWidthTests {
         // OSC sequence is preserved (zero visual width).
         #expect(result.contains("\u{1B}]0;"))
     }
+
+    @Test func asciiPunctuationIsWidth1() {
+        #expect(displayWidth(of: Character("!")) == 1)
+        #expect(displayWidth(of: Character(" ")) == 1)
+    }
+
+    @Test func fullwidthLowercaseLatinIsWidth2() {
+        #expect(displayWidth(of: Character("ａ")) == 2)  // U+FF41
+    }
+
+    @Test func deleteControlCharacterIsWidth0() {
+        #expect(displayWidth(of: Character("\u{7F}")) == 0)
+    }
 }
 
 // MARK: - ViewOutput Tests
