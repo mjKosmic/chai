@@ -4,7 +4,7 @@ import Testing
 // MARK: - Flexibility SPI + Spacer / Fill primitives
 //
 // The `_flexibility()` SPI plus two minimal primitives. Leftover *distribution*
-// is a stack behavior and lives in `LatteTests/SpacerAndFillTests.swift`; this
+// is a stack behavior and lives in `ChaiViewTests/SpacerAndFillTests.swift`; this
 // suite pins the value type, the default rigidity, and the primitives' rigid
 // measurement/render in isolation. `Spacer()` / `Spacer(fraction:)` are the
 // flexible forms.

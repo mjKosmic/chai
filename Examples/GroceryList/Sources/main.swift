@@ -1,6 +1,5 @@
 import Foundation
 import Chai
-import Latte
 import Spices
 
 // MARK: - Model

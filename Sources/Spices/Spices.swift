@@ -28,13 +28,10 @@
 ///
 /// ## Styling & Layout
 ///
-/// `Style`, `Color`, and `ColorProfile` live in **Latte**, which Spices
-/// depends on. To use these types in your own code, add the `Latte` product
-/// as a dependency and import it explicitly:
+/// `Style`, `Color`, and `ColorProfile` are part of **Chai**:
 ///
 /// ```swift
 /// import Chai
-/// import Latte
 /// import Spices
 ///
 /// let profile = ColorProfile.detect()
@@ -43,8 +40,8 @@
 /// let plain   = style.render("Warning!", profile: .noColor)  // "Warning!"
 /// ```
 ///
-/// The tree modifiers (`.padded`, `.bordered`, `.frame`, ...) also live in
-/// Latte. Border glyphs accept `Style` values through the `borderStyle` and
+/// The tree modifiers (`.padded`, `.bordered`, `.frame`, ...) are also part of
+/// Chai. Border glyphs accept `Style` values through the `borderStyle` and
 /// per-side parameters — no closure adapters needed.
 ///
 /// ## Key Bindings

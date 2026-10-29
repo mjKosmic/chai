@@ -4,15 +4,18 @@ Chai is a Swift-native terminal UI (TUI) framework inspired by [Bubble Tea](http
 
 The **behavior contract** for the framework lives in [`openspec/specs/`](openspec/specs/) (OpenSpec). This document explains the design and implementation behind that behavior; `docs/history/VIEW-LAYER-MIGRATION-LOG.md` is the chronological migration log. When the two disagree, the OpenSpec spec describes required behavior and this document should be brought into line.
 
-The repository is a monorepo containing three libraries:
+The repository is a monorepo containing two libraries:
 
 | Library | Purpose | Dependencies |
 |---------|---------|--------------|
-| **Chai** | Core TUI framework (Elm Architecture runtime, input handling, rendering, the layout engine's value types and SPI) | None |
-| **Latte** | Styling library (`Style`, `Color`, `ColorProfile`) plus the declarative containers and modifiers (`HStack`/`VStack`, `FrameView`, padding, borders) | Chai |
-| **Spices** | Pre-built interactive components (text input, lists, tables, spinners, timers, etc.) | Chai, Latte |
+| **Chai** | Core TUI framework (Elm Architecture runtime, input handling, rendering, the layout engine, the view tree, and styling) | None |
+| **Spices** | Pre-built interactive components (text input, lists, tables, spinners, timers, etc.) | Chai |
 
-Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `FrameView` conform to Chai's ``View`` protocol and are laid out by its engine. Latte's string-level layout functions (`align`, `join`, `border`, ...) remain standalone and operate on plain `String`/`StyledText` values. The package also declares `swift-docc-plugin` (build-time only) for DocC documentation generation; no runtime dependency is introduced.
+The view tree, the declarative containers and modifiers, and the styling values
+all live in Chai: `HStack`/`VStack`, `FrameView`, and the wrappers conform to
+Chai's ``View`` protocol and are laid out by its engine. The package also
+declares `swift-docc-plugin` (build-time only) for DocC documentation
+generation; no runtime dependency is introduced.
 
 ---
 
@@ -32,7 +35,7 @@ Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `Fram
    - [Renderer](#renderer)
    - [ANSICodes](#ansicodes)
    - [SignalHandler](#signalhandler)
-5. [Latte — Layout & Styling Library](#latte--layout--styling-library)
+5. [Layout & Styling](#layout--styling)
 6. [The Layout Engine](#the-layout-engine)
    - [The measure/render flow](#the-measurerender-flow)
    - [Who the engine SPI is for](#who-the-engine-spi-is-for)
@@ -478,24 +481,23 @@ The two-step design for `SIGWINCH` (sentinel → runner queries size) is necessa
 
 ---
 
-## Latte — Layout & Styling Library
+## Layout & Styling
 
-**Path:** `Sources/Latte/`
+**Path:** `Sources/Chai/{Layout,Style,Utilities}`
 
-Latte provides ANSI text styling and the declarative containers that render
-through Chai's allocation engine. The target depends on **Chai** because
-`HStack`/`VStack`, `FrameView`, and the wrapper views conform to Chai's
-``View`` protocol and participate in its layout engine.
+The view tree, the layout containers, and the styling values ship with
+**Chai**. `HStack`/`VStack`, `FrameView`, and the wrapper views conform to the
+``View`` protocol and are laid out by the allocation engine; `Style` and
+`Color` are the styling values that feed the cell renderer. There is no
+separate layout or styling module.
 
 ### Modules
 
 | Module | Files | Purpose |
 |--------|-------|---------|
-| **Style** | `Style.swift`, `Style+TextAttributes.swift`, `Color.swift`, `ColorProfile.swift`, `ColorPalette.swift`, `ColorUtilities.swift` | ANSI text styling — composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and color downsampling). `Style.textAttributes` converts styling to Chai's structured `TextAttributes`; `Style.render(_:profile:)` remains for output written outside the live view, such as ``Command/println(_:)``. |
-| **Borders** | `Border.swift` | Border glyph sets: rounded, normal, double, thick, ASCII, and hidden. |
-| **Layout** | `Alignment.swift`, `Stacks.swift`, `Frame.swift`, `PaddingView.swift`, `BorderView.swift`, `CompositionWrappers.swift` | The horizontal/vertical alignment **value types**, the declarative containers (`VStack`/`HStack` in `Stacks.swift`), `FrameView` with the `frame(...)` modifier, the `PaddingView`/`BorderView` wrappers, and `.beside`/`.above` stack sugar. Border glyphs accept per-side `Style` values. |
-| **Measurement** | `DisplayWidth.swift` | Internal column-width helper used by border glyph painting and tab expansion. |
-| **Utilities** | `TabExpansion.swift` | Tab-to-spaces expansion with configurable tab width, plus `String.tabsExpanded(tabWidth:)`. Tabs have no display width and are skipped by the cell renderer, so tab-indented text must be expanded before it enters a view. |
+| **Layout** | `Layout/Alignment.swift`, `Layout/Border.swift`, `Layout/Stacks.swift`, `Layout/Frame.swift`, `Layout/PaddingView.swift`, `Layout/BorderView.swift`, `Layout/CompositionWrappers.swift` | Alignment value types, border glyph sets, `VStack`/`HStack`, `FrameView` with the `frame(...)` modifier, the padding and border wrappers, and `.beside`/`.above` stack sugar. Border glyphs accept per-side `Style` values. |
+| **Style** | `Style/Style.swift`, `Style/Style+TextAttributes.swift`, `Style/Color.swift`, `Style/ColorProfile.swift`, `Style/ColorPalette.swift`, `Style/ColorUtilities.swift` | Composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and downsampling), and the structured `TextAttributes` conversion used by the cell renderer. `Style.render(_:profile:)` remains for output written outside the live view, such as ``Command/println(_:)``. |
+| **Utilities** | `Utilities/TabExpansion.swift` | Tab-to-spaces expansion with configurable tab width, plus `String.tabsExpanded(tabWidth:)`. Tabs have no display width and are skipped by the cell renderer, so tab-indented text must be expanded before it enters a view. |
 
 ### Design Notes
 
@@ -516,7 +518,7 @@ through Chai's allocation engine. The target depends on **Chai** because
 
 ## The Layout Engine
 
-**Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Latte/Layout/Stacks.swift`, `Sources/Latte/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
+**Files:** `Sources/Chai/Core/LayoutTypes.swift`, `Sources/Chai/Core/View.swift` (SPI), `Sources/Chai/Layout/Stacks.swift`, `Sources/Chai/Layout/Frame.swift`, `Sources/Chai/Renderer/Renderer.swift`, `Sources/Chai/Renderer/CellBuffer.swift`
 
 The behavior contract for this engine is [`openspec/specs/layout-engine/spec.md`](openspec/specs/layout-engine/spec.md); this section explains the design behind it.
 
@@ -566,7 +568,7 @@ func _childViews() -> [any View]
 func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` because custom containers are a supported extension point: a view type can report its size, place its children, enumerate them, and declare flexibility without changing the framework. Latte's `HStack`/`VStack`, `FrameView`, and wrapper views are one consumer of that surface. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` because custom containers are a supported extension point: a view type can report its size, place its children, enumerate them, and declare flexibility without changing the framework. The built-in `HStack`/`VStack`, `FrameView`, and wrapper views are one consumer of that surface. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
 
 `_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis assignment, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
@@ -656,7 +658,7 @@ The functionality maps onto mechanisms that already exist: "expand to fill" ≙ 
 
 The allocation engine is the only renderer; the corpus is its mechanical spec. That discipline is why the phase-4 rearchitecture could be an internals rewrite with no user-facing break:
 
-- **The corpus** (`Tests/LatteTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()`, wrappers — each pinned with the *visible rows* the engine produces (`expectedRows`). The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. Every engine change is verified against this mechanical spec, never against hand-waving; no case is skipped.
+- **The corpus** (`Tests/ChaiViewTests/LayoutParity/ParityCorpus.swift`) is a named set of view trees — stacks, nesting, alignment, styling, CJK width, `for` loops, conditionals, `frame()`, wrappers — each pinned with the *visible rows* the engine produces (`expectedRows`). The corpus exists because the **first engine attempt failed precisely because nothing exercised it**: the seam was reworked blind, and the flaw (operating on resolved outputs instead of child views) was only caught when the whole thing was reverted and redesigned. Every engine change is verified against this mechanical spec, never against hand-waving; no case is skipped.
 - **Comparison semantics:** buffers are compared as *visible row text*, not raw cells. `visibleRows(_:)` skips zero-width cells (wide-character continuations, combining marks), counts a width-2 cell once, and right-strips trailing spaces so all-space rows normalize to `""`. Raw cell equality is intentionally too strict: alignment writes space cells where a leaf leaves cells `.empty` — both render identically under `eraseLineRight`.
 - **The historical divergence list is closed (P4b).** The ten entries below recorded where the phase-2/3 engine legitimately differed from the eager `body` join. When P4b deleted the eager path, the comparison itself retired: entries #4–#10 are gone with it, and #1–#3 are simply engine semantics, pinned by the corpus. Kept here as history:
   1. `Spacer(lines:)` inside a `VStack`: the engine produces exactly N blank rows; the eager path doubled them (a join quirk; the engine semantics are preserved).
@@ -708,7 +710,7 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 | **Help** | `Help/Help.swift` | Keyboard shortcut help display. |
 | **KeyBinding** | `KeyBinding/KeyBinding.swift` | Declarative key binding matching with pattern support. |
 | **Cursor** | `Cursor/Cursor.swift` | Cursor position and shape management. |
-| **Style** | *(defined in Latte — see `Sources/Latte/Style/`)* | `Style`, `Color`, and `ColorProfile` are provided by the Latte module. Import `Latte` to use them directly. |
+| **Style** | *(provided by Chai — see `Sources/Chai/Style/`)* | `Style`, `Color`, and `ColorProfile` are part of Chai. They are available with `import Chai`. |
 
 ### Internal Utilities
 
@@ -718,7 +720,7 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 
 ### Design Notes
 
-- **Depends on Chai and Latte.** Spices imports `Chai` for the `Model`, `Message`, `Command`, and `KeyMsg` types, and imports `Latte` for `Style`, `Color`, and `ColorProfile`.
+- **Depends on Chai.** Spices imports `Chai` for the `Model`, `Message`, `Command`, and `KeyMsg` types, and for `Style`, `Color`, and `ColorProfile`.
 - **Composable.** Components are value types that can be embedded as fields within a parent model's `struct` and updated by delegating messages.
 - **Terminal-safe colors.** `ColorProfile.detect()` reads environment variables (`NO_COLOR`, `COLORTERM`, `TERM_PROGRAM`, `TERM`) and TTY state to determine color capability. `Style.render(_:profile:)` automatically downsamples colors to the detected profile, preventing garbled output on lower-capability terminals. The detection function accepts injectable parameters for unit testing without touching the real environment.
 
@@ -1011,7 +1013,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **992 te
 | `RendererTests.swift` | Renderer via `MockTerminal` (a `TerminalOutput` conformance that captures written strings): initial render, cell-diff skipping, alt screen enter/exit, cursor hide/show, window title, `println`, `repaint`, terminal size clamping, synchronized output markers, ANSI-aware width truncation, cursor shape |
 | `RendererEnginePathTests.swift` | The M3 flip: the engine-built buffer path (inline truncate, alt-screen wrap, empty→1-row, suffix clamp, diff/paint) |
 | `RendererStructuralTests.swift` | The renderer accepting structural view trees (stacks, `for` loops, conditionals) via `write(_ view: View)` |
-| `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_measure(in:)`/`_embed`/`_childViews` on leaves and Latte containers, allocation rects, fraction math |
+| `LayoutEngineTests.swift` | M1/M2 engine units, re-roled for phase 4: `_measure(in:)`/`_embed`/`_childViews` on leaves and built-in containers, allocation rects, fraction math |
 | `FlexibilityTests.swift` | A2: the `_flexibility()` SPI (default `.rigid`), `LayoutFlexibility`, and the unified `Spacer`/`Fill` primitives (flexible 0×0 measurement with a fraction, fixed cell counts, no-op render) |
 | `AnyViewTests.swift` | PB: `AnyView` forwards all four SPI methods — measurement, allocation, `_childViews` structural transparency, and `_flexibility` leftover distribution — plus heterogeneous `for` loops and `buildArray` |
 | `CellBufferTests.swift` / `CellBufferClipTests.swift` / `CellTests.swift` | Buffer write policy (wrap vs truncate), wide-character invariants, hard-box clip containment, diff, `Cell` values |
@@ -1024,9 +1026,9 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **992 te
 | `CommandTests.swift` | `.perform`, `.batch`, `.sequence`, `.quit`, `.clearScreen`, `.requestWindowSize`, `.tick`, `.every`, `.println`, `.setWindowTitle`, integration |
 | `ANSIHyperlinkTests.swift`, `KeyTypeTests.swift`, `MessageFilterTests.swift`, `EventFilterTests.swift`, `LoggingTests.swift`, `ProgramTests.swift` | OSC 8 hyperlinks, key type equatable, internal message/event filtering, logging, program lifecycle |
 
-### LatteTests (Tests/LatteTests/)
+### ChaiViewTests (Tests/ChaiViewTests/)
 
-Covers the string-level layout/styling modules plus the allocation engine:
+Covers the view tree, styling, and the allocation engine:
 
 | Test file | Coverage |
 |-----------|----------|
@@ -1085,20 +1087,16 @@ chai/
 │   │   │   ├── Terminal.swift           # TerminalOutput protocol + Terminal class
 │   │   │   ├── InputReader.swift        # Async stdin reader (background Thread)
 │   │   │   └── InputParser.swift        # Pure byte-sequence parser → KeyMsg
-│   │   └── Renderer/
-│   │       ├── Renderer.swift           # Actor-based framerate diff renderer (engine flush)
-│   │       ├── Cell.swift               # Cell value (character, style, wide-width invariants)
-│   │       ├── CellBuffer.swift         # 2D cell grid + write policy + diff
-│   │       ├── StyledText.swift         # Structured styled text (maxLineWidth, lineCount)
-│   │       ├── Wrapping.swift           # StyledText word-wrapping (A1 rules) for Text
-│   │       └── DisplayWidth.swift       # Unicode-aware visible width (Chai copy)
-│   │
-│   ├── Latte/                           # Styling and the declarative containers
-│   │   ├── Latte.swift                  # Module entry point
-│   │   ├── Borders/
-│   │   │   └── Border.swift             # Border glyph sets
+│   │   ├── Renderer/
+│   │   │   ├── Renderer.swift           # Actor-based framerate diff renderer (engine flush)
+│   │   │   ├── Cell.swift               # Cell value (character, style, wide-width invariants)
+│   │   │   ├── CellBuffer.swift         # 2D cell grid + write policy + diff
+│   │   │   ├── StyledText.swift         # Structured styled text (maxLineWidth, lineCount)
+│   │   │   ├── Wrapping.swift           # StyledText word-wrapping (A1 rules) for Text
+│   │   │   └── DisplayWidth.swift       # Unicode-aware visible width
 │   │   ├── Layout/
 │   │   │   ├── Alignment.swift          # Horizontal/vertical alignment value types
+│   │   │   ├── Border.swift             # Border glyph sets
 │   │   │   ├── Stacks.swift             # VStack/HStack (allocation engine impl)
 │   │   │   ├── Frame.swift              # FrameView + View.frame(...) modifier
 │   │   │   ├── PaddingView.swift        # .padded / .margined wrapper
@@ -1106,17 +1104,15 @@ chai/
 │   │   │   └── CompositionWrappers.swift # .beside / .above stack sugar
 │   │   ├── Style/
 │   │   │   ├── Style.swift              # ANSI text styling
-│   │   │   ├── Style+TextAttributes.swift # Style/Color → Chai cell attributes
+│   │   │   ├── Style+TextAttributes.swift # Style/Color → cell attributes
 │   │   │   ├── Color.swift              # Color definitions (hex, 256, true color)
 │   │   │   ├── ColorProfile.swift       # Terminal capability detection + downsampling
 │   │   │   ├── ColorPalette.swift       # ANSI palettes
 │   │   │   └── ColorUtilities.swift     # Darken/lighten/blend/gradient helpers
-│   │   ├── Measurement/
-│   │   │   └── DisplayWidth.swift       # Internal width helper (border glyphs, tabs)
 │   │   └── Utilities/
 │   │       └── TabExpansion.swift       # Tab-to-spaces expansion + String.tabsExpanded
 │   │
-│   └── Spices/                          # Component library (depends on Chai, Latte)
+│   └── Spices/                          # Component library (depends on Chai)
 │       ├── Spices.swift                 # Module entry point
 │       ├── TextInput/TextInput.swift    # Single-line text input
 │       ├── TextArea/TextArea.swift      # Multi-line text editing
@@ -1146,12 +1142,13 @@ chai/
 │   │   │                                # ANSIHyperlink, KeyType, MessageFilter, EventFilter,
 │   │   │                                # Logging, Program
 │   │   └── ...
-│   ├── LatteTests/                      # all string layout modules + StackTests,
-│   │   │                                # StacksEngineTests, FrameTests, HardBoxTests,
-│   │   │                                # AllocationRulesTests, SpacerAndFillTests,
-│   │   │                                # LayoutParity/ (harness + corpus + engine),
-│   │   │                                # ModifierWrapperTests, ViewOutputLayoutTests,
-│   │   │                                # style/color/static suites
+│   ├── ChaiViewTests/                   # Layout, styling, and engine suites:
+│   │   │                                # StackTests, StacksEngineTests, FrameTests,
+│   │   │                                # HardBoxTests, AllocationRulesTests,
+│   │   │                                # SpacerAndFillTests, ModifierWrapperTests,
+│   │   │                                # SimplePathContractTests, BorderTests,
+│   │   │                                # TabExpansionTests, LayoutParity/,
+│   │   │                                # style/color/hyperlink suites
 │   │   └── ...
 │   └── SpicesTests/
 │       └── SpicesTests.swift            # Component tests
@@ -1166,13 +1163,12 @@ chai/
 
 | Target | Type | Dependencies | Description |
 |--------|------|-------------|-------------|
-| `Chai` | library | — | Core TUI framework (runtime, rendering, layout engine types + SPI) |
-| `Latte` | library | Chai | Layout, styling, measurement, and the declarative containers |
-| `Spices` | library | Chai, Latte | Pre-built interactive components |
-| `ChaiTests` | test | Chai, Latte | Core framework + engine tests (exercise Latte containers) |
-| `LatteTests` | test | Latte | Layout, styling, measurement, engine, and parity tests |
+| `Chai` | library | — | Runtime, rendering, layout engine, view tree, and styling |
+| `Spices` | library | Chai | Pre-built interactive components |
+| `ChaiTests` | test | Chai | Core framework + engine tests |
+| `ChaiViewTests` | test | Chai | Layout, styling, and parity tests |
 | `SpicesTests` | test | Spices | Component tests |
-| `GroceryList` | executable | Chai, Latte, Spices | Example app (acceptance example; centers via `.frame(...)`) |
+| `GroceryList` | executable | Chai, Spices | Example app (acceptance example; centers via `.frame(...)`) |
 
 ---
 
@@ -1204,7 +1200,7 @@ The phase-1 renderer resolved children to `ViewOutput` strings before composing 
 
 ### Why is the engine SPI underscored-but-public?
 
-`_measure(in:)`, `_embed(into:at:)`, `_childViews()`, and `_flexibility()` are `public` because Latte's containers must call them across the module boundary — `internal` members of the `Chai` module are invisible to the `Latte` target. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
+`_measure(in:)`, `_embed(into:at:)`, `_childViews()`, and `_flexibility()` are `public` because custom containers are a supported extension point: a view type can participate in layout without changing the framework. The built-in containers live in the same module, so this is a deliberate choice rather than a cross-target workaround. The underscore prefix is the SwiftUI convention for "technically public, not user-facing": the methods are SPI for advanced container authors, not part of the API ordinary model code relies on. Their protocol-extension defaults (`body`-resolving, `[self]` children, `.rigid` flexibility) keep every other view working with zero engine code.
 
 ### Why query *context* rather than clamped constraints?
 

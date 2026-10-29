@@ -44,8 +44,7 @@ struct Counter: Model {
 
 | Module | Purpose |
 |--------|---------|
-| **Chai** | Elm Architecture runtime, input handling, rendering, and the layout engine's value types/SPI |
-| **Latte** | Styling (`Style`/`Color`/`ColorProfile`) and the declarative containers/modifiers (`HStack`/`VStack`, `frame()`, padding, borders) |
+| **Chai** | Elm Architecture runtime, input handling, rendering, the view tree, layout containers/modifiers, and styling (`Style`/`Color`/`ColorProfile`) |
 | **Spices** | Ready-made components: text input, list, menu, table, spinner, timer, file picker, and more |
 
 ## Requirements
@@ -73,7 +72,6 @@ Then depend on the products you need:
     name: "MyApp",
     dependencies: [
         .product(name: "Chai", package: "chai"),
-        .product(name: "Latte", package: "chai"),
         .product(name: "Spices", package: "chai"),
     ]
 )

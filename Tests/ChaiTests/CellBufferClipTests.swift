@@ -6,7 +6,7 @@ import Chai
 // `CellBuffer.embed(_:at:)` installs the hard-box scissor: the active clip
 // becomes the intersection of the previous clip and the child's rect, every
 // write in the subtree is bounded by it, and the previous clip is restored on
-// exit. These tests pin the kernel directly; Latte's `HardBoxTests` pins the
+// exit. These tests pin the kernel directly; `ChaiViewTests`' `HardBoxTests` pins the
 // container-level contract built on it.
 //
 // Expectations were derived by running the code, never hand-computed.

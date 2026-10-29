@@ -1,5 +1,4 @@
 import Chai
-import Latte
 // MARK: - Table types
 
 /// A column definition for a table.

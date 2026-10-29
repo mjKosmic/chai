@@ -1,5 +1,4 @@
 import Chai
-import Latte
 // MARK: - ListItem Protocol
 
 /// A protocol for items displayed in a ``List``.
@@ -50,7 +49,7 @@ public protocol ListItemDelegate: Sendable {
     ///   - width: The available width for rendering.
     /// - Returns: The rendered ``StyledText`` for this item.
     ///
-    /// - Important: Use ``Latte/Style/styledText(_:)`` (from Latte) rather than
+    /// - Important: Use ``Style/styledText(_:)`` (from Chai) rather than
     ///   `Style.render(_:)` when building the return value. Raw ANSI escape sequences
     ///   embedded in a plain `String` that is then wrapped in ``StyledText`` will be
     ///   treated as literal characters by the cell-buffer renderer and will corrupt

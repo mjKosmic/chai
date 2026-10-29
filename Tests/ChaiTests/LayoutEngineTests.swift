@@ -1,6 +1,5 @@
 import Testing
 @testable import Chai
-import Latte
 
 // MARK: - Layout engine tests
 //
@@ -357,7 +356,7 @@ struct EngineChildViewsTests {
     }
 }
 
-// MARK: - StyledText.maxLineWidth (moved from Latte, now internal to Chai)
+// MARK: - StyledText.maxLineWidth (internal to Chai)
 
 @Suite("StyledText maxLineWidth")
 struct StyledTextMaxLineWidthTests {
