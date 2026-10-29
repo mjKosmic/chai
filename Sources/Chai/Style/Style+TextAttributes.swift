@@ -38,6 +38,35 @@ extension Color {
     }
 }
 
+// MARK: - Color → TextAttributes
+
+extension TextAttributes {
+    /// Creates text attributes from authoring colors.
+    ///
+    /// Both colors are converted through ``Color/cellColor``, so call sites use
+    /// the same ``Color`` value as ``Style`` and the view style modifiers. The
+    /// cell-level initializer stays available for renderer-facing code.
+    ///
+    /// - Parameters:
+    ///   - foreground: The foreground color, or `nil` for the terminal default.
+    ///   - background: The background color, or `nil` for the terminal default.
+    ///   - attributes: Text decoration attributes.
+    ///   - hyperlink: An optional OSC 8 hyperlink URL.
+    public init(
+        _ foreground: Color?,
+        background: Color? = nil,
+        attributes: Cell.Attributes = [],
+        hyperlink: String? = nil
+    ) {
+        self.init(
+            foreground: foreground?.cellColor,
+            background: background?.cellColor,
+            attributes: attributes,
+            hyperlink: hyperlink
+        )
+    }
+}
+
 // MARK: - Style → TextAttributes / StyledText
 
 extension Style {

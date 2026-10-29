@@ -9,6 +9,39 @@ Pre-1.0 releases may contain breaking changes; the migration history lives in
 
 ## [Unreleased]
 
+### Added
+
+- View styling modifiers on every `View`: `.fg(_:)`, `.bg(_:)`, `.bold()`,
+  `.dim()`, `.italic()`, `.underline()`, `.strikethrough()`, and
+  `.styled(_ style: Style)`. A modifier applies to the cells its subtree
+  paints; outer modifiers fill only the properties inner ones left unset, so
+  the innermost color wins while text attributes accumulate, and a background
+  covers the view's occupied rect. Styling never changes measurement,
+  wrapping, or allocation.
+- Named ANSI colors on `Color` (`.black`, `.red`, ... `.brightWhite`) and a
+  `Color(_ cellColor: CellColor)` bridge for low-level cell code.
+- A `TextAttributes` convenience initializer taking `Color` foreground and
+  background values.
+
+### Changed
+
+- **BREAKING** `StyledText.fg(_:)` and `.bg(_:)` now take `Color` instead of
+  `CellColor`. Named-color call sites (`"x".fg(.red)`) compile unchanged;
+  migrate explicit cell-level colors with the named `Color` value or
+  `Color(CellColor.red)`.
+- **BREAKING** Removed the `Latte` library product and target. `VStack`,
+  `HStack`, `FrameView`, the padding/border modifiers, `Style`, `Color`,
+  `ColorProfile`, `Border`, and tab expansion are now part of `Chai`. Replace
+  `import Latte` with `import Chai` and remove the `Latte` product from your
+  package dependencies.
+- `Style.textAttributes` and `Style.styledText(_:)` are now part of `Chai`
+  (previously `Spices`/`Latte`), so styling values convert to cell attributes
+  without importing the component library.
+- `.bordered` preserves styled borders through per-side `Style?` parameters,
+  replacing the styling that the string border renderer provided.
+- `expandTabs` and `String.tabsExpanded()` are retained as text preparation:
+  tabs have no display width and are skipped by the cell renderer.
+
 ### Removed
 
 - **BREAKING** Removed the string-level layout API. Layout is expressed
@@ -31,21 +64,6 @@ Pre-1.0 releases may contain breaking changes; the migration history lives in
   - `visibleWidth` / `height` / `size` / `truncateToVisibleWidth` →
     `StyledText.columnWidth` / `lineCount()`
 - **BREAKING** Removed `Progress.viewAs(_:)`; use `viewAsStyledText(_:)`.
-
-### Changed
-
-- **BREAKING** Removed the `Latte` library product and target. `VStack`,
-  `HStack`, `FrameView`, the padding/border modifiers, `Style`, `Color`,
-  `ColorProfile`, `Border`, and tab expansion are now part of `Chai`. Replace
-  `import Latte` with `import Chai` and remove the `Latte` product from your
-  package dependencies.
-- `Style.textAttributes` and `Style.styledText(_:)` are now part of `Chai`
-  (previously `Spices`/`Latte`), so styling values convert to cell attributes
-  without importing the component library.
-- `.bordered` preserves styled borders through per-side `Style?` parameters,
-  replacing the styling that the string border renderer provided.
-- `expandTabs` and `String.tabsExpanded()` are retained as text preparation:
-  tabs have no display width and are skipped by the cell renderer.
 
 ## [0.1.0] - Unreleased
 

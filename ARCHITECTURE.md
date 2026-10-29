@@ -496,7 +496,7 @@ separate layout or styling module.
 | Module | Files | Purpose |
 |--------|-------|---------|
 | **Layout** | `Layout/Alignment.swift`, `Layout/Border.swift`, `Layout/Stacks.swift`, `Layout/Frame.swift`, `Layout/PaddingView.swift`, `Layout/BorderView.swift`, `Layout/CompositionWrappers.swift` | Alignment value types, border glyph sets, `VStack`/`HStack`, `FrameView` with the `frame(...)` modifier, the padding and border wrappers, and `.beside`/`.above` stack sugar. Border glyphs accept per-side `Style` values. |
-| **Style** | `Style/Style.swift`, `Style/Style+TextAttributes.swift`, `Style/Color.swift`, `Style/ColorProfile.swift`, `Style/ColorPalette.swift`, `Style/ColorUtilities.swift` | Composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and downsampling), and the structured `TextAttributes` conversion used by the cell renderer. `Style.render(_:profile:)` remains for output written outside the live view, such as ``Command/println(_:)``. |
+| **Style** | `Style/Style.swift`, `Style/Style+TextAttributes.swift`, `Style/StyledView.swift`, `Style/Color.swift`, `Style/ColorProfile.swift`, `Style/ColorPalette.swift`, `Style/ColorUtilities.swift` | Composable `Style` values (bold, italic, colors), the `.fg`/`.bg`/`.bold`/`.dim`/`.italic`/`.underline`/`.strikethrough`/`.styled` view modifiers backed by `StyledView`, `Color` (ANSI 16 / 256 / true color with hex support and named ANSI conveniences), `ColorProfile` (terminal capability detection and downsampling), and the structured `TextAttributes` conversion used by the cell renderer. `Style.render(_:profile:)` remains for output written outside the live view, such as ``Command/println(_:)``. |
 | **Utilities** | `Utilities/TabExpansion.swift` | Tab-to-spaces expansion with configurable tab width, plus `String.tabsExpanded(tabWidth:)`. Tabs have no display width and are skipped by the cell renderer, so tab-indented text must be expanded before it enters a view. |
 
 ### Design Notes
@@ -504,9 +504,28 @@ separate layout or styling module.
 - **One layout model:** layout is expressed through the view tree. The
   containers and modifiers render through the allocation engine; there is no
   parallel string-level layout API.
+- **One color value at call sites:** `Color` is what `Style`, the view style
+  modifiers, and `StyledText.fg`/`.bg` accept, with the 16 ANSI colors
+  available as named values (`.red`, ...). `CellColor` stays public as the
+  renderer's cell-level representation; `Color(_:)` and `Color.cellColor`
+  bridge the two.
 - **Raster clamping stays on the leaf:** `ViewOutput.clampedWidth(_:)` and
   `.clampedHeight(_:)` truncate finished content on the view value, which is a
   different operation from the hard-box clipping a fixed `frame()` performs.
+- **Styling is a paint-time wrapper:** `.fg`, `.bg`, `.bold`, and friends
+  return a `StyledView`, which forwards `_measure` and `_flexibility`, queries
+  the child under its assignment, embeds the child at the report clamped to the
+  assignment (the occupied rect), and merges the style into every cell in that
+  rect. There is no style environment and no `_embed` style parameter, so
+  styling cannot change measurement, wrapping, or allocation.
+- **Merge rule:** foreground, background, and hyperlink fill only properties
+  the cell left `nil`, and text attributes are unioned. Wrappers nest
+  inside-out, so the innermost explicit value wins while outer attributes
+  accumulate.
+- **Backgrounds cover the occupied rect:** the merge visits every cell in the
+  rect, so a background fills internal spaces and the gaps around narrower
+  children and stops at the rect boundary. A shrink-wrapped view therefore
+  paints only its content; `Fill`/`frame()` opt into the larger box.
 - **Styling is structured:** `Style.textAttributes` carries color, attributes,
   and hyperlinks as Chai cell metadata. Only out-of-band output (`println`)
   uses ANSI strings.
@@ -1042,6 +1061,9 @@ Covers the view tree, styling, and the allocation engine:
 | `ModifierWrapperTests.swift` | Tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
 | `BorderTests.swift` | Border glyph presets, box rendering, per-side styling and corner inheritance, content styling untouched |
 | `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction, and the `String` extension |
+| `ColorTests.swift` | Named ANSI `Color` values and the `CellColor` bridge |
+| `StyledViewTests.swift` | The style modifiers: leaf/container/wrapper styling, inner-wins precedence, attribute accumulation, background coverage, and layout invariance |
+| `StyledViewParityTests.swift` | Inline styling vs modifiers (identical cells), and structured output (no escape bytes; `Style.render` still emits ANSI out of band) |
 | `StyleTests.swift`, `StyleFlagTests.swift`, `UnderlineStyleTests.swift`, `ColorUtilitiesTests.swift`, `HyperlinkTests.swift` | Styling, color utilities, hyperlinks |
 
 ### SpicesTests (Tests/SpicesTests/)
@@ -1105,7 +1127,8 @@ chai/
 │   │   ├── Style/
 │   │   │   ├── Style.swift              # ANSI text styling
 │   │   │   ├── Style+TextAttributes.swift # Style/Color → cell attributes
-│   │   │   ├── Color.swift              # Color definitions (hex, 256, true color)
+│   │   │   ├── StyledView.swift         # .fg/.bg/.bold/... paint-time style wrapper
+│   │   │   ├── Color.swift              # Color definitions (named ANSI, hex, 256, true color)
 │   │   │   ├── ColorProfile.swift       # Terminal capability detection + downsampling
 │   │   │   ├── ColorPalette.swift       # ANSI palettes
 │   │   │   └── ColorUtilities.swift     # Darken/lighten/blend/gradient helpers

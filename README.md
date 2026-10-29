@@ -40,6 +40,33 @@ struct Counter: Model {
 }
 ```
 
+## Styling
+
+Styles are modifiers on any view — a leaf, a container, or a whole subtree —
+and `Color` is the one color value for both view modifiers and inline text:
+
+```swift
+VStack {
+    Text("Groceries").bold()
+    HStack {
+        Text("milk").fg(.green)
+        Spacer()
+        Text("2").dim()
+    }
+}
+.padded(1)
+.bg(.brightBlack)
+.bordered(.rounded, borderStyle: Style().foreground(.cyan))
+.frame(width: 40, horizontalAlignment: .center)
+```
+
+An outer style fills only the properties an inner style left unset, so the
+innermost color wins while text attributes accumulate. A background covers the
+view's whole occupied rect, including internal spaces, and styling never
+changes layout: measurement, wrapping, and the allocated rect are identical
+with or without a style. Styling is carried as structured cell metadata; ANSI
+strings are produced only for out-of-band output such as `Command.println`.
+
 ## Modules
 
 | Module | Purpose |
