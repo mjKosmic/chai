@@ -42,7 +42,8 @@ public enum ColorProfile: Int, Comparable, Sendable {
     /// Detection order (first match wins):
     /// 1. `NO_COLOR` set → ``noColor``
     /// 2. stdout is not a TTY → ``noColor``
-    /// 3. `COLORTERM` is `truecolor` or `24bit` → ``trueColor``
+    /// 3. `COLORTERM` is `truecolor` or `24bit`, matched without regard to
+    ///    letter case → ``trueColor``
     /// 4. `TERM_PROGRAM` is `iTerm.app` or `Hyper` → ``trueColor``
     /// 5. `TERM` contains `256color` → ``ansi256``
     /// 6. `TERM` is `xterm` or `linux` → ``ansi``
@@ -62,7 +63,8 @@ public enum ColorProfile: Int, Comparable, Sendable {
         if !isTerminal { return .noColor }
 
         if let colorterm = environment["COLORTERM"] {
-            if colorterm == "truecolor" || colorterm == "24bit" { return .trueColor }
+            let normalized = colorterm.lowercased()
+            if normalized == "truecolor" || normalized == "24bit" { return .trueColor }
         }
 
         if let termProgram = environment["TERM_PROGRAM"] {

@@ -30,7 +30,7 @@ struct RendererTests {
     @Test func firstRenderWritesView() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Hello, world!")
+        await renderer.write(ViewOutput("Hello, world!"))
         await renderer.flush()
         #expect(mock.output.contains("Hello, world!"))
     }
@@ -38,7 +38,7 @@ struct RendererTests {
     @Test func unchangedViewIsNotRewritten() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Same content")
+        await renderer.write(ViewOutput("Same content"))
         await renderer.flush()
         mock.reset()
         // Second flush with the same content — nothing should be written.
@@ -49,10 +49,10 @@ struct RendererTests {
     @Test func changedViewIsRewritten() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("First frame")
+        await renderer.write(ViewOutput("First frame"))
         await renderer.flush()
         mock.reset()
-        await renderer.write("Second frame")
+        await renderer.write(ViewOutput("Second frame"))
         await renderer.flush()
         #expect(mock.output.contains("Second frame"))
     }
@@ -60,7 +60,7 @@ struct RendererTests {
     @Test func emptyViewProducesNoVisibleOutput() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("")
+        await renderer.write(ViewOutput(""))
         await renderer.flush()
         // Empty content produces no visible output — the cell buffer is empty.
         // Only sync update markers may be present.
@@ -77,12 +77,12 @@ struct RendererTests {
     @Test func onlyChangedLinesAreRewritten() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Line 1\nLine 2\nLine 3")
+        await renderer.write(ViewOutput("Line 1\nLine 2\nLine 3"))
         await renderer.flush()
         mock.reset()
 
         // Only line 2 changes.
-        await renderer.write("Line 1\nLine 2 CHANGED\nLine 3")
+        await renderer.write(ViewOutput("Line 1\nLine 2 CHANGED\nLine 3"))
         await renderer.flush()
 
         // The output should contain the changed line but not the unchanged ones.
@@ -94,12 +94,12 @@ struct RendererTests {
     @Test func fewerLinesClearsRemainder() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Line 1\nLine 2\nLine 3")
+        await renderer.write(ViewOutput("Line 1\nLine 2\nLine 3"))
         await renderer.flush()
         mock.reset()
 
         // Render fewer lines — should erase below.
-        await renderer.write("Line 1")
+        await renderer.write(ViewOutput("Line 1"))
         await renderer.flush()
         #expect(mock.output.contains(ANSI.eraseScreenBelow))
     }
@@ -109,7 +109,7 @@ struct RendererTests {
     @Test func repaintForcesFullRedraw() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Content")
+        await renderer.write(ViewOutput("Content"))
         await renderer.flush()
         mock.reset()
 
@@ -198,7 +198,7 @@ struct RendererTests {
     @Test func printlnQueuesLineAboveView() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Live view")
+        await renderer.write(ViewOutput("Live view"))
         await renderer.flush()
         mock.reset()
 
@@ -218,7 +218,7 @@ struct RendererTests {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         await renderer.setSize(width: 10, height: 24)
-        await renderer.write("Live view")
+        await renderer.write(ViewOutput("Live view"))
         await renderer.flush()
         mock.reset()
 
@@ -236,7 +236,7 @@ struct RendererTests {
         let renderer = Renderer(terminal: mock)
         // Width 5: "Red text" is 8 visible cols, so truncation WILL fire.
         await renderer.setSize(width: 5, height: 24)
-        await renderer.write("Live")
+        await renderer.write(ViewOutput("Live"))
         await renderer.flush()
         mock.reset()
 
@@ -257,7 +257,7 @@ struct RendererTests {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         // Deliberately do NOT call setSize.
-        await renderer.write("Live")
+        await renderer.write(ViewOutput("Live"))
         await renderer.flush()
         mock.reset()
 
@@ -336,7 +336,7 @@ struct RendererTests {
     @Test func stringLiteralViewOutput() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Just a string")
+        await renderer.write(ViewOutput("Just a string"))
         await renderer.flush()
         #expect(!mock.output.contains(ANSI.enterAltScreen))
         #expect(!mock.output.contains(ANSI.hideCursor))
@@ -348,7 +348,7 @@ struct RendererTests {
     @Test func flushWrapsSyncUpdateMarkers() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Content")
+        await renderer.write(ViewOutput("Content"))
         await renderer.flush()
         #expect(mock.output.hasPrefix(ANSI.beginSyncUpdate))
         #expect(mock.output.hasSuffix(ANSI.endSyncUpdate))
@@ -357,7 +357,7 @@ struct RendererTests {
     @Test func unchangedViewDoesNotEmitSyncMarkers() async {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Same")
+        await renderer.write(ViewOutput("Same"))
         await renderer.flush()
         mock.reset()
         // Second flush with identical content — nothing written.
@@ -387,7 +387,7 @@ struct RendererTests {
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
         await renderer.setSize(width: 5, height: 24)
-        await renderer.write("ABCDEFGH")
+        await renderer.write(ViewOutput("ABCDEFGH"))
         await renderer.flush()
         #expect(mock.output.contains("ABCDE"))
         #expect(!mock.output.contains("ABCDEFGH"))
@@ -425,7 +425,7 @@ struct RendererTests {
         // so the erase itself is not rendered in a stale colour.
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Content")
+        await renderer.write(ViewOutput("Content"))
         await renderer.flush()
         mock.reset()
 

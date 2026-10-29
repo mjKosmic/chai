@@ -27,14 +27,21 @@ public struct StyledText: Sendable, Equatable {
     }
 
     /// Create styled text from a single string and style.
+    ///
+    /// Any ANSI escape sequences in `text` are removed: styling is carried by
+    /// ``TextAttributes``, never by escape bytes inside visible text.
     public init(_ text: String, style: TextAttributes = .default) {
-        self.segments = text.isEmpty ? [] : [Segment(text, style: style)]
+        let plain = strippingANSISequences(text)
+        self.segments = plain.isEmpty ? [] : [Segment(plain, style: style)]
     }
 
     /// Append a segment.
+    ///
+    /// Any ANSI escape sequences in `text` are removed.
     public mutating func append(_ text: String, style: TextAttributes = .default) {
-        guard !text.isEmpty else { return }
-        segments.append(Segment(text, style: style))
+        let plain = strippingANSISequences(text)
+        guard !plain.isEmpty else { return }
+        segments.append(Segment(plain, style: style))
     }
 
     /// The concatenated plain text of all segments, without styling.
@@ -128,8 +135,9 @@ extension StyledText: ExpressibleByStringInterpolation {
         }
 
         public mutating func appendLiteral(_ literal: String) {
-            guard !literal.isEmpty else { return }
-            result.segments.append(Segment(literal, style: .default))
+            let plain = strippingANSISequences(literal)
+            guard !plain.isEmpty else { return }
+            result.segments.append(Segment(plain, style: .default))
         }
 
         public mutating func appendInterpolation(_ value: StyledText) {
@@ -137,24 +145,27 @@ extension StyledText: ExpressibleByStringInterpolation {
         }
 
         public mutating func appendInterpolation(_ value: String) {
-            guard !value.isEmpty else { return }
-            result.segments.append(Segment(value, style: .default))
+            let plain = strippingANSISequences(value)
+            guard !plain.isEmpty else { return }
+            result.segments.append(Segment(plain, style: .default))
         }
 
         public mutating func appendInterpolation<T: CustomStringConvertible>(_ value: T) {
-            let str = String(describing: value)
-            guard !str.isEmpty else { return }
-            result.segments.append(Segment(str, style: .default))
+            let plain = strippingANSISequences(String(describing: value))
+            guard !plain.isEmpty else { return }
+            result.segments.append(Segment(plain, style: .default))
         }
 
         public mutating func appendInterpolation(_ value: String, style: TextAttributes) {
-            guard !value.isEmpty else { return }
-            result.segments.append(Segment(value, style: style))
+            let plain = strippingANSISequences(value)
+            guard !plain.isEmpty else { return }
+            result.segments.append(Segment(plain, style: style))
         }
 
         public mutating func appendInterpolation(_ value: String, _ color: CellColor) {
-            guard !value.isEmpty else { return }
-            result.segments.append(Segment(value, style: TextAttributes(foreground: color)))
+            let plain = strippingANSISequences(value)
+            guard !plain.isEmpty else { return }
+            result.segments.append(Segment(plain, style: TextAttributes(foreground: color)))
         }
     }
 
@@ -193,7 +204,7 @@ extension String {
 
     /// Wrap this string in an underlined StyledText.
     public func underline() -> StyledText {
-        StyledText(self, style: TextAttributes(attributes: [.underline]))
+        StyledText(self, style: TextAttributes(underlineStyle: .single))
     }
 
     /// Wrap this string in a dim StyledText.
@@ -219,6 +230,12 @@ extension StyledText {
             if style.background != nil { merged.background = style.background }
             if !style.attributes.isEmpty { merged.attributes.formUnion(style.attributes) }
             if style.hyperlink != nil { merged.hyperlink = style.hyperlink }
+            if style.underlineStyle != .none,
+               merged.underlineStyle == .none,
+               !merged.attributes.contains(.underline) {
+                merged.underlineStyle = style.underlineStyle
+                merged.underlineColor = style.underlineColor
+            }
             return Segment(seg.text, style: merged)
         }
         return copy
@@ -246,7 +263,7 @@ extension StyledText {
 
     /// Apply underline to all segments.
     public func underline() -> StyledText {
-        styled(TextAttributes(attributes: [.underline]))
+        styled(TextAttributes(underlineStyle: .single))
     }
 
     /// Apply dim to all segments.

@@ -35,6 +35,44 @@ public enum CellColor: Sendable, Equatable, Hashable {
             return foreground ? "38;2;\(r);\(g);\(b)" : "48;2;\(r);\(g);\(b)"
         }
     }
+
+    /// SGR parameter string for this color in underline position (SGR 58).
+    ///
+    /// Named ANSI colors are emitted as extended palette indices 0–15, the
+    /// same encoding the style renderer uses.
+    func underlineSGRParams() -> String {
+        switch self {
+        case .palette(let n):
+            return "58;5;\(n)"
+        case .rgb(let r, let g, let b):
+            return "58;2;\(r);\(g);\(b)"
+        default:
+            return "58;5;\(ansiIndex ?? 0)"
+        }
+    }
+
+    /// Palette index for the named ANSI colors.
+    private var ansiIndex: Int? {
+        switch self {
+        case .black:         return 0
+        case .red:           return 1
+        case .green:         return 2
+        case .yellow:        return 3
+        case .blue:          return 4
+        case .magenta:       return 5
+        case .cyan:          return 6
+        case .white:         return 7
+        case .brightBlack:   return 8
+        case .brightRed:     return 9
+        case .brightGreen:   return 10
+        case .brightYellow:  return 11
+        case .brightBlue:    return 12
+        case .brightMagenta: return 13
+        case .brightCyan:    return 14
+        case .brightWhite:   return 15
+        case .palette, .rgb: return nil
+        }
+    }
 }
 
 // MARK: - Cell
@@ -44,6 +82,10 @@ public enum CellColor: Sendable, Equatable, Hashable {
 /// Each cell occupies one column, except:
 /// - Continuation cells (width: 0) are placeholders for the second column of wide characters.
 /// - Wide cells (width: 2) occupy 2 columns; the next cell must be a continuation.
+///
+/// Decoration is carried structurally: ``underlineStyle`` and
+/// ``underlineColor`` preserve extended underline variants that the
+/// ``Attributes`` bit set cannot express.
 public struct Cell: Sendable, Equatable {
     public var character: Character
     public var width: Int8
@@ -51,6 +93,10 @@ public struct Cell: Sendable, Equatable {
     public var background: CellColor?
     public var attributes: Attributes
     public var hyperlink: String?
+    /// Underline variant. `.none` falls back to the `.underline` attribute bit.
+    public var underlineStyle: UnderlineStyle
+    /// Underline color (SGR 58). Painted only when an underline is present.
+    public var underlineColor: CellColor?
     public var layer: Int8
 
     public init(
@@ -60,6 +106,8 @@ public struct Cell: Sendable, Equatable {
         background: CellColor? = nil,
         attributes: Attributes = [],
         hyperlink: String? = nil,
+        underlineStyle: UnderlineStyle = .none,
+        underlineColor: CellColor? = nil,
         layer: Int8 = 0
     ) {
         self.character = character
@@ -68,7 +116,18 @@ public struct Cell: Sendable, Equatable {
         self.background = background
         self.attributes = attributes
         self.hyperlink = hyperlink
+        self.underlineStyle = underlineStyle
+        self.underlineColor = underlineColor
         self.layer = layer
+    }
+
+    /// The underline decoration this cell paints.
+    ///
+    /// ``underlineStyle`` wins; otherwise the ``Attributes/underline`` bit means
+    /// a single underline, so hand-built attribute sets keep their meaning.
+    public var resolvedUnderlineStyle: UnderlineStyle {
+        if underlineStyle != .none { return underlineStyle }
+        return attributes.contains(.underline) ? .single : .none
     }
 
     /// An empty cell (space, width 1, default style).
@@ -84,10 +143,7 @@ public struct Cell: Sendable, Equatable {
     public func render() -> String {
         guard width > 0 else { return "" }
 
-        var sgr: [String] = []
-        if let fg = foreground { sgr.append(fg.sgrParams(foreground: true)) }
-        if let bg = background { sgr.append(bg.sgrParams(foreground: false)) }
-        sgr.append(contentsOf: attributes.sgrCodes.map(String.init))
+        let sgr = sgrParameters
 
         var result = ""
 
@@ -110,6 +166,33 @@ public struct Cell: Sendable, Equatable {
         }
 
         return result
+    }
+
+    /// SGR parameters for this cell, in a stable order.
+    ///
+    /// ``render()`` and the renderer's row serializer both use this so a cell
+    /// paints the same decoration on either path. The effective underline
+    /// resolves ``underlineStyle`` against the ``Attributes/underline`` bit,
+    /// and the underline color is emitted only when an underline is present.
+    var sgrParameters: [String] {
+        var parts: [String] = []
+        if let fg = foreground { parts.append(fg.sgrParams(foreground: true)) }
+        if let bg = background { parts.append(bg.sgrParams(foreground: false)) }
+
+        let underline = resolvedUnderlineStyle
+        let bitSet = attributes.contains(.underline)
+        for code in attributes.sgrCodes where !(code == 4 && underline != .single) {
+            parts.append(String(code))
+        }
+        if underline == .single && !bitSet {
+            parts.append("4")
+        } else if underline != .none && underline != .single, let code = underline.sgrCode {
+            parts.append(code)
+        }
+        if underline != .none, let color = underlineColor {
+            parts.append(color.underlineSGRParams())
+        }
+        return parts
     }
 }
 
@@ -151,24 +234,32 @@ extension Cell {
 
 // MARK: - TextAttributes
 
-/// Grouping of foreground color, background color, attributes, and hyperlink
-/// applied to a run of text prior to layout.
+/// Grouping of foreground color, background color, attributes, hyperlink, and
+/// underline decoration applied to a run of text prior to layout.
 public struct TextAttributes: Sendable, Equatable {
     public var foreground: CellColor?
     public var background: CellColor?
     public var attributes: Cell.Attributes
     public var hyperlink: String?
+    /// Underline variant. `.none` falls back to the `.underline` attribute bit.
+    public var underlineStyle: UnderlineStyle
+    /// Underline color (SGR 58). Painted only when an underline is present.
+    public var underlineColor: CellColor?
 
     public init(
         foreground: CellColor? = nil,
         background: CellColor? = nil,
         attributes: Cell.Attributes = [],
-        hyperlink: String? = nil
+        hyperlink: String? = nil,
+        underlineStyle: UnderlineStyle = .none,
+        underlineColor: CellColor? = nil
     ) {
         self.foreground = foreground
         self.background = background
         self.attributes = attributes
         self.hyperlink = hyperlink
+        self.underlineStyle = underlineStyle
+        self.underlineColor = underlineColor
     }
 
     public static let `default` = TextAttributes()

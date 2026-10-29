@@ -73,13 +73,14 @@ extension Style {
     /// Convert this ``Style`` to an equivalent ``TextAttributes`` for use with ``StyledText``.
     ///
     /// Only `.on` ``StyleFlag`` values emit attribute bits; `.off` and `.unset`
-    /// produce no output (they do not emit disable codes).
+    /// produce no output (they do not emit disable codes). Underline style and
+    /// underline color are carried as structured decoration, so the cell path
+    /// paints the same variant as ``render(_:profile:)``.
     public var textAttributes: TextAttributes {
         var attrs: Cell.Attributes = []
         if isBold          == .on { attrs.insert(.bold) }
         if isDim           == .on { attrs.insert(.dim) }
         if isItalic        == .on { attrs.insert(.italic) }
-        if underlineStyle  != .none { attrs.insert(.underline) }
         if isBlink         == .on { attrs.insert(.blink) }
         if isReverse       == .on { attrs.insert(.reverse) }
         if isStrikethrough == .on { attrs.insert(.strikethrough) }
@@ -87,7 +88,9 @@ extension Style {
             foreground: foreground?.cellColor,
             background: background?.cellColor,
             attributes: attrs,
-            hyperlink:  hyperlink
+            hyperlink:  hyperlink,
+            underlineStyle: underlineStyle,
+            underlineColor: underlineStyle == .none ? nil : underlineColor?.cellColor
         )
     }
 

@@ -153,6 +153,69 @@ struct UnderlineStyleTests {
         #expect(result.contains("4"))    // single underline
     }
 
+    // MARK: - Structured path (view styling)
+
+    @Test func doubleUnderlinePaintsStructuredVariant() {
+        let buffer = embedBuffer(Text("x").styled(Style().underlineStyle(.double)), width: 2)
+        #expect(buffer[0, 0].resolvedUnderlineStyle == .double)
+        #expect(buffer[0, 0].render().contains("\u{1B}[21m"))
+    }
+
+    @Test func extendedUnderlinesPaintStructuredVariants() {
+        let variants: [(UnderlineStyle, String)] = [
+            (.curly, "4:3"), (.dotted, "4:4"), (.dashed, "4:5"),
+        ]
+        for (variant, code) in variants {
+            let buffer = embedBuffer(Text("x").styled(Style().underlineStyle(variant)), width: 2)
+            #expect(buffer[0, 0].resolvedUnderlineStyle == variant)
+            #expect(buffer[0, 0].render().contains("\u{1B}[\(code)m"))
+        }
+    }
+
+    @Test func singleUnderlinePaintsStructuredVariant() {
+        let buffer = embedBuffer(Text("x").underline(), width: 2)
+        #expect(buffer[0, 0].resolvedUnderlineStyle == .single)
+        #expect(buffer[0, 0].render().contains("\u{1B}[4m"))
+    }
+
+    @Test func underlineColorPaintsIndependentlyOfForeground() {
+        let style = Style()
+            .foreground(.red)
+            .underlineStyle(.single)
+            .underlineColor(.trueColor(r: 255, g: 0, b: 0))
+        let buffer = embedBuffer(Text("x").styled(style), width: 2)
+        #expect(buffer[0, 0].foreground == .red)
+        #expect(buffer[0, 0].underlineColor == .rgb(255, 0, 0))
+        #expect(buffer[0, 0].render().contains("58;2;255;0;0"))
+    }
+
+    @Test func underlineColorWithoutUnderlineIsNotPainted() {
+        let style = Style().underlineColor(.red)
+        let buffer = embedBuffer(Text("x").styled(style), width: 2)
+        #expect(buffer[0, 0].resolvedUnderlineStyle == .none)
+        #expect(buffer[0, 0].underlineColor == nil)
+        #expect(buffer[0, 0].render() == "x")
+    }
+
+    @Test func innerUnderlineWinsOverOuter() {
+        let buffer = embedBuffer(
+            Text("x")
+                .styled(Style().underlineStyle(.curly))
+                .styled(Style().underlineStyle(.double)),
+            width: 2
+        )
+        #expect(buffer[0, 0].resolvedUnderlineStyle == .curly)
+    }
+
+    @Test func inlineAndModifierUnderlinesPaintIdenticalCells() {
+        let style = Style()
+            .underlineStyle(.curly)
+            .underlineColor(.trueColor(r: 1, g: 2, b: 3))
+        let viaModifier = embedBuffer(Text("xy").styled(style), width: 4)
+        let inline = embedBuffer(Text(style.styledText("xy")), width: 4)
+        #expect(viaModifier == inline)
+    }
+
     // MARK: - Equatable: underlineStyle is part of identity
 
     @Test func differentUnderlineStylesAreNotEqual() {

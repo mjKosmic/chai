@@ -145,8 +145,8 @@ struct BorderTests {
         #expect(buffer[0, 2].attributes.contains(.italic))
         #expect(buffer[1, 2].attributes.contains(.italic))
         // Sides fall back to the shared border style.
-        #expect(buffer[0, 1].attributes.contains(.underline))
-        #expect(buffer[2, 1].attributes.contains(.underline))
+        #expect(buffer[0, 1].resolvedUnderlineStyle == .single)
+        #expect(buffer[2, 1].resolvedUnderlineStyle == .single)
         #expect(!buffer[0, 1].attributes.contains(.bold))
     }
 

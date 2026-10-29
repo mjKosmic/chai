@@ -128,10 +128,10 @@ Linux CI matrix is green; this roadmap does not claim the release is done.
 
 ### R4 — Clear the deprecation warnings
 
-- Migrate the existing `Progress.viewAs(_:)` call sites in `SpicesTests` to
-  `viewAsStyledText(_:)` and remove the warning exception.
-- **Acceptance:** `swift test` reports zero warnings on macOS and Linux; the
-  AGENTS.md exception is removed.
+- **Complete:** `Progress.viewAs(_:)` was removed and `SpicesTests` calls
+  `viewAsStyledText(_:)`; the warning exception is gone.
+- **Acceptance met:** `swift test` reports zero warnings on macOS and Linux,
+  and AGENTS.md carries no exception.
 
 **Exit criteria for Phase 0:** a new user can legally depend on Chai, CI
 proves macOS and Linux, and the warning gate is honest.
@@ -164,8 +164,8 @@ idle screens.
 
 ### R6 — Bracketed paste end-to-end
 
-Chai defines `ANSI.enableBracketedPaste` but no code path enables it or parses
-its payload. Pasting multi-line text therefore behaves like typed Enter keys.
+Bracketed paste is not yet implemented: no code path enables it or parses its
+payload. Pasting multi-line text therefore behaves like typed Enter keys.
 
 - Add a `Program.Option` (or default-on with opt-out) for bracketed paste.
 - Enable on start and disable on **every** exit path.

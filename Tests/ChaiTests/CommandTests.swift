@@ -192,7 +192,7 @@ struct ClearScreenCommandTests {
         // ClearScreen should clear the terminal and reset the render cache.
         let mock = MockTerminal()
         let renderer = Renderer(terminal: mock)
-        await renderer.write("Existing content")
+        await renderer.write(ViewOutput("Existing content"))
         await renderer.flush()
         mock.reset()
 

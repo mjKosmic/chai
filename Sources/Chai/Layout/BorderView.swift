@@ -245,7 +245,9 @@ extension BorderView {
             foreground: attributes.foreground,
             background: attributes.background,
             attributes: attributes.attributes,
-            hyperlink: attributes.hyperlink
+            hyperlink: attributes.hyperlink,
+            underlineStyle: attributes.underlineStyle,
+            underlineColor: attributes.underlineColor
         )
     }
 }

@@ -161,10 +161,10 @@ struct StyledTextTests {
 
     @Test func chainingPreservesExistingAttributes() {
         let text = "Test".bold().italic().underline()
-        let attrs = text.segments[0].style.attributes
-        #expect(attrs.contains(.bold))
-        #expect(attrs.contains(.italic))
-        #expect(attrs.contains(.underline))
+        let style = text.segments[0].style
+        #expect(style.attributes.contains(.bold))
+        #expect(style.attributes.contains(.italic))
+        #expect(style.underlineStyle == .single)
     }
 
     // MARK: - String interpolation

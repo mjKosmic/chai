@@ -96,6 +96,16 @@ struct ColorProfileTests {
         #expect(profile == .trueColor)
     }
 
+    @Test func detectTrueColorFromMixedCaseColorterm() {
+        for value in ["TrueColor", "TRUEcolor", "24BIT", "24Bit"] {
+            let profile = ColorProfile.detect(
+                environment: ["COLORTERM": value],
+                isTerminal: true
+            )
+            #expect(profile == .trueColor)
+        }
+    }
+
     @Test func detectTrueColorFromTermProgram() {
         let profile = ColorProfile.detect(
             environment: ["TERM_PROGRAM": "iTerm.app"],

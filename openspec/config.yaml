@@ -15,9 +15,9 @@ context: |
   - StrictConcurrency is enabled; types crossing concurrency boundaries are Sendable.
   - Prefer value semantics (structs) for state and internal types for implementation details.
   - Every behavior change needs tests (Swift Testing: @Test, #expect).
-  - Tests must keep `swift test` green (currently 992 tests / 98 suites).
+  - Tests must keep `swift test` green (currently 1069 tests / 105 suites).
   - Production and test targets must build warning-free. There is no warning
-    allowlist. `Progress.viewAs(_:)` is deprecated; use `viewAsStyledText(_:)`.
+    allowlist. `Progress.viewAs(_:)` has been removed; use `viewAsStyledText(_:)`.
     Do not introduce new warnings.
   - The layout engine contract is "children report; parents decide": measurement is a
     pure report, the allocated ViewRect is the layout and painting box, and paint may
