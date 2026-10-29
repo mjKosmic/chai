@@ -10,7 +10,7 @@ import Chai
 /// **rect it was allocated**. Tests use it to pin that containers hand children
 /// their allocated rects (frames: the fixed/passed width; stacks: the child's
 /// own report), not the container's rect.
-/// (Duplicated in the LatteTests target, which cannot see this file.)
+/// (Duplicated in the ChaiViewTests target, which cannot see this file.)
 struct RectEchoView: View {
     var body: ViewOutput { ViewOutput("") }
 

@@ -281,7 +281,7 @@ usable, and input parsing is provably robust.
 
 ### R14 — Styling and theme ergonomics
 
-- Add chainable text styling that mirrors the Latte model without raw ANSI,
+- Add chainable text styling that mirrors the styling model without raw ANSI,
   e.g. `Text("Error").fg(.red).bold()`.
 - Add a small theme/palette presets layer on top of `Style`/`ColorProfile`.
 - Keep `StyledText` as the underlying value type.

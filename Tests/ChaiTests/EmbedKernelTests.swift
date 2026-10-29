@@ -22,7 +22,7 @@ import Chai
 //
 // Expectations were derived by running the code, never hand-computed.
 
-/// Visible-row extraction for Chai-only tests (the Latte parity harness has its
+/// Visible-row extraction for Chai-only tests (the `ChaiViewTests` parity harness has its
 /// own copy in a different test target).
 private func embedRows(_ buffer: CellBuffer) -> [String] {
     var rows: [String] = []

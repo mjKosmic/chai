@@ -1,5 +1,4 @@
 import Chai
-import Latte
 // MARK: - Filter State
 
 /// The current state of the list's filter.

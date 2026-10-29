@@ -1,6 +1,5 @@
 import Testing
 import Chai
-import Latte
 
 // MARK: - AnyView on the allocation kernel
 //

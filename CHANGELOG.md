@@ -11,9 +11,9 @@ Pre-1.0 releases may contain breaking changes; the migration history lives in
 
 ### Removed
 
-- **BREAKING** Removed the string-level layout API from `Latte`. Layout is
-  expressed through the view tree; the pre-alpha policy allows this source
-  break without a deprecation cycle.
+- **BREAKING** Removed the string-level layout API. Layout is expressed
+  through the view tree; the pre-alpha policy allows this source break
+  without a deprecation cycle.
   - `pad` / `margin` / `String.padded` / `String.margined` →
     `.padded` / `.margined` on the view
   - `border` / `String.bordered` → `.bordered(...)`, which now accepts
@@ -34,9 +34,14 @@ Pre-1.0 releases may contain breaking changes; the migration history lives in
 
 ### Changed
 
-- `Style.textAttributes` and `Style.styledText(_:)` now live in `Latte`
-  instead of `Spices`, so styling values convert to cell attributes without
-  importing the component library.
+- **BREAKING** Removed the `Latte` library product and target. `VStack`,
+  `HStack`, `FrameView`, the padding/border modifiers, `Style`, `Color`,
+  `ColorProfile`, `Border`, and tab expansion are now part of `Chai`. Replace
+  `import Latte` with `import Chai` and remove the `Latte` product from your
+  package dependencies.
+- `Style.textAttributes` and `Style.styledText(_:)` are now part of `Chai`
+  (previously `Spices`/`Latte`), so styling values convert to cell attributes
+  without importing the component library.
 - `.bordered` preserves styled borders through per-side `Style?` parameters,
   replacing the styling that the string border renderer provided.
 - `expandTabs` and `String.tabsExpanded()` are retained as text preparation:

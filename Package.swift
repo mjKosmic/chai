@@ -12,10 +12,6 @@ let package = Package(
             targets: ["Chai"]
         ),
         .library(
-            name: "Latte",
-            targets: ["Latte"]
-        ),
-        .library(
             name: "Spices",
             targets: ["Spices"]
         ),
@@ -29,26 +25,19 @@ let package = Package(
             path: "Sources/Chai"
         ),
         .target(
-            name: "Latte",
-            dependencies: ["Chai"],
-            path: "Sources/Latte"
-        ),
-        .target(
             name: "Spices",
-            dependencies: ["Chai", "Latte"],
+            dependencies: ["Chai"],
             path: "Sources/Spices"
         ),
         .testTarget(
             name: "ChaiTests",
-            // LayoutEngineTests (M1) exercises the engine with Latte's
-            // VStack/HStack containers, so the target depends on Latte.
-            dependencies: ["Chai", "Latte"],
+            dependencies: ["Chai"],
             path: "Tests/ChaiTests"
         ),
         .testTarget(
-            name: "LatteTests",
-            dependencies: ["Latte"],
-            path: "Tests/LatteTests"
+            name: "ChaiViewTests",
+            dependencies: ["Chai"],
+            path: "Tests/ChaiViewTests"
         ),
         .testTarget(
             name: "SpicesTests",
@@ -57,7 +46,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "GroceryList",
-            dependencies: ["Chai", "Spices", "Latte"],
+            dependencies: ["Chai", "Spices"],
             path: "Examples/GroceryList/Sources"
         ),
     ]

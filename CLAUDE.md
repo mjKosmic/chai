@@ -46,11 +46,14 @@ Sources/Chai/
                LayoutTypes.swift  Cursor.swift  Logger.swift  MessageChannel.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
   Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift  Wrapping.swift
-Sources/Latte/    Styling (Style/, Color/, ColorProfile) and the declarative containers
-                  (Layout/Stacks.swift  Layout/Frame.swift  Layout/BorderView.swift  ...)
+  Layout/      Stacks.swift  Frame.swift  PaddingView.swift  BorderView.swift
+               CompositionWrappers.swift  Alignment.swift  Border.swift
+  Style/       Style.swift  Style+TextAttributes.swift  Color.swift  ColorProfile.swift
+               ColorPalette.swift  ColorUtilities.swift
+  Utilities/   TabExpansion.swift
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
-Tests/ChaiTests/  LatteTests/  SpicesTests/
-  LatteTests/LayoutParity/   corpus + engine spec suites (the parity discipline)
+Tests/ChaiTests/  ChaiViewTests/  SpicesTests/
+  ChaiViewTests/LayoutParity/   corpus + engine spec suites (the parity discipline)
 Examples/GroceryList/Sources/main.swift   the acceptance example (centers via .frame(...))
 openspec/specs/    behavior specs (source of truth, by capability)
 openspec/changes/ active proposals + archive/ for completed changes
@@ -58,8 +61,10 @@ openspec/changes/ active proposals + archive/ for completed changes
 
 The layout engine lives across the seam: value types and the `View` SPI
 (`_measure(in:)`/`_embed`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
-the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
-`Chai/Renderer/Renderer.swift`. See `ARCHITECTURE.md` → "The Layout Engine".
+the containers in `Chai/Layout/{Stacks,Frame}.swift`, and the renderer flip in
+`Chai/Renderer/Renderer.swift`. The SPI is public because custom containers are
+a supported extension point; the built-in containers are one consumer. See
+`ARCHITECTURE.md` → "The Layout Engine".
 
 ---
 

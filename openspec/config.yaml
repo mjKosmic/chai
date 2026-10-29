@@ -6,8 +6,8 @@ schema: spec-driven
 # Keep general project documentation and discoverable codebase facts out.
 context: |
   Chai is a Swift-native TUI framework (Elm Architecture) in a monorepo with
-  three products: Chai (runtime, renderer, input, layout types/SPI), Latte
-  (styling and the declarative View containers), and Spices (reusable
+  two products: Chai (runtime, renderer, input, layout types/SPI, the view
+  tree, styling, and the declarative containers) and Spices (reusable
   components). The example app is Examples/GroceryList.
 
   Constraints that apply to every change:
@@ -32,7 +32,7 @@ context: |
 # Per-artifact rules (optional)
 rules:
   proposal:
-    - State explicit non-goals and affected products/modules (Chai, Latte, Spices, examples, docs).
+    - State explicit non-goals and affected products/modules (Chai, Spices, examples, docs).
     - Mark any source-breaking change with **BREAKING** and note the pre-alpha policy.
     - Keep the proposal focused on why and what; leave implementation mechanics to design.md.
   specs:

@@ -1,6 +1,5 @@
 import Testing
 @testable import Chai
-import Latte
 
 // MARK: - Renderer engine-path tests
 //

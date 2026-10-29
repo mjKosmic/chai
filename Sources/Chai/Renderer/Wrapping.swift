@@ -1,12 +1,8 @@
 // MARK: - Word wrapping
 
-// The wrapping rules live here, in Chai,
-// because they operate on Chai's ``StyledText`` segment model. Latte has its
-// own string-level wrapper (`Sources/Latte/Layout/Wrap.swift`) that works on
-// ANSI-embedded `String`s and resets/re-opens SGR styles across wrapped lines;
-// the dependency direction (Latte imports Chai) forbids reusing it here.
-// `Wrap.swift` remains a public String utility for `String.wrapped()`, and the
-// engine only uses this file.
+// The wrapping rules live here, in Chai, because they operate on Chai's
+// ``StyledText`` segment model. This is the only wrapper: `Text` wraps at its
+// allocated width through this file.
 
 extension StyledText {
     /// Word-wraps this styled text to fit within `width` display columns,

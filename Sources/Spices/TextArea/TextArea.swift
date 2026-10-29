@@ -1,5 +1,4 @@
 import Chai
-import Latte
 // MARK: - TextArea Style
 
 /// Styles for the text area component.

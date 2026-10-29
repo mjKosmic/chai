@@ -1,6 +1,5 @@
 import Testing
 @testable import Chai
-import Latte
 
 // MARK: - `AvailableSize.zero` and minimum semantics
 //
