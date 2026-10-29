@@ -46,9 +46,8 @@ Sources/Chai/
                LayoutTypes.swift  Cursor.swift  Logger.swift  MessageChannel.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
   Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift  Wrapping.swift
-Sources/Latte/    Layout, styling (Style/), borders, composition, static renderers, extensions
-                  (Layout/Stacks.swift  Layout/Frame.swift  Layout/Alignment.swift
-                   Extensions/ViewOutput+Layout.swift  ...)
+Sources/Latte/    Styling (Style/, Color/, ColorProfile) and the declarative containers
+                  (Layout/Stacks.swift  Layout/Frame.swift  Layout/BorderView.swift  ...)
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
 Tests/ChaiTests/  LatteTests/  SpicesTests/
   LatteTests/LayoutParity/   corpus + engine spec suites (the parity discipline)

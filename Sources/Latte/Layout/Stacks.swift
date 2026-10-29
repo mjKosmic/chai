@@ -201,7 +201,7 @@ extension VStack {
         // Alignment is measured against the visible box: when the stack's
         // content is larger than its allocation, the overflow is clipped, not
         // used to push children outside the rect.
-        let visibleWidth = min(shape.occupied.width, rect.size.width)
+        let visibleBoxWidth = min(shape.occupied.width, rect.size.width)
         let bottom = rect.origin.row + rect.size.height
         var row = rect.origin.row
 
@@ -213,7 +213,7 @@ extension VStack {
             let height = min(reported.height, remaining)
             guard height > 0 else { continue }
 
-            let shortage = max(0, visibleWidth - width)
+            let shortage = max(0, visibleBoxWidth - width)
             let col = rect.origin.col + Int(Double(shortage) * alignment.fraction)
             let childRect = ViewRect(
                 origin: ViewOrigin(col: col, row: row),

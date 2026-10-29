@@ -9,7 +9,7 @@ The repository is a monorepo containing three libraries:
 | Library | Purpose | Dependencies |
 |---------|---------|--------------|
 | **Chai** | Core TUI framework (Elm Architecture runtime, input handling, rendering, the layout engine's value types and SPI) | None |
-| **Latte** | Layout and styling library (borders, padding, alignment, wrapping, sizing, `Style`, `Color`, `ColorProfile`) plus the declarative containers (`HStack`/`VStack`, `FrameView`) | Chai |
+| **Latte** | Styling library (`Style`, `Color`, `ColorProfile`) plus the declarative containers and modifiers (`HStack`/`VStack`, `FrameView`, padding, borders) | Chai |
 | **Spices** | Pre-built interactive components (text input, lists, tables, spinners, timers, etc.) | Chai, Latte |
 
 Latte's dependency on Chai is the phase-1 migration: `HStack`/`VStack` and `FrameView` conform to Chai's ``View`` protocol and are laid out by its engine. Latte's string-level layout functions (`align`, `join`, `border`, ...) remain standalone and operate on plain `String`/`StyledText` values. The package also declares `swift-docc-plugin` (build-time only) for DocC documentation generation; no runtime dependency is introduced.
@@ -482,28 +482,35 @@ The two-step design for `SIGWINCH` (sentinel → runner queries size) is necessa
 
 **Path:** `Sources/Latte/`
 
-Latte provides layout primitives, ANSI text styling, and (since phase 1) the declarative containers for building terminal UIs. The package target depends on **Chai** because `HStack`/`VStack`/`FrameView` conform to Chai's ``View`` protocol and participate in its layout engine; the string-level layout functions remain pure and operate on plain strings (with ANSI escape code awareness) and ``StyledText`` values.
+Latte provides ANSI text styling and the declarative containers that render
+through Chai's allocation engine. The target depends on **Chai** because
+`HStack`/`VStack`, `FrameView`, and the wrapper views conform to Chai's
+``View`` protocol and participate in its layout engine.
 
 ### Modules
 
 | Module | Files | Purpose |
 |--------|-------|---------|
-| **Style** | `Style.swift`, `Color.swift`, `ColorProfile.swift`, `ColorPalette.swift`, `ColorUtilities.swift` | ANSI text styling — composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and color downsampling). |
-| **Borders** | `Border.swift`, `BorderRenderer.swift` | Render bordered boxes around text content. Supports rounded, normal, double, thick, ASCII, and hidden styles. Selective side rendering (top/bottom/left/right). `Style?` parameters (`borderStyle`, `topStyle`, `bottomStyle`, `leftStyle`, `rightStyle`) style border characters natively. Per-side styles override the shared `borderStyle`; corners inherit the style of their horizontal edge. Content inside the border is never styled. |
-| **Layout** | `Alignment.swift`, `Margin.swift`, `Padding.swift`, `Size.swift`, `Wrap.swift`, `Inline.swift`, `Stacks.swift`, `Frame.swift`, `PaddingView.swift`, `BorderView.swift`, `CompositionWrappers.swift` | Core layout functions — horizontal/vertical alignment (left, center, right, fractional), padding and margin with custom fill characters, width/height enforcement and clamping, word-wrapping with ANSI-aware line breaking, inline extraction — plus the declarative containers and wrappers: `VStack`/`HStack` (`Stacks.swift`), `FrameView` with the `frame(...)` modifier (`Frame.swift`), the `PaddingView`/`BorderView` modifiers, and `.beside`/`.above` stack sugar (`CompositionWrappers.swift`). |
-| **Composition** | `Join.swift`, `Compositor.swift` | Compose multiple blocks — horizontal and vertical joins with alignment control (`Join.swift`), and z-ordered canvas placement of positioned `Layer` blocks (`Compositor.swift`, the successor to the old `Place.swift` module). |
-| **Measurement** | `DisplayWidth.swift` | Unicode-aware visible width calculation. Handles CJK double-width characters, ANSI escape code exclusion, and ANSI-aware string truncation. |
-| **Static** | `ListRenderer.swift`, `TreeRenderer.swift` | Static list and tree renderers for non-interactive output. |
-| **Utilities** | `TabExpansion.swift`, `StringLines.swift` | Tab-to-spaces expansion with configurable tab width, line splitting utilities. |
-| **Extensions** | `String+Layout.swift`, `StyledText+Layout.swift`, `ViewOutput+Layout.swift` | Chainable extensions: `String` (`.padded()`, `.bordered()`, `.aligned()`, `.wrapped()`, `.margined()`, `.clamped()`, `.enforced()`, `.truncated(toVisibleWidth:)`, `.inlined()`, `.tabsExpanded()`), `StyledText` layout, and the ``ViewOutput`` raster helpers (`.clampedWidth()`, `.clampedHeight()`). |
+| **Style** | `Style.swift`, `Style+TextAttributes.swift`, `Color.swift`, `ColorProfile.swift`, `ColorPalette.swift`, `ColorUtilities.swift` | ANSI text styling — composable `Style` values (bold, italic, colors), `Color` (ANSI 16 / 256 / true color with hex support), `ColorProfile` (terminal capability detection and color downsampling). `Style.textAttributes` converts styling to Chai's structured `TextAttributes`; `Style.render(_:profile:)` remains for output written outside the live view, such as ``Command/println(_:)``. |
+| **Borders** | `Border.swift` | Border glyph sets: rounded, normal, double, thick, ASCII, and hidden. |
+| **Layout** | `Alignment.swift`, `Stacks.swift`, `Frame.swift`, `PaddingView.swift`, `BorderView.swift`, `CompositionWrappers.swift` | The horizontal/vertical alignment **value types**, the declarative containers (`VStack`/`HStack` in `Stacks.swift`), `FrameView` with the `frame(...)` modifier, the `PaddingView`/`BorderView` wrappers, and `.beside`/`.above` stack sugar. Border glyphs accept per-side `Style` values. |
+| **Measurement** | `DisplayWidth.swift` | Internal column-width helper used by border glyph painting and tab expansion. |
+| **Utilities** | `TabExpansion.swift` | Tab-to-spaces expansion with configurable tab width, plus `String.tabsExpanded(tabWidth:)`. Tabs have no display width and are skipped by the cell renderer, so tab-indented text must be expanded before it enters a view. |
 
 ### Design Notes
 
-- **ANSI-aware:** All width calculations and truncation functions correctly skip ANSI escape sequences (CSI, OSC, SS2, SS3) so that styling codes do not affect layout math.
-- **Pure functions:** Layout functions are stateless — they take a string and configuration, and return a new string. No side effects.
-- **Chainable API:** `String+Layout.swift` provides method-chaining extensions that mirror the free functions, enabling `"hello".padded(1).bordered().margined(1)`.
-- **Styling via `Style?`:** Border rendering accepts optional ``Style`` parameters for styling border characters. Because `Style` lives in Latte itself, no extra imports or closure adapters are needed at the call site.
-- **One API generation:** the declarative containers (`HStack`/`VStack`/`FrameView`) and the tree modifiers (`.padded`, `.bordered`, `.frame`) render through the layout engine. The phase-1 eager ``ViewOutput`` modifier family retired in phase-4 P4b; only the raster clamping helpers remain on ``ViewOutput`` (see [The Layout Engine](#the-layout-engine)).
+- **One layout model:** layout is expressed through the view tree. The
+  containers and modifiers render through the allocation engine; there is no
+  parallel string-level layout API.
+- **Raster clamping stays on the leaf:** `ViewOutput.clampedWidth(_:)` and
+  `.clampedHeight(_:)` truncate finished content on the view value, which is a
+  different operation from the hard-box clipping a fixed `frame()` performs.
+- **Styling is structured:** `Style.textAttributes` carries color, attributes,
+  and hyperlinks as Chai cell metadata. Only out-of-band output (`println`)
+  uses ANSI strings.
+- **Styled borders:** `borderStyle` applies to every edge; per-side styles
+  override it, and corners inherit their horizontal edge's style. Content
+  inside the border is never styled by it.
 
 ---
 
@@ -559,7 +566,7 @@ func _childViews() -> [any View]
 func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` for one reason: Latte's containers (`HStack`/`VStack`, `FrameView`) must call them across the module boundary — `internal` members of the `Chai` module are not visible to the `Latte` target. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` because custom containers are a supported extension point: a view type can report its size, place its children, enumerate them, and declare flexibility without changing the framework. Latte's `HStack`/`VStack`, `FrameView`, and wrapper views are one consumer of that surface. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
 
 `_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis assignment, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
@@ -708,7 +715,6 @@ Spices provides pre-built, reusable interactive components built on top of Chai'
 | File | Purpose |
 |------|---------|
 | `Internal/IDGenerator.swift` | Unique ID generation for component instances. |
-| `Internal/StyleBridge.swift` | `Style.styledText(_:)` — builds ``StyledText`` from styled strings without raw ANSI bytes (the safe path for `ViewOutput` content). |
 
 ### Design Notes
 
@@ -995,7 +1001,7 @@ The `defer { terminal.disableRawMode() }` at the top of `run()` ensures the term
 
 ## Testing Strategy
 
-Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1278 tests in 110 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
+Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **992 tests in 98 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
 
 ### ChaiTests (Tests/ChaiTests/)
 
@@ -1013,6 +1019,7 @@ Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1278 t
 | `MinimumSizeTests.swift` | `AvailableSize.zero` minimum semantics for `Text`, non-compressible leaves, containers, and frames |
 | `TextWrappingTests.swift` | The phase-3 A1 wrapping rules and `Text` integration |
 | `StyledTextTests.swift` | Styled text segments, `maxLineWidth`, `lineCount()`, interpolation |
+| `ViewOutputLayoutTests.swift` | The `ViewOutput` raster helpers (`.clampedWidth()`, `.clampedHeight()`), including wide characters and multi-line content |
 | `StructuralViewTests.swift` | `TupleView`/`ForEachView`/`ConditionalContent`/`OptionalView` flattening and `_childViews()` transparency |
 | `CommandTests.swift` | `.perform`, `.batch`, `.sequence`, `.quit`, `.clearScreen`, `.requestWindowSize`, `.tick`, `.every`, `.println`, `.setWindowTitle`, integration |
 | `ANSIHyperlinkTests.swift`, `KeyTypeTests.swift`, `MessageFilterTests.swift`, `EventFilterTests.swift`, `LoggingTests.swift`, `ProgramTests.swift` | OSC 8 hyperlinks, key type equatable, internal message/event filtering, logging, program lifecycle |
@@ -1023,27 +1030,17 @@ Covers the string-level layout/styling modules plus the allocation engine:
 
 | Test file | Coverage |
 |-----------|----------|
-| `DisplayWidthTests.swift` | Character width, ANSI-aware visible width, truncation |
-| `BorderTests.swift` | All border styles, selective sides, ANSI preservation, equatable |
-| `AlignmentTests.swift` | Left/center/right/fractional alignment, ANSI-aware padding, multi-line |
-| `PaddingTests.swift` | All-sides padding, shorthand constructors, custom fill characters, ANSI preservation |
-| `SizeTests.swift` | Width/height measurement, enforce/clamp dimensions, ANSI awareness |
-| `WrapTests.swift` | Word wrapping at spaces/hyphens/commas, wide characters, ANSI carry-over |
-| `InlineTests.swift` | First-line extraction, ANSI preservation, composition with other functions |
-| `JoinTests.swift` | Horizontal/vertical joins, alignment options, ANSI preservation |
-| `CompositorTests.swift` | Z-ordered `Layer` canvas placement |
-| `StringExtensionTests.swift` | Chainable string extensions, composition chains |
-| `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction |
 | `StackTests.swift` / `StacksEngineTests.swift` | Engine measure/render of `VStack`/`HStack` through the allocation walk, alignment, skip-empty, styling survival |
-| `FrameTests.swift` | M4 `frame()`: fixed/one-dim/ideal/alignment/nesting, hard-box clipping, degenerate sizes |
-| `HardBoxTests.swift` | Phase-5 containment: frame clips a wrapped status line, custom views cannot paint outside their rect, child rects are clamped to the parent, wide-char clip boundaries, clip restoration, nested boxes |
+| `FrameTests.swift` | `frame()`: fixed/one-dim/ideal/alignment/nesting, hard-box clipping, degenerate sizes |
+| `HardBoxTests.swift` | Containment: frame clips a wrapped status line, custom views cannot paint outside their rect, child rects are clamped to the parent, wide-char clip boundaries, clip restoration, nested boxes |
 | `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis assignment, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil assignment content-sized) and `Fill` in stacks/frames |
-| `AllocationRulesTests.swift` | Phase-4 allocation rules: the `Fill`-under-`HStack` remainder, leading/trailing `Fill`, flexible-share precedence, and the narrow mixed-content `Text` floor |
-| `SimplePathContractTests.swift` | The simple-path contract: `body: ViewOutput` + String-level Latte helpers and `body: some View` with tree wrappers |
+| `AllocationRulesTests.swift` | Allocation rules: the `Fill`-under-`HStack` remainder, leading/trailing `Fill`, flexible-share precedence, and the narrow mixed-content `Text` floor |
+| `SimplePathContractTests.swift` | The simple-path contract: a `body: some View` built from a `ViewOutput` leaf and the tree modifiers, with no engine members |
 | `LayoutParity/` | The corpus-based discipline: `ParityHarness.swift` (`embedBuffer` + `visibleRows`), `ParityCorpus.swift` (the single-spec engine corpus), `ParityEngineTests` (every case against `expectedRows`), `ParityHarnessTests` (comparison semantics) |
-| `ModifierWrapperTests.swift` | P4a tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
-| `ViewOutputLayoutTests.swift` | The `ViewOutput` raster helpers (`.clampedWidth()`, `.clampedHeight()`), including wide characters and multi-line content |
-| `StyleTests.swift`, `StyleFlagTests.swift`, `UnderlineStyleTests.swift`, `ColorUtilitiesTests.swift`, `HyperlinkTests.swift`, `ListRendererTests.swift`, `TreeRendererTests.swift` | Styling, color utilities, hyperlinks, static renderers |
+| `ModifierWrapperTests.swift` | Tree wrappers: padding/margin/border shrink-wrap, bounded child query, inset placement, `.beside`/`.above`, flexibility forwarding |
+| `BorderTests.swift` | Border glyph presets, box rendering, per-side styling and corner inheritance, content styling untouched |
+| `TabExpansionTests.swift` | Tab-stop alignment, custom widths, ANSI interaction, and the `String` extension |
+| `StyleTests.swift`, `StyleFlagTests.swift`, `UnderlineStyleTests.swift`, `ColorUtilitiesTests.swift`, `HyperlinkTests.swift` | Styling, color utilities, hyperlinks |
 
 ### SpicesTests (Tests/SpicesTests/)
 
@@ -1077,6 +1074,8 @@ chai/
 │   │   │   ├── ViewBuilder.swift        # @resultBuilder → structural view tree
 │   │   │   ├── StructuralViews.swift    # TupleView/OptionalView/ConditionalContent/ForEachView
 │   │   │   ├── ViewOutput.swift         # Terminal leaf (styled text) + interpolation
+│   │   │   ├── ViewOutput+Clamping.swift # Raster clamps (clampedWidth / clampedHeight)
+│   │   │   ├── StyledText+Clamping.swift # Internal line/segment clamping helpers
 │   │   │   ├── LayoutTypes.swift        # AvailableSize / ViewSize / ViewOrigin / ViewRect / LayoutFlexibility
 │   │   │   ├── Cursor.swift             # Cursor position and shape
 │   │   │   ├── Logger.swift             # ChaiLogger / FileLogger diagnostics
@@ -1094,44 +1093,28 @@ chai/
 │   │       ├── Wrapping.swift           # StyledText word-wrapping (A1 rules) for Text
 │   │       └── DisplayWidth.swift       # Unicode-aware visible width (Chai copy)
 │   │
-│   ├── Latte/                           # Layout, styling, and the declarative containers
+│   ├── Latte/                           # Styling and the declarative containers
 │   │   ├── Latte.swift                  # Module entry point
 │   │   ├── Borders/
-│   │   │   ├── Border.swift             # Border styles and configuration
-│   │   │   └── BorderRenderer.swift     # Border rendering logic
+│   │   │   └── Border.swift             # Border glyph sets
 │   │   ├── Layout/
-│   │   │   ├── Alignment.swift          # Horizontal/vertical/fractional alignment
-│   │   │   ├── Margin.swift             # Margin (outer spacing)
-│   │   │   ├── Padding.swift            # Padding (inner spacing)
-│   │   │   ├── Size.swift               # Width/height enforcement and clamping
-│   │   │   ├── Wrap.swift               # ANSI-aware word wrapping
-│   │   │   ├── Inline.swift             # First-line extraction
+│   │   │   ├── Alignment.swift          # Horizontal/vertical alignment value types
 │   │   │   ├── Stacks.swift             # VStack/HStack (allocation engine impl)
 │   │   │   ├── Frame.swift              # FrameView + View.frame(...) modifier
 │   │   │   ├── PaddingView.swift        # .padded / .margined wrapper
-│   │   │   ├── BorderView.swift         # .bordered wrapper
+│   │   │   ├── BorderView.swift         # .bordered wrapper (+ per-side styling)
 │   │   │   └── CompositionWrappers.swift # .beside / .above stack sugar
-│   │   ├── Composition/
-│   │   │   ├── Join.swift               # Horizontal/vertical block joining
-│   │   │   └── Compositor.swift         # Z-ordered Layer canvas placement
 │   │   ├── Style/
 │   │   │   ├── Style.swift              # ANSI text styling
+│   │   │   ├── Style+TextAttributes.swift # Style/Color → Chai cell attributes
 │   │   │   ├── Color.swift              # Color definitions (hex, 256, true color)
 │   │   │   ├── ColorProfile.swift       # Terminal capability detection + downsampling
 │   │   │   ├── ColorPalette.swift       # ANSI palettes
 │   │   │   └── ColorUtilities.swift     # Darken/lighten/blend/gradient helpers
 │   │   ├── Measurement/
-│   │   │   └── DisplayWidth.swift       # Unicode-aware visible width (Latte copy)
-│   │   ├── Static/
-│   │   │   ├── ListRenderer.swift       # Static list rendering
-│   │   │   └── TreeRenderer.swift       # Static tree rendering
-│   │   ├── Utilities/
-│   │   │   ├── TabExpansion.swift        # Tab-to-spaces expansion
-│   │   │   └── StringLines.swift        # Line splitting utilities
-│   │   └── Extensions/
-│   │       ├── String+Layout.swift      # Chainable String extensions
-│   │       ├── StyledText+Layout.swift  # StyledText layout extensions
-│   │       └── ViewOutput+Layout.swift  # ViewOutput raster clamping helpers
+│   │   │   └── DisplayWidth.swift       # Internal width helper (border glyphs, tabs)
+│   │   └── Utilities/
+│   │       └── TabExpansion.swift       # Tab-to-spaces expansion + String.tabsExpanded
 │   │
 │   └── Spices/                          # Component library (depends on Chai, Latte)
 │       ├── Spices.swift                 # Module entry point
@@ -1154,8 +1137,7 @@ chai/
 │       ├── KeyBinding/KeyBinding.swift  # Declarative key binding matching
 │       ├── Cursor/Cursor.swift          # Cursor management
 │       └── Internal/
-│           ├── IDGenerator.swift        # Unique ID generation
-│           └── StyleBridge.swift        # Style.styledText(_:) for safe ViewOutput content
+│           └── IDGenerator.swift        # Unique ID generation
 │
 ├── Tests/
 │   ├── ChaiTests/                       # InputParser, Renderer (+engine path, structural),

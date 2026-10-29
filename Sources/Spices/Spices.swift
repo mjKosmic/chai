@@ -43,8 +43,9 @@
 /// let plain   = style.render("Warning!", profile: .noColor)  // "Warning!"
 /// ```
 ///
-/// Layout primitives (`border`, `pad`, `align`, etc.) also live in Latte and
-/// accept `Style` values natively — no closure adapters needed.
+/// The tree modifiers (`.padded`, `.bordered`, `.frame`, ...) also live in
+/// Latte. Border glyphs accept `Style` values through the `borderStyle` and
+/// per-side parameters — no closure adapters needed.
 ///
 /// ## Key Bindings
 ///

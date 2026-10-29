@@ -1,78 +1,72 @@
-/// Latte — Terminal layout and styling library for Swift.
+/// Latte — terminal layout and styling for Chai.
 ///
-/// Latte provides composable, string-based layout primitives and ANSI text
-/// styling for building terminal UIs. It is framework-agnostic: functions
-/// accept and return plain `String` values, so they work with any TUI
-/// framework (or no framework at all).
-///
-/// ## Core concepts
-///
-/// All layout is performed on regular strings that may contain ANSI escape
-/// sequences. Every measurement operation uses ``visibleWidth(of:)`` to count
-/// only printable terminal columns, so styled text (bold, colored, etc.) is
-/// handled transparently.
+/// Latte provides composable styling values and the declarative containers
+/// that render through Chai's allocation engine. Layout is expressed as a
+/// view tree: every leaf, container, and modifier participates in
+/// measurement and allocation.
 ///
 /// ## Styling
 ///
-/// ``Style`` is a composable value type that builds ANSI SGR sequences for
-/// colors and text attributes. ``Color`` supports ANSI 16, extended 256-color,
-/// and 24-bit true color, with automatic downsampling to match the connected
-/// terminal via ``ColorProfile``.
+/// ``Style`` is a composable value that describes colors and text attributes.
+/// ``Color`` supports ANSI 16, extended 256-color, and 24-bit true color, with
+/// downsampling through ``ColorProfile``.
 ///
 /// ```swift
 /// let warning = Style().foreground(.ansi(.yellow)).bold()
-/// let output  = warning.render("Caution!")
-/// // → \e[33;1mCaution!\e[0m
-///
-/// // Auto-detect terminal capability and downsample colors automatically
-/// let profile = ColorProfile.detect()
-/// let safe    = warning.render("Caution!", profile: profile)
-///
-/// // Strip all styling for piped / file output
-/// let plain   = warning.render("Caution!", profile: .noColor)  // "Caution!"
+/// Text(warning.styledText("Caution!"))
 /// ```
 ///
-/// ## Typical usage
+/// ``Style/textAttributes`` carries styling as structured values for the
+/// cell-buffer renderer. ``Style/render(_:profile:)`` produces an ANSI string
+/// for output written outside the live view, such as
+/// ``Chai/Command/println(_:)``.
 ///
-/// Latte offers two equivalent calling styles — free functions and chainable
-/// String extensions — so you can choose whichever reads best:
+/// ## Composition
 ///
 /// ```swift
-/// import Latte
-///
-/// // Free-function style (inside-out)
-/// let panel = border(pad(align("Groceries", width: 20, .center),
-///                        top: 1, right: 2, bottom: 1, left: 2), .rounded)
-///
-/// // Chainable style (left-to-right)
-/// let panel = "Groceries"
-///     .aligned(width: 20, .center)
-///     .padded(1, 2)
-///     .bordered(.rounded)
-///
-/// // Side-by-side columns
-/// let left  = border("Column A\nItem 1\nItem 2", .normal)
-/// let right = border("Column B\nItem 3\nItem 4", .normal)
-/// let layout = joinHorizontal(.top, left, right)
+/// VStack {
+///     Text("Groceries".bold())
+///     HStack {
+///         Text("milk")
+///         Spacer()
+///         Text("2")
+///     }
+/// }
+/// .padded(1)
+/// .bordered(
+///     .rounded,
+///     borderStyle: Style().foreground(.ansi(.cyan))
+/// )
+/// .frame(width: 40, horizontalAlignment: .center)
 /// ```
+///
+/// Containers shrink-wrap their content. Use ``View/frame(width:height:horizontalAlignment:verticalAlignment:)``
+/// to opt into a fixed allocation, and ``Spacer`` or ``Fill`` to absorb
+/// leftover space. Content larger than its allocated rect is clipped to it.
 ///
 /// ## Styled borders
 ///
-/// Pass a ``Style`` directly to any border parameter — no closures needed:
+/// Border glyphs accept the same styling values as text. A shared
+/// `borderStyle` applies to every edge; per-side styles override it, and
+/// corners inherit their horizontal edge's style:
 ///
 /// ```swift
 /// let cyan = Style().foreground(.ansi(.cyan))
 /// let red  = Style().foreground(.ansi(.red))
-/// let blue = Style().foreground(.ansi(.blue))
 ///
-/// // Uniform border color
-/// border("text", .rounded, borderStyle: cyan)
+/// Text("text").bordered(.rounded, borderStyle: cyan)
+/// Text("text").bordered(.normal, topStyle: red, bottomStyle: cyan)
+/// ```
 ///
-/// // Per-side styling
-/// border("text", .rounded, topStyle: red, bottomStyle: blue)
+/// ## Tab expansion
 ///
-/// // Chainable
-/// "text".bordered(.rounded, borderStyle: cyan)
+/// Tabs have no display width and are skipped by the cell renderer, so
+/// tab-indented text must be expanded before it enters a view:
+///
+/// ```swift
+/// Text(expandTabs("\\tindented"))
+/// // or
+/// Text("\\tindented".tabsExpanded())
 /// ```
 ///
 /// ## Module organisation
@@ -80,15 +74,11 @@
 /// | Group | Types / Functions |
 /// |---|---|
 /// | **Styling** | ``Style``, ``Color``, ``ANSIColor``, ``ColorProfile`` |
-/// | **Measurement** | ``visibleWidth(of:)``, ``height(of:)``, ``size(of:)``, ``truncateToVisibleWidth(_:maxWidth:)`` |
-/// | **Alignment** | ``align(_:width:_:)`` |
-/// | **Padding** | ``pad(_:top:right:bottom:left:fill:)`` and shorthand overloads |
-/// | **Margin** | ``margin(_:top:right:bottom:left:fill:)`` and shorthand overloads |
-/// | **Size** | ``enforceWidth(_:_:alignment:)``, ``enforceHeight(_:_:alignment:)``, ``clampWidth(_:_:)``, ``clampHeight(_:_:)``, ``clamp(_:maxWidth:maxHeight:)`` |
-/// | **Borders** | ``border(_:_:top:right:bottom:left:borderStyle:topStyle:bottomStyle:leftStyle:rightStyle:)``, ``Border`` |
-/// | **Utilities** | ``expandTabs(_:tabWidth:)``, ``inline(_:)``, ``wrap(_:width:breakCharacter:)`` |
-/// | **Composition** | ``joinHorizontal(_:_:)-5h7fk``, ``joinVertical(_:_:)-3zco8`` |
-/// | **String Extensions** | Chainable versions of all the above: `.padded()`, `.bordered()`, `.margined()`, `.aligned()`, `.enforced()`, `.clamped()`, `.truncated()`, `.tabsExpanded()`, `.inlined()`, `.wrapped()` |
-/// | **View Modifiers** | Tree-based layout: `.padded()`, `.margined()`, `.bordered()`, `.frame()`, `.beside()`, `.above()` |
-/// | **ViewOutput Extensions** | Raster helpers: `.clampedWidth()`, `.clampedHeight()` |
+/// | **Containers** | ``VStack``, ``HStack``, ``FrameView`` |
+/// | **Modifiers** | `.padded`, `.margined`, `.bordered`, `.frame`, `.beside`, `.above` |
+/// | **Borders** | ``Border`` and its presets |
+/// | **Text utilities** | ``expandTabs(_:tabWidth:)``, ``String/tabsExpanded(tabWidth:)`` |
+///
+/// Raster clamping for finished content lives in Chai on ``Chai/ViewOutput``
+/// as `clampedWidth(_:)` and `clampedHeight(_:)`.
 public enum Latte {}

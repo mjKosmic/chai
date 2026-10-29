@@ -1,5 +1,6 @@
 import Testing
-@testable import Latte
+import Chai
+import Latte
 
 @Suite("Border")
 struct BorderTests {
@@ -63,234 +64,137 @@ struct BorderTests {
         #expect(b.bottomRight == " ")
     }
 
-    // MARK: - Full border rendering
+    // MARK: - Box rendering
 
     @Test func borderProducesCorrectStructure() {
-        let result = border("Hi", .normal)
-        let lines = result.components(separatedBy: "\n")
-        // 1 top + 1 content + 1 bottom = 3 lines
-        #expect(lines.count == 3)
-        #expect(lines[0] == "┌──┐")
-        #expect(lines[1] == "│Hi│")
-        #expect(lines[2] == "└──┘")
-    }
-
-    @Test func borderDefaultStyleIsRounded() {
-        let result = border("X")
-        #expect(result.contains("╭"))
-        #expect(result.contains("╯"))
+        let rows = visibleRows(embedBuffer(Text("Hi").bordered(.normal), width: 10))
+        #expect(rows == ["┌──┐", "│Hi│", "└──┘"])
     }
 
     @Test func borderRectangularForMultilineContent() {
-        // "Hi" (2) and "Hello" (5) → contentWidth = 5; border adds 1 each side
-        let result = border("Hi\nHello", .normal)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines.count == 4)  // top + 2 content + bottom
-        // Each line should be exactly 7 visible columns (1 + 5 + 1)
-        for line in lines {
-            #expect(visibleWidth(of: line) == 7)
+        let view = VStack {
+            Text("Hi")
+            Text("Hello")
         }
-        #expect(lines[1] == "│Hi   │")
-        #expect(lines[2] == "│Hello│")
+        .bordered(.normal)
+        let rows = visibleRows(embedBuffer(view, width: 10))
+        #expect(rows == ["┌─────┐", "│Hi   │", "│Hello│", "└─────┘"])
     }
-
-    @Test func borderTopEdgeHasCorrectWidth() {
-        let result = border("Hello", .rounded)
-        let lines = result.components(separatedBy: "\n")
-        // ╭─────╮ → 1 + 5 + 1 = 7 visible cols
-        #expect(visibleWidth(of: lines[0]) == 7)
-        #expect(lines[0] == "╭─────╮")
-    }
-
-    // MARK: - Partial borders (selective sides)
-
-    @Test func topOnlyBorder() {
-        let result = border("Hello", .normal, top: true, right: false, bottom: false, left: false)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines.count == 2)
-        // No corners because left/right are off
-        #expect(lines[0] == "─────")
-        #expect(lines[1] == "Hello")
-    }
-
-    @Test func bottomOnlyBorder() {
-        let result = border("Hello", .normal, top: false, right: false, bottom: true, left: false)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines.count == 2)
-        #expect(lines[0] == "Hello")
-        #expect(lines[1] == "─────")
-    }
-
-    @Test func leftAndRightOnlyBorder() {
-        let result = border("Hello", .normal, top: false, right: true, bottom: false, left: true)
-        let lines = result.components(separatedBy: "\n")
-        // Only 1 content line, no top or bottom bars
-        #expect(lines.count == 1)
-        #expect(lines[0] == "│Hello│")
-    }
-
-    @Test func topAndBottomNoCornersWhenSidesOff() {
-        let result = border("Hi\nThere", .normal, top: true, right: false, bottom: true, left: false)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines.count == 4)
-        // Top and bottom are plain dashes, no corner characters
-        #expect(lines[0] == "─────")  // contentWidth = max("Hi", "There") = 5
-        #expect(lines[3] == "─────")
-        // No │ on content lines
-        #expect(!lines[1].hasPrefix("│"))
-        #expect(!lines[1].hasSuffix("│"))
-    }
-
-    @Test func topLeftRightNoBottom() {
-        let result = border("Hello", .normal, top: true, right: true, bottom: false, left: true)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines.count == 2)
-        #expect(lines[0] == "┌─────┐")
-        #expect(lines[1] == "│Hello│")
-        // No bottom line
-    }
-
-    // MARK: - Hidden border
-
-    @Test func hiddenBorderPreservesSpacing() {
-        let visible = border("Hi", .normal)
-        let hidden  = border("Hi", .hidden)
-        let visLines = visible.components(separatedBy: "\n")
-        let hidLines = hidden.components(separatedBy: "\n")
-        // Both should have the same number of lines and same visible widths
-        #expect(visLines.count == hidLines.count)
-        for (v, h) in zip(visLines, hidLines) {
-            #expect(visibleWidth(of: v) == visibleWidth(of: h))
-        }
-    }
-
-    // MARK: - ANSI codes in content
-
-    @Test func borderPreservesAnsiCodesInContent() {
-        let styled = "\u{1B}[31mRed\u{1B}[0m"
-        let result = border(styled, .normal)
-        #expect(result.contains("\u{1B}[31m"))
-        #expect(result.contains("\u{1B}[0m"))
-        // Visible width of content line: 1 (│) + 3 (Red) + 1 (│) = 5
-        let lines = result.components(separatedBy: "\n")
-        #expect(visibleWidth(of: lines[1]) == 5)
-    }
-
-    // MARK: - Custom border
 
     @Test func customBorderUsesProvidedCharacters() {
         let custom = Border(
             top: "~", bottom: "~", left: "!", right: "!",
             topLeft: "*", topRight: "*", bottomLeft: "*", bottomRight: "*"
         )
-        let result = border("Hi", custom)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines[0] == "*~~*")
-        #expect(lines[1] == "!Hi!")
-        #expect(lines[2] == "*~~*")
+        let rows = visibleRows(embedBuffer(Text("Hi").bordered(custom), width: 10))
+        #expect(rows == ["*~~*", "!Hi!", "*~~*"])
     }
 
-    // MARK: - Styled borders
+    @Test func hiddenBorderPreservesSpacing() {
+        let visible = Text("Hi").bordered(.normal)
+        let hidden = Text("Hi").bordered(.hidden)
+        #expect(
+            visible._measure(in: .unconstrained)
+                == hidden._measure(in: .unconstrained)
+        )
+    }
+
+    // MARK: - Styling
 
     @Test func borderStyleAppliedToAllEdges() {
-        // Cyan foreground = SGR code 36
-        let cyan = Style().foreground(.ansi(.cyan))
-        let result = border("Hi", .normal, borderStyle: cyan)
-        let lines = result.components(separatedBy: "\n")
-        // Top edge should contain the cyan SGR code (36)
-        #expect(lines[0].contains("36"))
-        #expect(lines[0].contains("\u{1B}[0m"))
-        // Left border on content line should be styled; content "Hi" must not be
-        #expect(lines[1].hasPrefix("\u{1B}[36m│\u{1B}[0m"))
-        #expect(lines[1].contains("Hi"))
-        // Bottom edge should be styled
-        #expect(lines[2].contains("36"))
+        let red = Style().foreground(.ansi(.red))
+        let buffer = embedBuffer(Text("Hi").bordered(.normal, borderStyle: red), width: 10)
+
+        // Top edge, bottom edge, and side glyphs carry the foreground.
+        for col in 0...3 {
+            #expect(buffer[col, 0].foreground == .red)
+            #expect(buffer[col, 2].foreground == .red)
+        }
+        #expect(buffer[0, 1].foreground == .red)
+        #expect(buffer[3, 1].foreground == .red)
+
+        // The content is not styled by the border style.
+        #expect(buffer[1, 1].foreground == nil)
+        #expect(buffer[2, 1].foreground == nil)
     }
 
-    @Test func borderStyleNilIsBackwardCompatible() {
-        let unstyled = border("Hi", .normal, borderStyle: nil)
-        let original = border("Hi", .normal)
-        #expect(unstyled == original)
+    @Test func borderStyleNilLeavesGlyphsUnstyled() {
+        let buffer = embedBuffer(Text("Hi").bordered(.normal), width: 10)
+        #expect(buffer[0, 0].foreground == nil)
+        #expect(buffer[0, 0].background == nil)
+        #expect(buffer[0, 0].attributes.isEmpty)
+        #expect(buffer[1, 1].foreground == nil)
     }
 
     @Test func perSideStyleOverridesBorderStyle() {
-        // Use distinct SGR codes: bold=1, italic=3, underline=4
-        let boldStyle      = Style().bold()
-        let italicStyle    = Style().italic()
-        let underlineStyle = Style().underline()
+        let bold = Style().bold()
+        let italic = Style().italic()
+        let underline = Style().underline()
 
-        let result = border("X", .normal,
-                            borderStyle: underlineStyle,
-                            topStyle: boldStyle,
-                            bottomStyle: italicStyle)
-        let lines = result.components(separatedBy: "\n")
-        // Top edge: bold (SGR 1)
-        #expect(lines[0].contains("\u{1B}[1m"))
-        // Bottom edge: italic (SGR 3)
-        #expect(lines[2].contains("\u{1B}[3m"))
-        // Left/right sides: underline (SGR 4), not bold or italic
-        #expect(lines[1].contains("\u{1B}[4m"))
-        #expect(!lines[1].contains("\u{1B}[1m"))
+        let view = Text("X").bordered(
+            .normal,
+            borderStyle: underline,
+            topStyle: bold,
+            bottomStyle: italic
+        )
+        let buffer = embedBuffer(view, width: 10)
+
+        // Top edge is bold.
+        #expect(buffer[0, 0].attributes.contains(.bold))
+        #expect(buffer[1, 0].attributes.contains(.bold))
+        // Bottom edge is italic.
+        #expect(buffer[0, 2].attributes.contains(.italic))
+        #expect(buffer[1, 2].attributes.contains(.italic))
+        // Sides fall back to the shared border style.
+        #expect(buffer[0, 1].attributes.contains(.underline))
+        #expect(buffer[2, 1].attributes.contains(.underline))
+        #expect(!buffer[0, 1].attributes.contains(.bold))
     }
 
     @Test func cornersInheritHorizontalEdgeStyle() {
-        // Bold for top, italic for bottom
-        let topStyle    = Style().bold()
-        let bottomStyle = Style().italic()
-        let result = border("X", .normal, topStyle: topStyle, bottomStyle: bottomStyle)
-        let lines = result.components(separatedBy: "\n")
-        // Top row (corners + bar) contains bold SGR code
-        #expect(lines[0].contains("\u{1B}[1m"))
-        // Bottom row contains italic SGR code
-        #expect(lines[2].contains("\u{1B}[3m"))
-        // Content line (sides use fallback nil → unstyled) has no escape sequences
-        #expect(!lines[1].contains("\u{1B}["))
+        let bold = Style().bold()
+        let italic = Style().italic()
+
+        let view = Text("X").bordered(.normal, topStyle: bold, bottomStyle: italic)
+        let buffer = embedBuffer(view, width: 10)
+
+        // Top corners inherit the top edge style.
+        #expect(buffer[0, 0].attributes.contains(.bold))
+        #expect(buffer[2, 0].attributes.contains(.bold))
+        // Bottom corners inherit the bottom edge style.
+        #expect(buffer[0, 2].attributes.contains(.italic))
+        #expect(buffer[2, 2].attributes.contains(.italic))
+        // Sides have no shared fallback, so they stay unstyled.
+        #expect(buffer[0, 1].attributes.isEmpty)
+        #expect(buffer[2, 1].attributes.isEmpty)
+    }
+
+    @Test func contentInsideBorderKeepsItsOwnStyle() {
+        let green = Style().foreground(.ansi(.green))
+        let red = Style().foreground(.ansi(.red))
+        let content = green.styledText("Hi")
+
+        let view = Text(content).bordered(.normal, borderStyle: red)
+        let buffer = embedBuffer(view, width: 10)
+
+        #expect(buffer[0, 0].foreground == .red)
+        #expect(buffer[1, 1].foreground == .green)
+        #expect(buffer[2, 1].foreground == .green)
     }
 
     @Test func styledBorderVisibleWidthUnchanged() {
         let cyan = Style().foreground(.ansi(.cyan))
-        let unstyled = border("Hello", .rounded)
-        let styled   = border("Hello", .rounded, borderStyle: cyan)
-        let unstyledLines = unstyled.components(separatedBy: "\n")
-        let styledLines   = styled.components(separatedBy: "\n")
-        // Same number of lines
-        #expect(unstyledLines.count == styledLines.count)
-        // Same visible width on every line (ANSI escape codes don't count)
-        for (u, s) in zip(unstyledLines, styledLines) {
-            #expect(visibleWidth(of: u) == visibleWidth(of: s))
-        }
+        let plain = visibleRows(embedBuffer(Text("Hello").bordered(.rounded), width: 10))
+        let styled = visibleRows(
+            embedBuffer(Text("Hello").bordered(.rounded, borderStyle: cyan), width: 10)
+        )
+        #expect(plain == styled)
     }
 
-    @Test func borderedExtensionWithStyling() {
-        let red = Style().foreground(.ansi(.red))  // SGR 31
-        let result = "Hi".bordered(.normal, borderStyle: red)
-        let lines = result.components(separatedBy: "\n")
-        #expect(lines[0].contains("31"))
-    }
-
-    @Test func noColorProfileStripsAllBorderStyling() {
-        // A trueColor style at .noColor profile must produce unstyled border characters
-        let purple = Style().foreground(.trueColor(r: 120, g: 80, b: 255))
-        let styled   = border("Hi", .normal, borderStyle: purple, profile: .noColor)
-        let unstyled = border("Hi", .normal)
-        #expect(styled == unstyled)
-    }
-
-    @Test func ansiProfileDownsamplesTrueColorBorderStyle() {
-        // A trueColor style at .ansi profile must emit a 16-color code, not 38;2;...
-        let trueBlue = Style().foreground(.trueColor(r: 0, g: 0, b: 255))
-        let result = border("Hi", .normal, borderStyle: trueBlue, profile: .ansi)
-        #expect(!result.contains("38;2;"))
-        #expect(!result.contains("38;5;"))
-        // Should contain some ANSI SGR code (the downsampled 16-color blue)
-        #expect(result.contains("\u{1B}["))
-    }
-
-    @Test func borderedExtensionForwardsProfile() {
-        let purple = Style().foreground(.trueColor(r: 120, g: 80, b: 255))
-        let viaFree      = border("Hi", .normal, borderStyle: purple, profile: .noColor)
-        let viaExtension = "Hi".bordered(.normal, borderStyle: purple, profile: .noColor)
-        #expect(viaFree == viaExtension)
+    @Test func styledBorderCarriesHyperlink() {
+        let link = Style().hyperlink("https://example.com")
+        let buffer = embedBuffer(Text("X").bordered(.normal, topStyle: link), width: 10)
+        #expect(buffer[0, 0].hyperlink == "https://example.com")
     }
 
     // MARK: - Equatable
@@ -298,6 +202,6 @@ struct BorderTests {
     @Test func borderEquatable() {
         #expect(Border.normal == Border.normal)
         #expect(Border.normal != Border.rounded)
-        #expect(Border.ascii  != Border.thick)
+        #expect(Border.ascii != Border.thick)
     }
 }

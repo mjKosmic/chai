@@ -69,9 +69,8 @@ Sources/Chai/
                LayoutTypes.swift  Cursor.swift  Logger.swift  MessageChannel.swift
   Terminal/    ANSICodes.swift  Terminal.swift  InputReader.swift  InputParser.swift
   Renderer/    Renderer.swift  StyledText.swift  CellBuffer.swift  Cell.swift  DisplayWidth.swift  Wrapping.swift
-Sources/Latte/    Layout, styling (Style/), borders, composition, static renderers, extensions
-                  (Layout/Stacks.swift  Layout/Frame.swift  Layout/Alignment.swift
-                   Extensions/ViewOutput+Layout.swift  ...)
+Sources/Latte/    Styling (Style/, Color/, ColorProfile) and the declarative containers
+                  (Layout/Stacks.swift  Layout/Frame.swift  Layout/BorderView.swift  ...)
 Sources/Spices/   Ready-made components (Menu, SelectableList, TextInput, ...)
 Tests/ChaiTests/  LatteTests/  SpicesTests/
   LatteTests/LayoutParity/   corpus + engine spec suites (the parity discipline)
@@ -83,7 +82,9 @@ openspec/changes/ active proposals + archive/ for completed changes
 The layout engine lives across the seam: value types and the `View` SPI
 (`_measure(in:)`/`_embed`/`_childViews`/`_flexibility`) are in `Chai/Core/{LayoutTypes,View}.swift`,
 the containers in `Latte/Layout/{Stacks,Frame}.swift`, and the renderer flip in
-`Chai/Renderer/Renderer.swift`. See `ARCHITECTURE.md` → "The Layout Engine".
+`Chai/Renderer/Renderer.swift`. The SPI is public because custom containers are
+a supported extension point; Latte's containers are one consumer. See
+`ARCHITECTURE.md` → "The Layout Engine".
 
 ---
 

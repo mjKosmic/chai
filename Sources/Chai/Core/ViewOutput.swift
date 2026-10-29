@@ -51,7 +51,7 @@ public struct ViewOutput: Sendable, Equatable {
     ///   Passing `Style.render(...)` output or other ANSI-encoded strings will cause escape
     ///   bytes to be treated as literal characters by the cell-buffer renderer, corrupting
     ///   the display and width calculations. Use ``init(_:)`` with a ``StyledText`` built
-    ///   via `Style.styledText(_:)` (from Spices' `StyleBridge`) instead.
+    ///   via `Style.styledText(_:)` (from Latte) instead.
     public init(_ content: String) {
         assert(
             !content.contains("\u{1B}"),

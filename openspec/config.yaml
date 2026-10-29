@@ -7,7 +7,7 @@ schema: spec-driven
 context: |
   Chai is a Swift-native TUI framework (Elm Architecture) in a monorepo with
   three products: Chai (runtime, renderer, input, layout types/SPI), Latte
-  (layout/styling and the declarative View containers), and Spices (reusable
+  (styling and the declarative View containers), and Spices (reusable
   components). The example app is Examples/GroceryList.
 
   Constraints that apply to every change:
@@ -15,7 +15,7 @@ context: |
   - StrictConcurrency is enabled; types crossing concurrency boundaries are Sendable.
   - Prefer value semantics (structs) for state and internal types for implementation details.
   - Every behavior change needs tests (Swift Testing: @Test, #expect).
-  - Tests must keep `swift test` green (currently 1278 tests / 110 suites).
+  - Tests must keep `swift test` green (currently 992 tests / 98 suites).
   - Production and test targets must build warning-free. There is no warning
     allowlist. `Progress.viewAs(_:)` is deprecated; use `viewAsStyledText(_:)`.
     Do not introduce new warnings.

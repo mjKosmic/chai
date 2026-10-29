@@ -33,9 +33,26 @@ import Chai
 ///   a larger assignment; `frame()` is the opt-in for filling.
 /// - **Flexibility:** forwarded from the child (a flexible child inside a
 ///   border still absorbs a stack's leftover space).
+///
+/// ## Styling
+///
+/// Border glyphs can carry a ``Style``. `borderStyle` applies to every edge;
+/// `topStyle`, `bottomStyle`, `leftStyle`, and `rightStyle` override it per
+/// side. Corners inherit the style of their horizontal edge. The content
+/// inside the border is never styled by these parameters.
 public struct BorderView<Content: View>: View {
     /// The glyph set used to draw the box.
     let style: Border
+    /// Style applied to every edge unless a per-side style overrides it.
+    let borderStyle: Style?
+    /// Style for the top edge and top corners.
+    let topStyle: Style?
+    /// Style for the bottom edge and bottom corners.
+    let bottomStyle: Style?
+    /// Style for the left edge on content lines.
+    let leftStyle: Style?
+    /// Style for the right edge on content lines.
+    let rightStyle: Style?
     /// The bordered content.
     let content: Content
 
@@ -43,9 +60,31 @@ public struct BorderView<Content: View>: View {
     ///
     /// - Parameters:
     ///   - style: The ``Border`` character set to draw.
+    ///   - borderStyle: Style applied to all border glyphs. Defaults to `nil`.
+    ///   - topStyle: Style for the top edge and top corners; overrides
+    ///     `borderStyle` for those glyphs.
+    ///   - bottomStyle: Style for the bottom edge and bottom corners; overrides
+    ///     `borderStyle` for those glyphs.
+    ///   - leftStyle: Style for the left edge on content lines; overrides
+    ///     `borderStyle` for those glyphs.
+    ///   - rightStyle: Style for the right edge on content lines; overrides
+    ///     `borderStyle` for those glyphs.
     ///   - content: A ``ViewBuilder`` closure providing the content.
-    public init(_ style: Border = .normal, @ViewBuilder content: () -> Content) {
+    public init(
+        _ style: Border = .normal,
+        borderStyle: Style? = nil,
+        topStyle: Style? = nil,
+        bottomStyle: Style? = nil,
+        leftStyle: Style? = nil,
+        rightStyle: Style? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
         self.style = style
+        self.borderStyle = borderStyle
+        self.topStyle = topStyle
+        self.bottomStyle = bottomStyle
+        self.leftStyle = leftStyle
+        self.rightStyle = rightStyle
         self.content = content()
     }
 }
@@ -113,6 +152,15 @@ extension BorderView {
 
     // MARK: Drawing
 
+    /// Style for the top edge and its corners.
+    private var effectiveTop: Style? { topStyle ?? borderStyle }
+    /// Style for the bottom edge and its corners.
+    private var effectiveBottom: Style? { bottomStyle ?? borderStyle }
+    /// Style for the left edge between the corners.
+    private var effectiveLeft: Style? { leftStyle ?? borderStyle }
+    /// Style for the right edge between the corners.
+    private var effectiveRight: Style? { rightStyle ?? borderStyle }
+
     /// Paint the box's edges into the buffer. Degenerate sizes draw the part
     /// that fits: a one-column box paints its left edge glyphs, and a
     /// one-row box paints only the top edge.
@@ -128,24 +176,24 @@ extension BorderView {
 
         // Top edge (and the top corners when there is room for them).
         if width == 1 {
-            paint(style.topLeft, col: origin.col, row: origin.row, into: &buffer)
+            paint(style.topLeft, col: origin.col, row: origin.row, style: effectiveTop, into: &buffer)
         } else {
-            paint(style.topLeft, col: origin.col, row: origin.row, into: &buffer)
-            paint(style.topRight, col: lastCol, row: origin.row, into: &buffer)
+            paint(style.topLeft, col: origin.col, row: origin.row, style: effectiveTop, into: &buffer)
+            paint(style.topRight, col: lastCol, row: origin.row, style: effectiveTop, into: &buffer)
             for col in (origin.col + 1)..<lastCol {
-                paint(style.top, col: col, row: origin.row, into: &buffer)
+                paint(style.top, col: col, row: origin.row, style: effectiveTop, into: &buffer)
             }
         }
 
         // Bottom edge.
         if height > 1 {
             if width == 1 {
-                paint(style.bottomLeft, col: origin.col, row: lastRow, into: &buffer)
+                paint(style.bottomLeft, col: origin.col, row: lastRow, style: effectiveBottom, into: &buffer)
             } else {
-                paint(style.bottomLeft, col: origin.col, row: lastRow, into: &buffer)
-                paint(style.bottomRight, col: lastCol, row: lastRow, into: &buffer)
+                paint(style.bottomLeft, col: origin.col, row: lastRow, style: effectiveBottom, into: &buffer)
+                paint(style.bottomRight, col: lastCol, row: lastRow, style: effectiveBottom, into: &buffer)
                 for col in (origin.col + 1)..<lastCol {
-                    paint(style.bottom, col: col, row: lastRow, into: &buffer)
+                    paint(style.bottom, col: col, row: lastRow, style: effectiveBottom, into: &buffer)
                 }
             }
         }
@@ -153,9 +201,9 @@ extension BorderView {
         // Side edges between the corners.
         if height > 2 {
             for row in (origin.row + 1)..<lastRow {
-                paint(style.left, col: origin.col, row: row, into: &buffer)
+                paint(style.left, col: origin.col, row: row, style: effectiveLeft, into: &buffer)
                 if width > 1 {
-                    paint(style.right, col: lastCol, row: row, into: &buffer)
+                    paint(style.right, col: lastCol, row: row, style: effectiveRight, into: &buffer)
                 }
             }
         }
@@ -164,10 +212,12 @@ extension BorderView {
     /// Paint a glyph string starting at `col`. ``Border`` documents every
     /// field as a single terminal column; a multi-character custom glyph is
     /// written left-to-right and its display width advances the column.
+    /// Glyph cells carry the resolved style as structured attributes.
     private func paint(
         _ glyph: String,
         col: Int,
         row: Int,
+        style: Style?,
         into buffer: inout CellBuffer
     ) {
         var currentCol = col
@@ -177,10 +227,27 @@ extension BorderView {
             buffer.set(
                 col: currentCol,
                 row: row,
-                Cell(character: character, width: Int8(width))
+                styledCell(character, width: width, style: style)
             )
             currentCol += width
         }
+    }
+
+    /// Build a border glyph cell, attaching the style's structured attributes
+    /// when one is present.
+    private func styledCell(_ character: Character, width: Int, style: Style?) -> Cell {
+        guard let style else {
+            return Cell(character: character, width: Int8(width))
+        }
+        let attributes = style.textAttributes
+        return Cell(
+            character: character,
+            width: Int8(width),
+            foreground: attributes.foreground,
+            background: attributes.background,
+            attributes: attributes.attributes,
+            hyperlink: attributes.hyperlink
+        )
     }
 }
 
@@ -200,9 +267,29 @@ extension View {
     /// .bordered(.rounded)
     /// ```
     ///
-    /// - Parameter style: The ``Border`` character set to use.
+    /// - Parameters:
+    ///   - style: The ``Border`` character set to use.
+    ///   - borderStyle: Style applied to all border glyphs. Defaults to `nil`.
+    ///   - topStyle: Style for the top edge and top corners.
+    ///   - bottomStyle: Style for the bottom edge and bottom corners.
+    ///   - leftStyle: Style for the left edge on content lines.
+    ///   - rightStyle: Style for the right edge on content lines.
     /// - Returns: A ``BorderView`` wrapping this view.
-    public func bordered(_ style: Border = .normal) -> BorderView<Self> {
-        BorderView(style) { self }
+    public func bordered(
+        _ style: Border = .normal,
+        borderStyle: Style? = nil,
+        topStyle: Style? = nil,
+        bottomStyle: Style? = nil,
+        leftStyle: Style? = nil,
+        rightStyle: Style? = nil
+    ) -> BorderView<Self> {
+        BorderView(
+            style,
+            borderStyle: borderStyle,
+            topStyle: topStyle,
+            bottomStyle: bottomStyle,
+            leftStyle: leftStyle,
+            rightStyle: rightStyle
+        ) { self }
     }
 }

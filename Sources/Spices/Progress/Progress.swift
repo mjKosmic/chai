@@ -166,53 +166,6 @@ public struct Progress: View {
 
     // MARK: - Public API
 
-    /// Renders the progress bar at an arbitrary percentage (no animation).
-    ///
-    /// - Parameter percent: A value from 0.0 to 1.0.
-    /// - Returns: The rendered progress bar as an ANSI-encoded string suitable for
-    ///   **direct terminal printing only**. Do **not** embed this value in
-    ///   ``ViewOutput`` content — the embedded ANSI escape sequences will corrupt
-    ///   the cell-buffer renderer.
-    ///   Use ``viewAsStyledText(_:)`` instead when composing ``ViewOutput``.
-    @available(*, deprecated, renamed: "viewAsStyledText(_:)", message: "Returns an ANSI-encoded String that is unsafe to use with ViewOutput. Use viewAsStyledText(_:) instead.")
-    public func viewAs(_ percent: Double) -> String {
-        let clamped = max(0, min(1, percent))
-        let filledWidth = Int(Double(width) * clamped)
-        let emptyWidth = width - filledWidth
-
-        var bar = ""
-
-        // Build filled portion
-        if let stops = fillGradient, !stops.isEmpty {
-            bar += renderMultiStopGradient(colors: stops, width: filledWidth)
-        } else if let gradFrom = gradientFrom, let gradTo = fullColor {
-            bar += renderGradient(from: gradFrom, to: gradTo, width: filledWidth)
-        } else {
-            let filled = String(repeating: fullCharacter, count: filledWidth)
-            if let color = fullColor {
-                bar += Style(foreground: color).render(filled)
-            } else {
-                bar += filled
-            }
-        }
-
-        // Build empty portion
-        let empty = String(repeating: emptyCharacter, count: emptyWidth)
-        if let color = emptyColor {
-            bar += Style(foreground: color).render(empty)
-        } else {
-            bar += empty
-        }
-
-        // Percentage readout
-        if showPercentage {
-            let pct = String(format: percentFormat, clamped * 100)
-            bar += percentageStyle.render(pct)
-        }
-
-        return bar
-    }
-
     /// Sets the target percentage and starts animating toward it.
     ///
     /// - Parameter percent: Target value from 0.0 to 1.0.
@@ -263,9 +216,8 @@ public struct Progress: View {
 
     /// Renders the progress bar at an arbitrary percentage (no animation) as structured styled text.
     ///
-    /// Prefer this over the deprecated ``viewAs(_:)`` when building ``ViewOutput`` — it returns
-    /// ``StyledText`` so the cell-buffer renderer receives ``TextAttributes`` metadata rather than raw
-    /// ANSI escape bytes.
+    /// Returns ``StyledText`` so the cell-buffer renderer receives
+    /// ``TextAttributes`` metadata rather than raw ANSI escape bytes.
     ///
     /// - Parameter percent: A value from 0.0 to 1.0.
     /// - Returns: The rendered progress bar as ``StyledText``.
@@ -359,55 +311,5 @@ public struct Progress: View {
         return .tick(.milliseconds(16)) { _ in
             ProgressFrameMsg(id: id, tag: tag)
         }
-    }
-
-    /// Renders a multi-stop gradient by interpolating across `colors` per character.
-    ///
-    /// Requires at least two color stops. For a single-stop array, falls back to solid.
-    private func renderMultiStopGradient(colors: [Color], width: Int) -> String {
-        guard width > 0 else { return "" }
-        guard colors.count >= 2 else {
-            let filled = String(repeating: fullCharacter, count: width)
-            if let color = colors.first {
-                return Style(foreground: color).render(filled)
-            }
-            return filled
-        }
-
-        var result = ""
-        for i in 0..<width {
-            // When width == 1 use t = 1.0 (the last stop), matching the behaviour of
-            // the two-color `renderGradient` helper which also uses t = 1.0 in that case.
-            let t = width > 1 ? Double(i) / Double(width - 1) : 1.0
-            // Map t (0.0–1.0) across the color-stop array
-            let scaled = t * Double(colors.count - 1)
-            let segIdx = min(Int(scaled), colors.count - 2)
-            let segT = scaled - Double(segIdx)
-            let color = blend(colors[segIdx], colors[segIdx + 1], t: segT)
-            result += Style(foreground: color).render(String(fullCharacter))
-        }
-        return result
-    }
-
-    /// Renders a simple gradient by interpolating color per character.
-    private func renderGradient(from: Color, to: Color, width: Int) -> String {
-        guard width > 0 else { return "" }
-        guard case let .trueColor(r1, g1, b1) = from,
-              case let .trueColor(r2, g2, b2) = to else {
-            // Gradient only works with true colors; fall back to solid
-            let filled = String(repeating: fullCharacter, count: width)
-            return Style(foreground: to).render(filled)
-        }
-
-        var result = ""
-        for i in 0..<width {
-            let t = width > 1 ? Double(i) / Double(width - 1) : 1.0
-            let r = UInt8(Double(r1) + (Double(r2) - Double(r1)) * t)
-            let g = UInt8(Double(g1) + (Double(g2) - Double(g1)) * t)
-            let b = UInt8(Double(b1) + (Double(b2) - Double(b1)) * t)
-            result += Style(foreground: .trueColor(r: r, g: g, b: b))
-                .render(String(fullCharacter))
-        }
-        return result
     }
 }

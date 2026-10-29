@@ -9,6 +9,39 @@ Pre-1.0 releases may contain breaking changes; the migration history lives in
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING** Removed the string-level layout API from `Latte`. Layout is
+  expressed through the view tree; the pre-alpha policy allows this source
+  break without a deprecation cycle.
+  - `pad` / `margin` / `String.padded` / `String.margined` →
+    `.padded` / `.margined` on the view
+  - `border` / `String.bordered` → `.bordered(...)`, which now accepts
+    `borderStyle`, `topStyle`, `bottomStyle`, `leftStyle`, and `rightStyle`
+  - `align` / `String.aligned` → `.frame(width:horizontalAlignment:)`
+  - `enforceWidth` / `enforceHeight` / `String.enforced` →
+    `.frame(width:height:)`
+  - `clampWidth` / `clampHeight` / `clamp` / `String.clamped` →
+    `ViewOutput.clampedWidth(_:)` / `.clampedHeight(_:)` for finished rasters
+  - `wrap` / `String.wrapped` → `Text`, which wraps at its allocated width
+  - `joinHorizontal` / `joinVertical` → `HStack` / `VStack`
+  - `inline` / `String.inlined` → no direct replacement; split the string
+  - `Compositor` / `Layer`, `ListRenderer`, `TreeRenderer` → compose with
+    views (no direct replacement yet)
+  - `visibleWidth` / `height` / `size` / `truncateToVisibleWidth` →
+    `StyledText.columnWidth` / `lineCount()`
+- **BREAKING** Removed `Progress.viewAs(_:)`; use `viewAsStyledText(_:)`.
+
+### Changed
+
+- `Style.textAttributes` and `Style.styledText(_:)` now live in `Latte`
+  instead of `Spices`, so styling values convert to cell attributes without
+  importing the component library.
+- `.bordered` preserves styled borders through per-side `Style?` parameters,
+  replacing the styling that the string border renderer provided.
+- `expandTabs` and `String.tabsExpanded()` are retained as text preparation:
+  tabs have no display width and are skipped by the cell renderer.
+
 ## [0.1.0] - Unreleased
 
 First tagged pre-alpha release. The tag is created after this change is merged
