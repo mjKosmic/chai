@@ -172,13 +172,13 @@ extension String {
     }
 
     /// Wrap this string in a StyledText with the given foreground color.
-    public func fg(_ color: CellColor) -> StyledText {
-        StyledText(self, style: TextAttributes(foreground: color))
+    public func fg(_ color: Color) -> StyledText {
+        StyledText(self, style: TextAttributes(color))
     }
 
     /// Wrap this string in a StyledText with the given background color.
-    public func bg(_ color: CellColor) -> StyledText {
-        StyledText(self, style: TextAttributes(background: color))
+    public func bg(_ color: Color) -> StyledText {
+        StyledText(self, style: TextAttributes(nil, background: color))
     }
 
     /// Wrap this string in a bold StyledText.
@@ -225,13 +225,13 @@ extension StyledText {
     }
 
     /// Apply a foreground color to all segments.
-    public func fg(_ color: CellColor) -> StyledText {
-        styled(TextAttributes(foreground: color))
+    public func fg(_ color: Color) -> StyledText {
+        styled(TextAttributes(color))
     }
 
     /// Apply a background color to all segments.
-    public func bg(_ color: CellColor) -> StyledText {
-        styled(TextAttributes(background: color))
+    public func bg(_ color: Color) -> StyledText {
+        styled(TextAttributes(nil, background: color))
     }
 
     /// Apply bold to all segments.

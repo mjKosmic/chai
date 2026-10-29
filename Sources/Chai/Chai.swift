@@ -64,25 +64,37 @@
 /// `.padded`, `.margined`, `.bordered`, `.frame`, `.beside`, and `.above`
 /// adjust layout without leaving the tree.
 ///
+/// Styling is a modifier too: `.fg`, `.bg`, `.bold`, `.dim`, `.italic`,
+/// `.underline`, `.strikethrough`, and `.styled` apply to any view — a leaf, a
+/// container, or a whole subtree. ``Color`` is the one color value at styling
+/// call sites, for view modifiers and inline text styling alike.
+///
 /// ```swift
 /// VStack {
-///     Text("Groceries".bold())
+///     Text("Groceries").bold()
 ///     HStack {
-///         Text("milk")
+///         Text("milk").fg(.green)
 ///         Spacer()
-///         Text("2")
+///         Text("2").dim()
 ///     }
 /// }
 /// .padded(1)
-/// .bordered(.rounded, borderStyle: Style().foreground(.ansi(.cyan)))
+/// .bordered(.rounded, borderStyle: Style().foreground(.cyan))
 /// .frame(width: 40, horizontalAlignment: .center)
 /// ```
 ///
-/// ``Style`` describes colors and text attributes as structured values for the
-/// cell renderer (`Style.textAttributes`), and can also render an ANSI string
-/// for output written outside the live view, such as ``Command/println(_:)``.
-/// ``ColorProfile`` handles terminal capability detection and downsampling for
-/// that path.
+/// A style modifier applies to the cells its subtree paints. Outer modifiers
+/// fill only the properties an inner modifier left unset, so the innermost
+/// value wins while text attributes accumulate, and a background covers the
+/// view's whole occupied rect, including internal spaces. Styling never
+/// changes measurement, wrapping, or the allocated rect.
+///
+/// ``Style`` is the declarative style value behind `.styled`; it converts to
+/// structured cell attributes (`Style.textAttributes`) for the cell renderer.
+/// It can also render an ANSI string for output written outside the live view,
+/// such as ``Command/println(_:)``, which is the only path that emits escape
+/// bytes. ``ColorProfile`` handles terminal capability detection and
+/// downsampling for that path.
 ///
 /// Border glyphs accept the same styling values. A shared `borderStyle`
 /// applies to every edge; `topStyle`, `bottomStyle`, `leftStyle`, and
@@ -97,7 +109,7 @@
 /// |-------|-------------------|
 /// | **Containers** | ``VStack``, ``HStack``, ``FrameView`` |
 /// | **Modifiers** | `.padded`, `.margined`, `.bordered`, `.frame`, `.beside`, `.above` |
-/// | **Styling** | ``Style``, ``Color``, ``ANSIColor``, ``ColorProfile`` |
+/// | **Styling** | `.fg`, `.bg`, `.bold`, `.dim`, `.italic`, `.underline`, `.strikethrough`, `.styled`, ``Style``, ``Color``, ``ANSIColor``, ``ColorProfile`` |
 /// | **Borders** | ``Border`` and its presets |
 /// | **Text utilities** | ``expandTabs(_:tabWidth:)`` |
 

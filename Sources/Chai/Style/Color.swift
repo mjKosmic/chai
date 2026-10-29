@@ -7,10 +7,13 @@
 /// - **True Color**: 24-bit RGB colors.
 ///
 /// ```swift
-/// let red = Color.ansi(.red)
+/// let red = Color.ansi(.red)      // or just `.red`
 /// let orange = Color.extended(208)
 /// let custom = Color.trueColor(r: 255, g: 100, b: 50)
 /// ```
+///
+/// The 16 standard ANSI colors are available as named values (``red``,
+/// ``brightBlue``, ...), so the common case needs no ``ANSIColor`` wrapper.
 public enum Color: Sendable, Equatable {
     /// One of the 16 standard ANSI colors.
     case ansi(ANSIColor)
@@ -58,6 +61,77 @@ public enum Color: Sendable, Equatable {
             return "58;5;\(index)"
         case .trueColor(let r, let g, let b):
             return "58;2;\(r);\(g);\(b)"
+        }
+    }
+}
+
+// MARK: - Named ANSI colors
+
+extension Color {
+    /// ANSI black (SGR 30).
+    public static let black: Color = .ansi(.black)
+    /// ANSI red (SGR 31).
+    public static let red: Color = .ansi(.red)
+    /// ANSI green (SGR 32).
+    public static let green: Color = .ansi(.green)
+    /// ANSI yellow (SGR 33).
+    public static let yellow: Color = .ansi(.yellow)
+    /// ANSI blue (SGR 34).
+    public static let blue: Color = .ansi(.blue)
+    /// ANSI magenta (SGR 35).
+    public static let magenta: Color = .ansi(.magenta)
+    /// ANSI cyan (SGR 36).
+    public static let cyan: Color = .ansi(.cyan)
+    /// ANSI white (SGR 37).
+    public static let white: Color = .ansi(.white)
+    /// Bright ANSI black (SGR 90), typically displayed as gray.
+    public static let brightBlack: Color = .ansi(.brightBlack)
+    /// Bright ANSI red (SGR 91).
+    public static let brightRed: Color = .ansi(.brightRed)
+    /// Bright ANSI green (SGR 92).
+    public static let brightGreen: Color = .ansi(.brightGreen)
+    /// Bright ANSI yellow (SGR 93).
+    public static let brightYellow: Color = .ansi(.brightYellow)
+    /// Bright ANSI blue (SGR 94).
+    public static let brightBlue: Color = .ansi(.brightBlue)
+    /// Bright ANSI magenta (SGR 95).
+    public static let brightMagenta: Color = .ansi(.brightMagenta)
+    /// Bright ANSI cyan (SGR 96).
+    public static let brightCyan: Color = .ansi(.brightCyan)
+    /// Bright ANSI white (SGR 97).
+    public static let brightWhite: Color = .ansi(.brightWhite)
+}
+
+// MARK: - CellColor bridge
+
+extension Color {
+    /// Creates a color from the renderer's cell-level color value.
+    ///
+    /// `CellColor` is the representation the renderer stores in ``Cell`` and
+    /// ``TextAttributes``; this bridge lets low-level cell-painting code use
+    /// those values with the application styling APIs.
+    ///
+    /// - Parameter cellColor: The named, palette, or 24-bit cell color.
+    public init(_ cellColor: CellColor) {
+        switch cellColor {
+        case .black:         self = .ansi(.black)
+        case .red:           self = .ansi(.red)
+        case .green:         self = .ansi(.green)
+        case .yellow:        self = .ansi(.yellow)
+        case .blue:          self = .ansi(.blue)
+        case .magenta:       self = .ansi(.magenta)
+        case .cyan:          self = .ansi(.cyan)
+        case .white:         self = .ansi(.white)
+        case .brightBlack:   self = .ansi(.brightBlack)
+        case .brightRed:     self = .ansi(.brightRed)
+        case .brightGreen:   self = .ansi(.brightGreen)
+        case .brightYellow:  self = .ansi(.brightYellow)
+        case .brightBlue:    self = .ansi(.brightBlue)
+        case .brightMagenta: self = .ansi(.brightMagenta)
+        case .brightCyan:    self = .ansi(.brightCyan)
+        case .brightWhite:   self = .ansi(.brightWhite)
+        case .palette(let index):        self = .extended(index)
+        case .rgb(let r, let g, let b):  self = .trueColor(r: r, g: g, b: b)
         }
     }
 }
