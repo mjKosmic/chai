@@ -191,6 +191,71 @@ extension ParityCase {
             expectedRows: ["a"]
         ),
 
+        // ── ZStack ──────────────────────────────────────────────────────────
+
+        ParityCase(
+            name: "zstack overlays later child on top",
+            view: ZStack(alignment: .topLeft) {
+                Text("aaaa")
+                Text("bb")
+            },
+            width: 8,
+            expectedRows: ["bbaa"]
+        ),
+
+        ParityCase(
+            name: "zstack bottom right alignment",
+            view: ZStack(alignment: .bottomRight) {
+                Text("aaaa\nbbbb")
+                Text("xy")
+            },
+            width: 8,
+            // The 4×2 child fills the occupied box; the 2×1 child sits at
+            // col 2, row 1.
+            expectedRows: ["aaaa", "bbxy"]
+        ),
+
+        ParityCase(
+            name: "zstack shrink wraps to the largest child",
+            view: ZStack(alignment: .topLeft) {
+                Text("a\nb\nc")
+                Text("abcde")
+            },
+            width: 8,
+            // Occupied 5×3: the wide child covers row 0, the tall child's
+            // remaining rows stay at col 0.
+            expectedRows: ["abcde", "b", "c"]
+        ),
+
+        ParityCase(
+            name: "zstack Fill grows the occupied width",
+            view: VStack(alignment: .right) {
+                ZStack(alignment: .topLeft) {
+                    Text("x")
+                    Fill()
+                }
+                Text("y")
+            },
+            width: 8,
+            // Fill reports the 8-column assignment, so the ZStack occupies 8
+            // and the right-aligned sibling "y" sits at col 7.
+            expectedRows: ["x", "       y"]
+        ),
+
+        ParityCase(
+            name: "zstack nested in hstack",
+            view: HStack {
+                ZStack(alignment: .topLeft) {
+                    Text("ab")
+                    Text("c")
+                }
+                Text("d")
+            },
+            width: 8,
+            // The ZStack is one 2-wide column; its later child "c" covers "a".
+            expectedRows: ["cbd"]
+        ),
+
         // ── Nesting ─────────────────────────────────────────────────────────
 
         ParityCase(

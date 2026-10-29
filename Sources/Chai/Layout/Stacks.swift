@@ -67,8 +67,9 @@ private func distributedMainAxis(
 
 /// A stack's occupied size and its children's allocated sizes.
 private struct StackAllocation {
-    /// The size the stack occupies in its assigned rect (shrink-wrap on the
-    /// cross axis; the main axis follows the assignment when flexing/absorbing).
+    /// The size the container occupies in its assigned rect. The main-axis
+    /// stacks shrink-wrap on the cross axis and follow the assignment on the
+    /// main axis when flexing/absorbing; ``ZStack`` shrink-wraps on both axes.
     var occupied: ViewSize
     /// Each child's allocated size, in child order.
     var childSizes: [ViewSize]
@@ -131,6 +132,65 @@ public struct HStack<Content: View>: View {
     ///   - content: A ``ViewBuilder`` closure that provides the children.
     public init(
         alignment: VerticalAlignment = .top,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.alignment = alignment
+        self.content = content()
+    }
+}
+
+// MARK: - ZStack
+
+/// A container that overlays its children.
+///
+/// Children are measured against the same width and height query context and
+/// painted in declaration order, so a later child covers an earlier one where
+/// they overlap. The stack shrinks to the largest child on both axes and
+/// positions every child inside that occupied box according to `alignment`.
+///
+/// ```swift
+/// ZStack(alignment: .topLeft) {
+///     Text("Badge").bold()
+/// }
+/// .bg(.red)
+/// ```
+///
+/// ## Overlay semantics
+///
+/// A child that paints nothing (``Empty``, ``Fill``, or a flexible
+/// ``Spacer``) leaves earlier content visible. A later child's painted cells
+/// replace earlier cells entirely, including their background. Style the stack
+/// itself with `.bg(...)`, or paint a `Fill().bg(...)` after the content, so a
+/// background covers the content's cells instead of being punched through by
+/// them.
+///
+/// ## Sizing
+///
+/// The stack occupies the maximum reported width and height. It does not
+/// distribute leftover space to flexible children: only ``VStack`` and
+/// ``HStack`` have a main axis to flex along. A ``Fill`` child grows the stack
+/// on an axis with a non-`nil` context; in inline mode that is width only.
+///
+/// Children are re-queried under the rect the stack is allocated. A child whose
+/// report depends on the query context (for example a nested stack with a
+/// flexible ``Spacer``) may therefore report differently at paint time; the
+/// stack clamps the resulting rect to its allocation.
+///
+/// Because `ZStack` is rigid, it does not expose a contained ``Fill`` to an
+/// enclosing stack's remainder rule. Use `.frame(width:)` or a ``Fill``
+/// sibling in a parent overlay when the stack itself must absorb space.
+public struct ZStack<Content: View>: View {
+    let alignment: Alignment
+    let content: Content
+
+    /// Create an overlay stack with the given alignment and content.
+    ///
+    /// - Parameters:
+    ///   - alignment: How each child is positioned inside the occupied box.
+    ///     Defaults to centered on both axes.
+    ///   - content: A ``ViewBuilder`` closure that provides the children.
+    public init(
+        alignment: Alignment = .center,
         @ViewBuilder content: () -> Content
     ) {
         self.alignment = alignment
@@ -314,6 +374,72 @@ extension HStack {
                 buffer.embed(children[index], at: childRect)
             }
             col += width
+        }
+    }
+}
+
+// MARK: - ZStack engine implementation
+
+extension ZStack {
+    /// The stack's allocation shape under an assigned width/height context.
+    ///
+    /// Both axes are query contexts: every child is measured with the same
+    /// `(width, height)`. The occupied size is the maximum report on each axis
+    /// (shrink-wrap), so a `Fill` child grows the stack by reporting the
+    /// assigned context. No leftover space is distributed — an overlay has no
+    /// main axis.
+    private func allocation(assignedWidth: Int?, assignedHeight: Int?) -> StackAllocation {
+        let children = content._childViews()
+        let childQuery = AvailableSize(width: assignedWidth, height: assignedHeight)
+        let reports = children.map { $0._measure(in: childQuery) }
+        let occupied = ViewSize(
+            width: reports.map(\.width).max() ?? 0,
+            height: reports.map(\.height).max() ?? 0
+        )
+        return StackAllocation(occupied: occupied, childSizes: reports)
+    }
+
+    /// Report the occupied size under the query context (the pure sizing pass
+    /// — used for reservation and buffer sizing, never binding).
+    public func _measure(in available: AvailableSize) -> ViewSize {
+        allocation(assignedWidth: available.width, assignedHeight: available.height).occupied
+    }
+
+    /// Allocate each child a rect inside the occupied box and embed it.
+    ///
+    /// Each child keeps its report under the assigned rect, clamped to the
+    /// stack's rect, and is anchored independently on each axis at the
+    /// alignment fraction of the shortage. Children are embedded in
+    /// declaration order, so later children paint over earlier ones; the
+    /// hard-box clip bounds every write.
+    public func _embed(into buffer: inout CellBuffer, at rect: ViewRect) {
+        let shape = allocation(assignedWidth: rect.size.width, assignedHeight: rect.size.height)
+        let children = content._childViews()
+        // Alignment is measured against the visible occupied box: overflow is
+        // clipped, not used to push children outside the rect.
+        let visibleBox = ViewSize(
+            width: min(shape.occupied.width, rect.size.width),
+            height: min(shape.occupied.height, rect.size.height)
+        )
+
+        for index in children.indices {
+            let reported = shape.childSizes[index]
+            let width = min(reported.width, rect.size.width)
+            let height = min(reported.height, rect.size.height)
+            guard width > 0, height > 0 else { continue }
+
+            let horizontalShortage = max(0, visibleBox.width - width)
+            let verticalShortage = max(0, visibleBox.height - height)
+            let col = rect.origin.col + Int(Double(horizontalShortage) * alignment.horizontal.fraction)
+            let row = rect.origin.row + Int(Double(verticalShortage) * alignment.vertical.fraction)
+            let childRect = ViewRect(
+                origin: ViewOrigin(col: col, row: row),
+                size: ViewSize(width: width, height: height)
+            ).intersection(rect)
+
+            if !childRect.isEmpty {
+                buffer.embed(children[index], at: childRect)
+            }
         }
     }
 }

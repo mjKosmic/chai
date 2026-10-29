@@ -40,6 +40,33 @@ struct Counter: Model {
 }
 ```
 
+## Layout
+
+`VStack` and `HStack` compose children in one dimension; `ZStack` overlays
+them in declaration order. Every container is a view, so they nest freely:
+
+```swift
+ZStack(alignment: .topLeft) {
+    VStack {
+        Text("Title").bold()
+        Text("Body")
+    }
+    Text("NEW").fg(.yellow)
+}
+.frame(width: 40, height: 6)
+```
+
+`ZStack` shrink-wraps to its largest child and positions each child with a
+combined `Alignment` (`.center` by default). A later child paints over an
+earlier one, but only the cells it paints; a later leaf replaces those cells
+entirely, including their background. Style the stack itself with `.bg(...)`,
+or paint a `Fill().bg(...)` after the content, so the background is not punched
+through.
+
+`.frame(...)` defaults to `.left`/`.top`, so the shrink-wrapped stack sits at
+the frame's top-left. Pass `horizontalAlignment:` and `verticalAlignment:` to
+center it.
+
 ## Styling
 
 Styles are modifiers on any view — a leaf, a container, or a whole subtree —
