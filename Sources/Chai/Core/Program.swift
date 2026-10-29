@@ -112,6 +112,11 @@ public struct Program<M: Model>: Sendable {
 
     /// Start the program and block until it exits.
     ///
+    /// A program is single-use: its message stream is finished during
+    /// shutdown, so calling this again after it returns does not start a new
+    /// event loop. To run again, create a new ``Program`` with the desired
+    /// initial model.
+    ///
     /// - Returns: The final model state after the program exits.
     /// - Throws: Any error that caused the program to terminate abnormally.
     @discardableResult

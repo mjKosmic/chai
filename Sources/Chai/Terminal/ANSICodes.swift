@@ -21,8 +21,6 @@ enum ANSI {
 
     /// Move cursor to home position (row 1, col 1).
     static let cursorHome = "\u{1B}[H"
-    /// Move cursor up one line.
-    static let cursorUp1 = "\u{1B}[A"
 
     /// Move cursor up `n` lines.
     static func cursorUp(_ n: Int) -> String { "\u{1B}[\(n)A" }
@@ -50,49 +48,6 @@ enum ANSI {
     static let enterAltScreen = "\u{1B}[?1049h"
     /// Exit the alternate screen buffer and restore cursor position.
     static let exitAltScreen = "\u{1B}[?1049l"
-
-    // MARK: - Scrolling regions
-
-    /// Set top and bottom scroll margins (1-based).
-    static func setScrollMargins(top: Int, bottom: Int) -> String {
-        "\u{1B}[\(top);\(bottom)r"
-    }
-    /// Reset scroll margins to full screen.
-    static let resetScrollMargins = "\u{1B}[r"
-
-    // MARK: - Line insertion / deletion
-
-    /// Insert `n` blank lines at the cursor position.
-    static func insertLines(_ n: Int) -> String { "\u{1B}[\(n)L" }
-
-    // MARK: - Mouse
-
-    /// Enable button-event mouse tracking (click + drag).
-    static let enableMouseCellMotion = "\u{1B}[?1002h"
-    /// Disable button-event mouse tracking.
-    static let disableMouseCellMotion = "\u{1B}[?1002l"
-    /// Enable all-motion mouse tracking (includes hover).
-    static let enableMouseAllMotion = "\u{1B}[?1003h"
-    /// Disable all-motion mouse tracking.
-    static let disableMouseAllMotion = "\u{1B}[?1003l"
-    /// Enable SGR extended mouse mode (supports large coordinates).
-    static let enableMouseSGR = "\u{1B}[?1006h"
-    /// Disable SGR extended mouse mode.
-    static let disableMouseSGR = "\u{1B}[?1006l"
-
-    // MARK: - Bracketed paste
-
-    /// Enable bracketed paste mode.
-    static let enableBracketedPaste = "\u{1B}[?2004h"
-    /// Disable bracketed paste mode.
-    static let disableBracketedPaste = "\u{1B}[?2004l"
-
-    // MARK: - Focus reporting
-
-    /// Enable focus-in / focus-out reporting.
-    static let enableFocusReporting = "\u{1B}[?1004h"
-    /// Disable focus reporting.
-    static let disableFocusReporting = "\u{1B}[?1004l"
 
     // MARK: - Window title
 

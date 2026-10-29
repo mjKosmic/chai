@@ -1022,7 +1022,7 @@ The `defer { terminal.disableRawMode() }` at the top of `run()` ensures the term
 
 ## Testing Strategy
 
-Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **992 tests in 98 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
+Tests use Swift Testing (`@Test`, `#expect`) across three test targets: **1069 tests in 105 suites**, all green. `swift build` alone does not compile tests — the gate must run `swift test`.
 
 ### ChaiTests (Tests/ChaiTests/)
 
@@ -1072,7 +1072,7 @@ Covers the view tree, styling, and the allocation engine:
 |-----------|----------|
 | `SpicesTests.swift` | Component initialization, state management, view rendering (via `body`), key binding matching, style rendering |
 
-> **Known warnings:** `SpicesTests.swift` still calls the deprecated `Progress.viewAs(_:)` in 13 places, so a clean `swift build --build-tests` reports 13 `#DeprecatedDeclaration` warnings (the suites pass). Migrating those call sites to `viewAsStyledText(_:)` is tracked separately; the production targets build warning-free.
+All targets, including the test targets, build warning-free.
 
 ---
 

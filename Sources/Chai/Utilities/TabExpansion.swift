@@ -86,7 +86,8 @@ private func expandTabsInLine(_ line: String, tabWidth: Int) -> String {
 private func consumeANSISequence(
     from scalars: inout Substring.UnicodeScalarView
 ) -> String {
-    var seq = String(scalars.first!)  // ESC
+    guard let first = scalars.first else { return "" }
+    var seq = String(first)  // ESC
     scalars = scalars.dropFirst()
 
     guard let next = scalars.first else { return seq }

@@ -217,7 +217,9 @@ public struct CellBuffer: Sendable, Equatable {
                     foreground: style.foreground,
                     background: style.background,
                     attributes: style.attributes,
-                    hyperlink: style.hyperlink
+                    hyperlink: style.hyperlink,
+                    underlineStyle: style.underlineStyle,
+                    underlineColor: style.underlineColor
                 )
 
                 set(col: col, row: row, cell)

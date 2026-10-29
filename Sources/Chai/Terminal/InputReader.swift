@@ -13,6 +13,12 @@ import Foundation
 /// never blocks the Swift concurrency thread pool. Parsed messages are
 /// delivered through the stream's continuation.
 ///
+/// The reader thread is the sole owner of descriptor closing and stream
+/// completion; `stop()` only signals cancellation. Lifecycle state is guarded
+/// by a lock, which is what makes the unchecked `Sendable` conformance sound:
+/// the descriptors and continuation are immutable `let`s, and all mutable
+/// state is read and written under the lock.
+///
 /// Usage:
 /// ```swift
 /// let reader = InputReader(fileDescriptor: STDIN_FILENO)
@@ -20,9 +26,19 @@ import Foundation
 ///     // handle message
 /// }
 /// ```
-final class InputReader: Sendable {
+final class InputReader: @unchecked Sendable {
 
     // MARK: - Types
+
+    /// Where the reader is in its lifecycle.
+    enum LifecycleState: Sendable {
+        /// The reader thread has not been started.
+        case idle
+        /// The reader thread is running or about to run.
+        case running
+        /// The loop has exited and the stream and descriptors are released.
+        case finished
+    }
 
     /// The stream of parsed input messages.
     let messages: AsyncStream<any Message>
@@ -35,6 +51,12 @@ final class InputReader: Sendable {
     /// A pipe used to unblock the blocking `read()` call on shutdown.
     private let cancelReadFD: Int32
     private let cancelWriteFD: Int32
+
+    /// Guards `state` and `cancelSignalled`. Never held across blocking I/O:
+    /// the only work done while held is a single non-blocking pipe write.
+    private let lock = NSLock()
+    private var state: LifecycleState = .idle
+    private var cancelSignalled = false
 
     // MARK: - Init
 
@@ -56,8 +78,25 @@ final class InputReader: Sendable {
 
     // MARK: - Lifecycle
 
+    /// The current lifecycle state.
+    var lifecycleState: LifecycleState {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
+    }
+
     /// Start reading input on a background thread.
+    ///
+    /// Calling this more than once has no effect after the first call.
     func start() {
+        lock.lock()
+        guard state == .idle else {
+            lock.unlock()
+            return
+        }
+        state = .running
+        lock.unlock()
+
         let thread = Thread { [weak self] in
             self?.readLoop()
         }
@@ -66,14 +105,38 @@ final class InputReader: Sendable {
         thread.start()
     }
 
-    /// Stop reading and close the stream.
+    /// Request that the reader stop and release its resources.
+    ///
+    /// The reader thread owns descriptor closing and stream completion, so
+    /// this only signals cancellation. If the reader was never started, the
+    /// resources are released here. Repeated calls are safe.
     func stop() {
-        // Write a byte to the cancel pipe to unblock the select() call.
-        var byte: UInt8 = 1
-        Foundation.write(cancelWriteFD, &byte, 1)
-        continuation.finish()
-        Foundation.close(cancelWriteFD)
+        lock.lock()
+        switch state {
+        case .finished:
+            lock.unlock()
+        case .idle:
+            state = .finished
+            lock.unlock()
+            releaseResources()
+        case .running:
+            // Signal while holding the lock: the reader transitions to
+            // `.finished` and closes the descriptors under the same lock, so a
+            // write cannot land on a recycled descriptor.
+            if !cancelSignalled {
+                cancelSignalled = true
+                var byte: UInt8 = 1
+                _ = Foundation.write(cancelWriteFD, &byte, 1)
+            }
+            lock.unlock()
+        }
+    }
+
+    /// Close the cancellation descriptors and finish the stream exactly once.
+    private func releaseResources() {
         Foundation.close(cancelReadFD)
+        Foundation.close(cancelWriteFD)
+        continuation.finish()
     }
 
     // MARK: - Read loop (runs on background thread)
@@ -113,7 +176,19 @@ final class InputReader: Sendable {
             leftover = consumed < data.count ? Array(data[consumed...]) : []
         }
 
-        continuation.finish()
+        finish()
+    }
+
+    /// Mark the reader finished and release resources, at most once.
+    private func finish() {
+        lock.lock()
+        guard state != .finished else {
+            lock.unlock()
+            return
+        }
+        state = .finished
+        lock.unlock()
+        releaseResources()
     }
 }
 

@@ -26,7 +26,7 @@ struct InputParser {
 
         while index < buffer.count {
             let remaining = Array(buffer[index...])
-            let (width, msg) = parseOne(bytes: remaining, canHaveMoreData: canHaveMoreData && index + remaining.count == buffer.count)
+            let (width, msg) = parseOne(bytes: remaining, canHaveMoreData: canHaveMoreData)
             if width == 0 {
                 // Need more data — stop here and let the caller retry.
                 break
@@ -48,6 +48,22 @@ struct InputParser {
     ///   parser needs more data.
     static func parseOne(bytes: [UInt8], canHaveMoreData: Bool) -> (Int, (any Message)?) {
         guard !bytes.isEmpty else { return (0, nil) }
+
+        // ── Linux console function keys: ESC [ [ <final>
+        //
+        // The second '[' is a legitimate CSI final byte, so the generic CSI
+        // scanner would end the sequence there and leak the selector as text.
+        // Recognize the introducer first and require all four bytes.
+        if bytes.count >= 3 && bytes[0] == 0x1B && bytes[1] == 0x5B && bytes[2] == 0x5B {
+            if bytes.count == 3 && canHaveMoreData {
+                return (0, nil)
+            }
+            if bytes.count >= 4, let key = linuxConsoleTable[bytes[3]] {
+                return (4, KeyMsg(type: key))
+            }
+            // Not a Linux-console key — fall through and let the CSI scanner
+            // consume the unrecognized sequence.
+        }
 
         // ── CSI sequences: ESC [ ...
         if bytes.count >= 2 && bytes[0] == 0x1B && bytes[1] == 0x5B /* '[' */ {
@@ -84,7 +100,6 @@ struct InputParser {
         case 0x08: return (1, KeyMsg(type: .backspace))   // BS  (Ctrl+H)
         case 0x09: return (1, KeyMsg(type: .tab))          // HT  (Ctrl+I)
         case 0x0D: return (1, KeyMsg(type: .enter))        // CR  (Ctrl+M)
-        case 0x1B: return (1, KeyMsg(type: .escape))       // ESC (already handled above, but kept for safety)
         case 0x1C: return (1, KeyMsg(type: .ctrl("\\")))
         case 0x1D: return (1, KeyMsg(type: .ctrl("]")))
         case 0x1E: return (1, KeyMsg(type: .ctrl("^")))
@@ -169,6 +184,7 @@ struct InputParser {
     private static func parsePrintable(bytes: [UInt8], canHaveMoreData: Bool) -> (Int, (any Message)?) {
         var runes: [Character] = []
         var i = 0
+        var needsMoreData = false
 
         while i < bytes.count {
             let b = bytes[i]
@@ -193,7 +209,10 @@ struct InputParser {
 
             guard i + seqLen <= bytes.count else {
                 // Incomplete sequence at end of buffer.
-                if canHaveMoreData { break }
+                if canHaveMoreData {
+                    needsMoreData = true
+                    break
+                }
                 i += 1
                 continue
             }
@@ -207,7 +226,12 @@ struct InputParser {
             }
         }
 
-        guard !runes.isEmpty else { return (1, nil) }
+        if runes.isEmpty {
+            // Nothing complete was collected. If the buffer ends mid-character
+            // and more bytes may follow, retain them for the next read instead
+            // of consuming the lead byte.
+            return needsMoreData ? (0, nil) : (1, nil)
+        }
         return (i, KeyMsg(type: .runes, runes: runes))
     }
 
@@ -279,13 +303,6 @@ struct InputParser {
         "\u{1B}[2~": .insert,
         "\u{1B}[3~": .delete,
 
-        // Function keys — Linux console
-        "\u{1B}[[A": .f(1),
-        "\u{1B}[[B": .f(2),
-        "\u{1B}[[C": .f(3),
-        "\u{1B}[[D": .f(4),
-        "\u{1B}[[E": .f(5),
-
         // Function keys — xterm / vt100
         "\u{1B}[11~": .f(1),
         "\u{1B}[12~": .f(2),
@@ -307,6 +324,15 @@ struct InputParser {
         "\u{1B}[32~": .f(18),
         "\u{1B}[33~": .f(19),
         "\u{1B}[34~": .f(20),
+    ]
+
+    /// Linux console function-key selectors (the fourth byte of `ESC [[ <key>`).
+    static let linuxConsoleTable: [UInt8: KeyType] = [
+        0x41 /* A */: .f(1),
+        0x42 /* B */: .f(2),
+        0x43 /* C */: .f(3),
+        0x44 /* D */: .f(4),
+        0x45 /* E */: .f(5),
     ]
 
     /// SS3 sequence string → KeyType

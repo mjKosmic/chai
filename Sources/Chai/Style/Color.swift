@@ -224,7 +224,7 @@ extension Color {
         }
 
         if searchRange == 0..<16 {
-            return .ansi(ANSIColor(rawValue: UInt8(bestIndex))!)
+            return .ansi(ANSIColor(rawValue: UInt8(bestIndex)) ?? .black)
         }
         return .extended(UInt8(bestIndex))
     }

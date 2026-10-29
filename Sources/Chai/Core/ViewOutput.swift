@@ -47,18 +47,12 @@ public struct ViewOutput: Sendable, Equatable {
     ///
     /// The string is wrapped in a ``StyledText`` with default styling.
     ///
-    /// - Important: The string must be **plain text** with no embedded ANSI escape sequences.
-    ///   Passing `Style.render(...)` output or other ANSI-encoded strings will cause escape
-    ///   bytes to be treated as literal characters by the cell-buffer renderer, corrupting
-    ///   the display and width calculations. Use ``init(_:)`` with a ``StyledText`` built
-    ///   via `Style.styledText(_:)` instead.
+    /// Any ANSI escape sequences in `content` are removed before the text
+    /// reaches layout, so the remaining characters are painted as plain text
+    /// and contribute no display width. Styling is carried structurally: use
+    /// ``init(_:)`` with a ``StyledText`` built via `Style.styledText(_:)`
+    /// instead of embedding escape codes in the string.
     public init(_ content: String) {
-        assert(
-            !content.contains("\u{1B}"),
-            "ViewOutput(String) received a string with embedded ANSI escape sequences. "
-            + "Use Style.styledText(_:) and ViewOutput(StyledText) instead, otherwise "
-            + "escape bytes will be treated as literal characters by the cell-buffer renderer."
-        )
         self.init(StyledText(content))
     }
 }
@@ -67,8 +61,8 @@ public struct ViewOutput: Sendable, Equatable {
 
 extension ViewOutput: ExpressibleByStringLiteral {
     public init(stringLiteral value: String) {
-        // Route through init(_ content: String) so the ESC-byte assertion is applied
-        // consistently, whether the caller uses a string literal or passes a String directly.
+        // Route through init(_ content: String) so escape sequences are stripped
+        // consistently, whether the caller uses a string literal or a String.
         self.init(value)
     }
 }

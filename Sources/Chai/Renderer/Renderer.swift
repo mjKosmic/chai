@@ -122,14 +122,6 @@ actor Renderer {
 
     // MARK: - View buffer
 
-    /// Queue a new ``ViewOutput`` for rendering on the next tick.
-    ///
-    /// The renderer will diff the content against the previous frame on the
-    /// next ``flush()``.
-    func write(_ view: ViewOutput) {
-        pendingView = view
-    }
-
     /// Queue any ``View`` for rendering on the next tick.
     ///
     /// The view tree is stored as-is and laid out through the layout engine
@@ -444,11 +436,7 @@ actor Renderer {
 
     /// Build the SGR parameter string for a cell's style.
     private func cellSGR(_ cell: Cell) -> String {
-        var parts: [String] = []
-        if let fg = cell.foreground { parts.append(fg.sgrParams(foreground: true)) }
-        if let bg = cell.background { parts.append(bg.sgrParams(foreground: false)) }
-        parts.append(contentsOf: cell.attributes.sgrCodes.map(String.init))
-        return parts.joined(separator: ";")
+        cell.sgrParameters.joined(separator: ";")
     }
 
     // MARK: - Terminal size

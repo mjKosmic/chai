@@ -77,13 +77,13 @@ struct StyledViewTests {
     @Test func attributesAccumulateAcrossNesting() {
         let buffer = embedBuffer(Text("x").underline().bold(), width: 4)
         #expect(buffer[0, 0].attributes.contains(.bold))
-        #expect(buffer[0, 0].attributes.contains(.underline))
+        #expect(buffer[0, 0].resolvedUnderlineStyle == .single)
     }
 
     @Test func innerAttributeSurvivesOuterColor() {
         let buffer = embedBuffer(Text("x").underline().fg(.red), width: 4)
         #expect(buffer[0, 0].foreground == .red)
-        #expect(buffer[0, 0].attributes.contains(.underline))
+        #expect(buffer[0, 0].resolvedUnderlineStyle == .single)
     }
 
     // MARK: Background coverage

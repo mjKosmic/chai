@@ -50,6 +50,17 @@ struct InputParserTests {
         #expect(msg?.type == .backspace)
     }
 
+    @Test func backspaceByteBS() {
+        // BS (0x08) is the older backspace encoding and must not become Ctrl+H.
+        let msg = key([0x08])
+        #expect(msg?.type == .backspace)
+    }
+
+    @Test func nulReportsCtrlAt() {
+        let msg = key([0x00])
+        #expect(msg?.type == .ctrl("@"))
+    }
+
     @Test func escape() {
         let msg = key([0x1B])
         #expect(msg?.type == .escape)
@@ -189,6 +200,16 @@ struct InputParserTests {
         #expect(msg?.type == .f(1))
     }
 
+    @Test func xtermFunctionKeysF1ThroughF4() {
+        let sequences: [(UInt8, KeyType)] = [
+            (0x31, .f(1)), (0x32, .f(2)), (0x33, .f(3)), (0x34, .f(4)),
+        ]
+        for (secondDigit, expected) in sequences {
+            let msg = key([0x1B, 0x5B, 0x31, secondDigit, 0x7E]) // ESC [ 1 <digit> ~
+            #expect(msg?.type == expected)
+        }
+    }
+
     @Test func f5() {
         let msg = key([0x1B, 0x5B, 0x31, 0x35, 0x7E]) // ESC [ 1 5 ~
         #expect(msg?.type == .f(5))
@@ -285,6 +306,15 @@ struct InputParserTests {
         #expect(msg?.alt == true)
     }
 
+    @Test func escapeBeforeUnrecognizedBytes() {
+        // ESC followed by an unrecognized CSI sequence: Escape is produced and
+        // the following bytes are decoded as their own input.
+        let msgs = keys([0x1B, 0x1B, 0x5B, 0x39, 0x39, 0x39, 0x7A, 0x61])
+        #expect(msgs.count == 2)
+        #expect(msgs[0].type == .escape)
+        #expect(msgs[1].runes == ["a"])
+    }
+
     // MARK: - Multiple messages in one buffer
 
     @Test func twoKeysInBuffer() {
@@ -315,6 +345,125 @@ struct InputParserTests {
     @Test func incompleteCSIConsumedWhenNoMoreData() {
         // ESC [ — incomplete CSI, canHaveMoreData = false → skip
         let (_, consumed) = InputParser.parse(buffer: [0x1B, 0x5B], canHaveMoreData: false)
+        #expect(consumed == 2)
+    }
+
+    // MARK: - Linux console function keys
+
+    @Test func linuxConsoleFunctionKeys() {
+        let selectors: [(UInt8, KeyType)] = [
+            (0x41, .f(1)), (0x42, .f(2)), (0x43, .f(3)), (0x44, .f(4)), (0x45, .f(5)),
+        ]
+        for (selector, expected) in selectors {
+            let msg = key([0x1B, 0x5B, 0x5B, selector])
+            #expect(msg?.type == expected)
+        }
+    }
+
+    @Test func linuxConsoleIntroducerWaitsForSelector() {
+        let (msgs, consumed) = InputParser.parse(
+            buffer: [0x1B, 0x5B, 0x5B],
+            canHaveMoreData: true
+        )
+        #expect(msgs.isEmpty)
+        #expect(consumed == 0)
+    }
+
+    @Test func linuxConsoleIntroducerWithoutKeyLeavesText() {
+        // ESC [ [ x — not a Linux-console key. The introducer is consumed as an
+        // unknown sequence and "x" is still delivered as text.
+        let msgs = keys([0x1B, 0x5B, 0x5B, 0x78])
+        #expect(msgs.count == 1)
+        #expect(msgs[0].runes == ["x"])
+    }
+
+    // MARK: - SS3 coverage
+
+    @Test func ss3RightAndLeft() {
+        #expect(key([0x1B, 0x4F, 0x43])?.type == .right)
+        #expect(key([0x1B, 0x4F, 0x44])?.type == .left)
+    }
+
+    @Test func ss3FunctionKeys() {
+        #expect(key([0x1B, 0x4F, 0x51])?.type == .f(2))
+        #expect(key([0x1B, 0x4F, 0x52])?.type == .f(3))
+        #expect(key([0x1B, 0x4F, 0x53])?.type == .f(4))
+    }
+
+    // MARK: - Navigation variants
+
+    @Test func homeVariants() {
+        #expect(key([0x1B, 0x5B, 0x31, 0x7E])?.type == .home) // ESC [ 1 ~
+        #expect(key([0x1B, 0x5B, 0x37, 0x7E])?.type == .home) // ESC [ 7 ~
+    }
+
+    @Test func endVariants() {
+        #expect(key([0x1B, 0x5B, 0x34, 0x7E])?.type == .end) // ESC [ 4 ~
+        #expect(key([0x1B, 0x5B, 0x38, 0x7E])?.type == .end) // ESC [ 8 ~
+    }
+
+    // MARK: - Unrecognized sequences
+
+    @Test func unrecognizedCSIIsSkippedWithoutLeakingText() {
+        // ESC [ 9 9 9 z followed by "a"
+        let msgs = keys([0x1B, 0x5B, 0x39, 0x39, 0x39, 0x7A, 0x61])
+        #expect(msgs.count == 1)
+        #expect(msgs[0].runes == ["a"])
+    }
+
+    // MARK: - Printable runs
+
+    @Test func mixedASCIIAndMultiByteRunes() {
+        // "héllo"
+        let bytes: [UInt8] = [0x68, 0xC3, 0xA9, 0x6C, 0x6C, 0x6F]
+        #expect(key(bytes)?.runes == ["h", "é", "l", "l", "o"])
+    }
+
+    @Test func wideRunesInOneMessage() {
+        // "日本"
+        let bytes: [UInt8] = [0xE6, 0x97, 0xA5, 0xE6, 0x9C, 0xAC]
+        #expect(key(bytes)?.runes == ["日", "本"])
+    }
+
+    @Test func invalidUTF8ByteIsSkipped() {
+        let msg = key([0xFF, 0x61])
+        #expect(msg?.runes == ["a"])
+    }
+
+    // MARK: - Split UTF-8 across reads
+
+    @Test func truncatedUTF8IsRetainedWhenMoreDataMayFollow() {
+        // First two bytes of 中 (0xE4 0xB8 0xAD) — the lead byte must not be consumed.
+        let (msgs, consumed) = InputParser.parse(
+            buffer: [0xE4, 0xB8],
+            canHaveMoreData: true
+        )
+        #expect(msgs.isEmpty)
+        #expect(consumed == 0)
+    }
+
+    @Test func truncatedUTF8CompletesOnNextRead() {
+        let (first, firstConsumed) = InputParser.parse(
+            buffer: [0xE4, 0xB8],
+            canHaveMoreData: true
+        )
+        #expect(first.isEmpty)
+        #expect(firstConsumed == 0)
+
+        let (second, secondConsumed) = InputParser.parse(
+            buffer: [0xE4, 0xB8, 0xAD],
+            canHaveMoreData: false
+        )
+        #expect(secondConsumed == 3)
+        #expect((second.first as? KeyMsg)?.runes == ["中"])
+    }
+
+    @Test func truncatedUTF8IsDroppedWhenFinal() {
+        let (msgs, consumed) = InputParser.parse(
+            buffer: [0xE4, 0xB8],
+            canHaveMoreData: false
+        )
+        #expect(msgs.isEmpty)
         #expect(consumed == 2)
     }
 

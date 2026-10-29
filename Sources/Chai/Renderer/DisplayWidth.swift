@@ -267,3 +267,40 @@ private func skipANSISequence(in string: String, from start: String.Index) -> St
     // Simple two-byte escape (e.g. ESC =, ESC >): skip the second byte.
     return string.index(after: i)
 }
+
+// MARK: - ANSI sequence removal
+
+/// Returns `string` with every complete ANSI escape sequence removed.
+///
+/// CSI, OSC, SS3/SS2, and two-byte escape sequences are dropped along with
+/// their parameter bytes. Text that merely contains `[` or `]` is unchanged,
+/// because a sequence is only recognized after an escape byte. A trailing
+/// escape byte with no sequence body is dropped.
+func strippingANSISequences(_ string: String) -> String {
+    guard string.unicodeScalars.contains(TerminalScalar.escape) else { return string }
+
+    var result = ""
+    result.reserveCapacity(string.count)
+    var iter = string.unicodeScalars.makeIterator()
+
+    while let scalar = iter.next() {
+        guard scalar == TerminalScalar.escape else {
+            result.unicodeScalars.append(scalar)
+            continue
+        }
+
+        guard let introducer = iter.next() else { break }
+        switch introducer {
+        case "[":
+            skipCSI(&iter)
+        case "]":
+            skipOSC(&iter)
+        case "O", "N":
+            _ = iter.next()
+        default:
+            break
+        }
+    }
+
+    return result
+}

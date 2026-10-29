@@ -25,9 +25,10 @@
 ///   its report clamped to the assignment (the occupied rect), and every cell
 ///   in that rect is then merged with the style.
 /// - **Merge:** foreground, background, and hyperlink fill only properties the
-///   inner content left unset, and attributes are unioned. Nested modifiers
-///   paint inside-out, so the innermost explicit value wins while outer
-///   attributes still accumulate.
+///   inner content left unset, and attributes are unioned. Underline style and
+///   underline color are adopted only when the cell has no underline of its
+///   own. Nested modifiers paint inside-out, so the innermost explicit value
+///   wins while outer attributes still accumulate.
 /// - **Background coverage:** because the merge visits the whole occupied
 ///   rect, a background covers internal spaces and the gaps around narrower
 ///   children, and stops at the rect boundary.
@@ -122,6 +123,15 @@ extension StyledView {
                 if let hyperlink = attributes.hyperlink, cell.hyperlink == nil {
                     cell.hyperlink = hyperlink
                 }
+
+                // Underline decoration is inner-wins: an outer modifier adopts
+                // only when the cell has no underline of its own.
+                let hasUnderline = cell.underlineStyle != .none
+                    || cell.attributes.contains(.underline)
+                if !hasUnderline, attributes.underlineStyle != .none {
+                    cell.underlineStyle = attributes.underlineStyle
+                    cell.underlineColor = attributes.underlineColor
+                }
                 cell.attributes.formUnion(attributes.attributes)
 
                 buffer.set(col: col, row: row, cell)
@@ -214,5 +224,7 @@ extension TextAttributes {
             || background != nil
             || hyperlink != nil
             || !attributes.isEmpty
+            || underlineStyle != .none
+            || underlineColor != nil
     }
 }
