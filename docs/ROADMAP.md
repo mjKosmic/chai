@@ -1,6 +1,6 @@
 # Chai Roadmap — High-Impact Improvements
 
-**Status:** Draft · **Last updated:** 2026-10-27 · **Scope:** Chai (this repository)
+**Status:** Draft · **Last updated:** 2026-10-29 · **Scope:** Chai (this repository)
 
 This roadmap turns the Chai vs. SwifTeaUI comparison into a sequenced set of
 improvements. It favors work that either removes an adoption blocker, closes a
@@ -74,7 +74,7 @@ production targets warning-free.
 | R12 | Mouse and focus reporting | Completes the terminal capability set | 3 | 3 | P2 |
 | R13 | Parser fuzz/property tests | Input parsing is a crash surface; prove it never drops or crashes | 3 | 2 | P2 |
 | R14 | Styling and theme ergonomics | Reduces friction on the first screen of code | 3 | 2 | P3 |
-| R15 | Overlay, ZStack, Toast/Modal | App-shell components users otherwise build ad hoc | 3 | 4 | P3 |
+| R15 | Overlay, Toast/Modal | App-shell components users otherwise build ad hoc | 3 | 4 | P3 |
 | R16 | Layout completeness | HStack remaining-width and viewport measurement contract | 3 | 4 | P3 |
 | R17 | Component breadth | Forms, table columns/selection, list sections | 3 | 4 | P3 |
 | R18 | Published DocC documentation | API discoverability beyond source comments | 3 | 2 | P3 |
@@ -288,13 +288,15 @@ usable, and input parsing is provably robust.
 - **Acceptance:** the counter/gallery examples use the new modifiers; color
   downsampling still applies; tests cover chained styles.
 
-### R15 — Overlay, ZStack, Toast/Modal
+### R15 — Overlay, Toast/Modal
 
-- Add a `ZStack`-style overlay container that participates in the allocation
-  engine.
-- Add Toast/Modal/StatusBar components in Spices, built on top of it.
-- **Acceptance:** overlays respect the hard box, receive focus predictably,
-  and restore focus on dismissal.
+- `ZStack` overlay container (delivered): participates in the allocation
+  engine, shrink-wraps to its largest child, and positions children with a
+  combined `Alignment`.
+- Remaining: add Toast/Modal/StatusBar components in Spices, built on top of
+  `ZStack`.
+- **Acceptance:** `ZStack` overlays respect the hard box (delivered);
+  Toast/Modal receive focus predictably and restore focus on dismissal.
 
 ### R16 — Layout completeness
 

@@ -60,9 +60,22 @@
 /// ## Layout & Styling
 ///
 /// The view tree ships with the framework: ``VStack`` and ``HStack`` compose
-/// children, ``Spacer`` and ``Fill`` absorb leftover space, and the modifiers
+/// children in one dimension, ``ZStack`` overlays them in declaration order,
+/// ``Spacer`` and ``Fill`` absorb leftover space, and the modifiers
 /// `.padded`, `.margined`, `.bordered`, `.frame`, `.beside`, and `.above`
 /// adjust layout without leaving the tree.
+///
+/// A ``ZStack`` positions each child inside the largest child's box using a
+/// combined ``Alignment`` (horizontal + vertical, centered by default). Later
+/// children paint over earlier ones, and a child only covers the cells it
+/// paints; use a background or border for an opaque panel.
+///
+/// ```swift
+/// ZStack(alignment: .topLeft) {
+///     Text("background").dim()
+///     Text("Badge").bold()
+/// }
+/// ```
 ///
 /// Styling is a modifier too: `.fg`, `.bg`, `.bold`, `.dim`, `.italic`,
 /// `.underline`, `.strikethrough`, and `.styled` apply to any view — a leaf, a
@@ -107,7 +120,7 @@
 ///
 /// | Group | Types / Functions |
 /// |-------|-------------------|
-/// | **Containers** | ``VStack``, ``HStack``, ``FrameView`` |
+/// | **Containers** | ``VStack``, ``HStack``, ``ZStack``, ``FrameView`` |
 /// | **Modifiers** | `.padded`, `.margined`, `.bordered`, `.frame`, `.beside`, `.above` |
 /// | **Styling** | `.fg`, `.bg`, `.bold`, `.dim`, `.italic`, `.underline`, `.strikethrough`, `.styled`, ``Style``, ``Color``, ``ANSIColor``, ``ColorProfile`` |
 /// | **Borders** | ``Border`` and its presets |

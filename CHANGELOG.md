@@ -22,6 +22,9 @@ Pre-1.0 releases may contain breaking changes; the migration history lives in
   `Color(_ cellColor: CellColor)` bridge for low-level cell code.
 - A `TextAttributes` convenience initializer taking `Color` foreground and
   background values.
+- `ZStack`, an overlay container that paints children in declaration order,
+  shrink-wraps to its largest child, and positions each child with a combined
+  `Alignment` (horizontal + vertical) value.
 
 ### Changed
 

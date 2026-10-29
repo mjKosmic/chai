@@ -23,6 +23,9 @@
 /// let quarterRight = HorizontalAlignment(fraction: 0.25)
 /// let threeQuartersDown = VerticalAlignment(fraction: 0.75)
 /// ```
+///
+/// The combined ``Alignment`` value pairs one horizontal and one vertical
+/// position for overlay containers such as ``ZStack``.
 
 // MARK: - Alignment types
 
@@ -84,4 +87,72 @@ public struct VerticalAlignment: Sendable, Equatable, ExpressibleByFloatLiteral 
 
     /// Content ends at the bottom; top padded with blank lines.
     public static let bottom = VerticalAlignment(fraction: 1.0)
+}
+
+// MARK: - Combined alignment
+
+/// A combined horizontal and vertical position used by overlay containers.
+///
+/// A ZStack places each child inside its occupied box using both axes: the
+/// horizontal component positions the child left-to-right and the vertical
+/// component positions it top-to-bottom. The default is centered on both axes.
+///
+/// ```swift
+/// ZStack(alignment: .topLeft) {
+///     background
+///     Text("Badge")
+/// }
+///
+/// let quarterRight = Alignment(
+///     horizontal: HorizontalAlignment(fraction: 0.75),
+///     vertical: .middle
+/// )
+/// ```
+public struct Alignment: Sendable, Equatable {
+
+    /// The horizontal position within the available width.
+    public let horizontal: HorizontalAlignment
+
+    /// The vertical position within the available height.
+    public let vertical: VerticalAlignment
+
+    /// Create a combined alignment.
+    ///
+    /// - Parameters:
+    ///   - horizontal: The horizontal position. Defaults to `.center`.
+    ///   - vertical: The vertical position. Defaults to `.middle`.
+    public init(
+        horizontal: HorizontalAlignment = .center,
+        vertical: VerticalAlignment = .middle
+    ) {
+        self.horizontal = horizontal
+        self.vertical = vertical
+    }
+
+    /// Centered horizontally and vertically.
+    public static let center = Alignment(horizontal: .center, vertical: .middle)
+
+    /// Flush with the top-left corner.
+    public static let topLeft = Alignment(horizontal: .left, vertical: .top)
+
+    /// Centered horizontally, flush with the top edge.
+    public static let top = Alignment(horizontal: .center, vertical: .top)
+
+    /// Flush with the top-right corner.
+    public static let topRight = Alignment(horizontal: .right, vertical: .top)
+
+    /// Flush with the left edge, centered vertically.
+    public static let left = Alignment(horizontal: .left, vertical: .middle)
+
+    /// Flush with the right edge, centered vertically.
+    public static let right = Alignment(horizontal: .right, vertical: .middle)
+
+    /// Flush with the bottom-left corner.
+    public static let bottomLeft = Alignment(horizontal: .left, vertical: .bottom)
+
+    /// Centered horizontally, flush with the bottom edge.
+    public static let bottom = Alignment(horizontal: .center, vertical: .bottom)
+
+    /// Flush with the bottom-right corner.
+    public static let bottomRight = Alignment(horizontal: .right, vertical: .bottom)
 }

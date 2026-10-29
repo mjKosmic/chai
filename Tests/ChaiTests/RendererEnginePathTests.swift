@@ -279,6 +279,24 @@ struct RendererEnginePathTests {
         #expect(mock.output.contains("fgh"))
     }
 
+    @Test func altScreenZStackRendersOverlay() async {
+        let mock = MockTerminal()
+        let renderer = Renderer(terminal: mock)
+        await renderer.setSize(width: 10, height: 4)
+        await renderer.enterAltScreen()
+        mock.reset()
+        await renderer.write(
+            ZStack(alignment: .topLeft) {
+                Text("aaaa")
+                Text("bb")
+            }
+        )
+        await renderer.flush()
+        // The overlay is allocated the full alt-screen root; the later child
+        // paints over the earlier one.
+        #expect(mock.output.contains("bbaa"))
+    }
+
     // MARK: - Framed centering
 
     @Test func framedTreeCentersContentInTerminal() async {

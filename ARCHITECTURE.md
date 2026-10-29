@@ -12,9 +12,9 @@ The repository is a monorepo containing two libraries:
 | **Spices** | Pre-built interactive components (text input, lists, tables, spinners, timers, etc.) | Chai |
 
 The view tree, the declarative containers and modifiers, and the styling values
-all live in Chai: `HStack`/`VStack`, `FrameView`, and the wrappers conform to
-Chai's ``View`` protocol and are laid out by its engine. The package also
-declares `swift-docc-plugin` (build-time only) for DocC documentation
+all live in Chai: `HStack`/`VStack`/`ZStack`, `FrameView`, and the wrappers
+conform to Chai's ``View`` protocol and are laid out by its engine. The package
+also declares `swift-docc-plugin` (build-time only) for DocC documentation
 generation; no runtime dependency is introduced.
 
 ---
@@ -486,8 +486,8 @@ The two-step design for `SIGWINCH` (sentinel → runner queries size) is necessa
 **Path:** `Sources/Chai/{Layout,Style,Utilities}`
 
 The view tree, the layout containers, and the styling values ship with
-**Chai**. `HStack`/`VStack`, `FrameView`, and the wrapper views conform to the
-``View`` protocol and are laid out by the allocation engine; `Style` and
+**Chai**. `HStack`/`VStack`/`ZStack`, `FrameView`, and the wrapper views conform
+to the ``View`` protocol and are laid out by the allocation engine; `Style` and
 `Color` are the styling values that feed the cell renderer. There is no
 separate layout or styling module.
 
@@ -495,7 +495,7 @@ separate layout or styling module.
 
 | Module | Files | Purpose |
 |--------|-------|---------|
-| **Layout** | `Layout/Alignment.swift`, `Layout/Border.swift`, `Layout/Stacks.swift`, `Layout/Frame.swift`, `Layout/PaddingView.swift`, `Layout/BorderView.swift`, `Layout/CompositionWrappers.swift` | Alignment value types, border glyph sets, `VStack`/`HStack`, `FrameView` with the `frame(...)` modifier, the padding and border wrappers, and `.beside`/`.above` stack sugar. Border glyphs accept per-side `Style` values. |
+| **Layout** | `Layout/Alignment.swift`, `Layout/Border.swift`, `Layout/Stacks.swift`, `Layout/Frame.swift`, `Layout/PaddingView.swift`, `Layout/BorderView.swift`, `Layout/CompositionWrappers.swift` | Alignment value types (axis and combined), border glyph sets, `VStack`/`HStack`/`ZStack`, `FrameView` with the `frame(...)` modifier, the padding and border wrappers, and `.beside`/`.above` stack sugar. Border glyphs accept per-side `Style` values. |
 | **Style** | `Style/Style.swift`, `Style/Style+TextAttributes.swift`, `Style/StyledView.swift`, `Style/Color.swift`, `Style/ColorProfile.swift`, `Style/ColorPalette.swift`, `Style/ColorUtilities.swift` | Composable `Style` values (bold, italic, colors), the `.fg`/`.bg`/`.bold`/`.dim`/`.italic`/`.underline`/`.strikethrough`/`.styled` view modifiers backed by `StyledView`, `Color` (ANSI 16 / 256 / true color with hex support and named ANSI conveniences), `ColorProfile` (terminal capability detection and downsampling), and the structured `TextAttributes` conversion used by the cell renderer. `Style.render(_:profile:)` remains for output written outside the live view, such as ``Command/println(_:)``. |
 | **Utilities** | `Utilities/TabExpansion.swift` | Tab-to-spaces expansion with configurable tab width, plus `String.tabsExpanded(tabWidth:)`. Tabs have no display width and are skipped by the cell renderer, so tab-indented text must be expanded before it enters a view. |
 
@@ -504,6 +504,12 @@ separate layout or styling module.
 - **One layout model:** layout is expressed through the view tree. The
   containers and modifiers render through the allocation engine; there is no
   parallel string-level layout API.
+- **Overlays share one box:** `ZStack` queries every child with the assigned
+  width and height, occupies the largest report on each axis, and positions
+  each child inside that box with a combined `Alignment`. Children embed in
+  declaration order, so later painted cells overwrite earlier ones and a child
+  that paints nothing leaves the cells below visible. `ZStack` has no main
+  axis, so it does not distribute flexible space.
 - **One color value at call sites:** `Color` is what `Style`, the view style
   modifiers, and `StyledText.fg`/`.bg` accept, with the 16 ANSI colors
   available as named values (`.red`, ...). `CellColor` stays public as the
@@ -587,7 +593,7 @@ func _childViews() -> [any View]
 func _flexibility() -> LayoutFlexibility
 ```
 
-The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` because custom containers are a supported extension point: a view type can report its size, place its children, enumerate them, and declare flexibility without changing the framework. The built-in `HStack`/`VStack`, `FrameView`, and wrapper views are one consumer of that surface. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
+The underscore prefix is the SwiftUI-style convention for **technically public, not user-facing**. The methods are `public` because custom containers are a supported extension point: a view type can report its size, place its children, enumerate them, and declare flexibility without changing the framework. The built-in `HStack`/`VStack`/`ZStack`, `FrameView`, and wrapper views are one consumer of that surface. The prefix plus the doc framing marks them as SPI: regular users who write `body` with ``@ViewBuilder`` and use stacks and modifiers never touch them. The intended audience is **advanced users writing custom containers or layout-modifying views**. Everyone else is covered by the defaults: the protocol extension resolves `_measure(in:)`/`_embed` through `body` (so a view that only defines `body` measures and renders correctly with zero engine code), `_childViews()` defaults to `[self]` (so an ordinary composite view presents itself as one child), and `_flexibility()` defaults to `.rigid` (so an ordinary view never absorbs leftover space). Structural views (`TupleView`, `ForEachView`, `ConditionalContent`, `OptionalView`) override `_childViews()` — they are *transparent*, flattening their children so `for` loops and conditionals inside an `HStack` participate in horizontal layout — and flexible ``Spacer()`` overrides `_flexibility()`.
 
 `_flexibility()` is what a stack consults to distribute **leftover main-axis space** (A2): a stack is *flexing* on its main axis when at least one child reports a positive fraction there, and it then fills a non-`nil` main-axis assignment, assigning each flexible child `rigid + Int(Double(leftover) * (fraction / totalFlex))` (normalized shares; the truncation remainder stays unallocated at the trailing end). With no flexible child the stacks take their pre-A2 code path unchanged.
 
@@ -626,7 +632,7 @@ answer. It earns its keep the moment a child's answer *depends* on the context.
 Views fall into a taxonomy by how they treat it:
 
 - **Reporters** — leaves such as ``ViewOutput`` and fixed ``Spacer(lines:)``/``Spacer(columns:)``. They answer their intrinsic size; a `ViewOutput` is a fully-formed raster and ignores the query, while a fixed spacer answers its requested cells.
-- **Containers** — ``VStack``/``HStack`` query their children in their own allocation context (cross-axis width/height, `nil` on the main axis), then allocate rects from the answers plus their rules (alignment, flexibility shares, the `Fill` remainder). The query is not a promise about the rect.
+- **Containers** — ``VStack``/``HStack`` query their children in their own allocation context (cross-axis width/height, `nil` on the main axis), then allocate rects from the answers plus their rules (alignment, flexibility shares, the `Fill` remainder). ``ZStack`` queries every child with the assigned width and height, occupies the largest report on each axis, and aligns each child inside that box. The query is not a promise about the rect.
 - **Allocators** — ``FrameView``. Fixed dimensions are allocation data: the frame owns them and hands the child that box verbatim; flexible dimensions pass the parent's assignment through (floored by the child's report when the assignment is degenerate).
 - **Consumers** — query-sensitive views. ``Text`` wraps at the width it is **allocated** (with the compression floor); ``Fill`` claims the rect it is allocated; a flexible ``Spacer()`` reports 0×0 rigidly and a positive `_flexibility()` fraction so a stack can hand it a share of the leftover.
 
@@ -660,7 +666,7 @@ SwiftUI's `ProposedViewSize` has three special cases: `unspecified` (ideal), `ze
 
 Most views answer their minimum *by construction*: a `ViewOutput` is a fully-formed raster and answers its ideal size (it may legitimately exceed the zero context), fixed `Spacer(lines:)`/`Spacer(columns:)` answer their requested cells, flexible `Spacer()`/`Empty` answer 0×0, and `Fill` answers the queried rect (`(0, 0)` at `.zero`). `Text` is the one *compressible* view: at a zero (or negative — clamped to zero, one rule) width context it wraps to its minimum width, computed as the widest single character in the content (1 for ASCII-only, 2 if any wide/CJK character is present, at least 1 for non-empty content; empty content stays 0×0). The query and the allocated-width wrap resolve the minimum through the same function (``Text/minimumWrapWidth()``), so a `.zero` query and a degenerate allocation agree.
 
-Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in docs/history/VIEW-LAYER-MIGRATION-LOG.md). `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
+Containers follow their normal query rules at `.zero` — no special-casing. `VStack` queries children with `(0, nil)`, so it composes true minimums (max of the children's min-widths, Σ of their min-heights). `HStack` queries with `(nil, 0)`: it measures columns at *ideal* width, so a `Text` child reports its ideal width, not its minimum — a documented consequence of the column model, pinned by test rather than "fixed" (and the use-case-gated HStack-remaining-width candidate in docs/history/VIEW-LAYER-MIGRATION-LOG.md). `ZStack` queries with `(0, 0)` and reports the max of the children's minimum widths and heights. `FrameView` answers fixed dimensions verbatim and fills the (non-`nil`) zero assignment on flexible axes.
 
 ### Why there is no `.infinity`
 
@@ -1052,6 +1058,8 @@ Covers the view tree, styling, and the allocation engine:
 | Test file | Coverage |
 |-----------|----------|
 | `StackTests.swift` / `StacksEngineTests.swift` | Engine measure/render of `VStack`/`HStack` through the allocation walk, alignment, skip-empty, styling survival |
+| `ZStackTests.swift` / `ZStackEngineTests.swift` | Overlay order, shrink-wrap, combined alignment, `Fill`/`Spacer` behavior, clipping, nesting, wide characters |
+| `AlignmentTests.swift` | Combined alignment defaults, presets, and custom fractions |
 | `FrameTests.swift` | `frame()`: fixed/one-dim/ideal/alignment/nesting, hard-box clipping, degenerate sizes |
 | `HardBoxTests.swift` | Containment: frame clips a wrapped status line, custom views cannot paint outside their rect, child rects are clamped to the parent, wide-char clip boundaries, clip restoration, nested boxes |
 | `SpacerAndFillTests.swift` | Leftover distribution in `VStack`/`HStack` (fill a non-`nil` main-axis assignment, normalized shares, odd-remainder truncation, `fraction: 0` rigid, nil assignment content-sized) and `Fill` in stacks/frames |
@@ -1117,9 +1125,9 @@ chai/
 │   │   │   ├── Wrapping.swift           # StyledText word-wrapping (A1 rules) for Text
 │   │   │   └── DisplayWidth.swift       # Unicode-aware visible width
 │   │   ├── Layout/
-│   │   │   ├── Alignment.swift          # Horizontal/vertical alignment value types
+│   │   │   ├── Alignment.swift          # Axis + combined alignment value types
 │   │   │   ├── Border.swift             # Border glyph sets
-│   │   │   ├── Stacks.swift             # VStack/HStack (allocation engine impl)
+│   │   │   ├── Stacks.swift             # VStack/HStack/ZStack (allocation engine impl)
 │   │   │   ├── Frame.swift              # FrameView + View.frame(...) modifier
 │   │   │   ├── PaddingView.swift        # .padded / .margined wrapper
 │   │   │   ├── BorderView.swift         # .bordered wrapper (+ per-side styling)
